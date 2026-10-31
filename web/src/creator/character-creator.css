@@ -1,0 +1,240 @@
+/* META SPACE · FOCO 3 — Estilos del creador de personaje.
+   Autocontenido: funciona sobre cualquier página con #ui o body.
+   Paleta: cielo rojo, cyan de ADA #5ee0ff, naranja plasma #ffb347. */
+
+.cc-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: radial-gradient(120% 90% at 50% 110%, rgba(255, 90, 40, 0.28), rgba(20, 8, 10, 0.88) 60%),
+    rgba(12, 6, 8, 0.72);
+  font-family: 'Rubik', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif;
+  color: #f4efe8;
+  overflow-y: auto;
+  animation: cc-entrada 0.35s ease-out;
+}
+
+@keyframes cc-entrada {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+.cc-caja {
+  width: min(980px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: linear-gradient(180deg, #1f2233, #272b40);
+  border: 3px solid #1b1214;
+  border-radius: 18px;
+  box-shadow: 0 8px 0 #1b1214, 0 0 60px rgba(255, 107, 74, 0.25);
+  padding: 20px 22px;
+  box-sizing: border-box;
+}
+
+.cc-eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: #5ee0ff;
+}
+
+.cc-cabecera h2 { margin: 2px 0 4px; font-size: 30px; font-weight: 900; }
+.cc-cabecera p { margin: 0 0 12px; color: #a9a3b8; font-size: 14px; }
+
+.cc-pestanas { display: flex; gap: 8px; margin-bottom: 14px; }
+.cc-pestanas button {
+  flex: 1;
+  padding: 10px;
+  font: inherit;
+  font-weight: 800;
+  color: #f4efe8;
+  background: #34384f;
+  border: 2px solid #1b1214;
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 3px 0 #1b1214;
+}
+.cc-pestanas button:hover { background: #3f4460; }
+.cc-pestanas button.on {
+  background: linear-gradient(180deg, #ffb347, #e8632b);
+  color: #2a1408;
+}
+
+.cc-cuerpo {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 16px;
+}
+@media (max-width: 760px) {
+  .cc-cuerpo { grid-template-columns: 1fr; }
+}
+
+/* Lienzo de dibujo: 128×128 escalado, píxeles nítidos, fondo de damero. */
+.cc-lienzo-fondo {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+  background: repeating-conic-gradient(#2b2f47 0 25%, #23263a 0 50%) 0 0 / 24px 24px;
+  border: 2px solid #1b1214;
+  border-radius: 12px;
+}
+.cc-lienzo {
+  width: min(64vw, 320px);
+  aspect-ratio: 1;
+  image-rendering: pixelated;
+  cursor: crosshair;
+  touch-action: none;
+  background: transparent;
+}
+
+.cc-fila { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.cc-etiqueta { font-size: 12px; font-weight: 800; color: #a9a3b8; }
+.cc-paleta { display: flex; gap: 6px; flex-wrap: wrap; }
+.cc-color {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 2px solid #1b1214;
+  background: var(--c);
+  cursor: pointer;
+  padding: 0;
+}
+.cc-color.on { outline: 3px solid #5ee0ff; }
+
+.cc-herramientas button,
+.cc-generar,
+.cc-cancelar,
+.cc-confirmar,
+.cc-galeria .cc-tarjeta {
+  font: inherit;
+}
+.cc-herramientas button,
+.cc-generar,
+.cc-cancelar,
+.cc-confirmar {
+  font-weight: 800;
+  color: #f4efe8;
+  background: #34384f;
+  border: 2px solid #1b1214;
+  border-radius: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  box-shadow: 0 3px 0 #1b1214;
+}
+.cc-herramientas button:hover,
+.cc-generar:hover,
+.cc-cancelar:hover { background: #3f4460; }
+.cc-herramientas button.on { background: #5ee0ff; color: #10303a; }
+.cc-goma.on { background: #d07bff; color: #2a1030; }
+.cc-fila .on { outline: none; }
+
+.cc-generar { background: linear-gradient(180deg, #ffb347, #e8632b); color: #2a1408; }
+.cc-confirmar { background: linear-gradient(180deg, #7ef0a0, #3fbf5a); color: #10301a; font-size: 17px; padding: 10px 26px; }
+.cc-confirmar:disabled { background: #34384f; color: #6f6a80; cursor: not-allowed; box-shadow: none; }
+
+.cc-prompt {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  color: #f4efe8;
+  background: #141624;
+  border: 2px solid #1b1214;
+  border-radius: 10px;
+  padding: 10px;
+  resize: vertical;
+}
+.cc-estado { color: #5ee0ff; font-size: 13px; font-weight: 700; min-height: 1.2em; }
+.cc-origen { color: #a9a3b8; font-size: 13px; }
+.cc-imagen-fondo {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
+  background: repeating-conic-gradient(#2b2f47 0 25%, #23263a 0 50%) 0 0 / 24px 24px;
+  border: 2px solid #1b1214;
+  border-radius: 12px;
+  padding: 12px;
+}
+.cc-imagen { width: min(52vw, 220px); image-rendering: pixelated; }
+.cc-estado-dibujo { color: #c9f27a; font-size: 13px; }
+
+.cc-galeria {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+@media (max-width: 560px) { .cc-galeria { grid-template-columns: repeat(2, 1fr); } }
+.cc-tarjeta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px;
+  background: #141624;
+  border: 2px solid #1b1214;
+  border-radius: 12px;
+  color: #f4efe8;
+  cursor: pointer;
+}
+.cc-tarjeta:hover { border-color: #5ee0ff; }
+.cc-tarjeta.on { border-color: #ffb347; box-shadow: 0 0 0 2px #ffb347; }
+.cc-tarjeta small { color: #a9a3b8; font-size: 11px; }
+.cc-mini canvas { width: 96px; height: 96px; image-rendering: pixelated; }
+
+/* Panel lateral de stats */
+.cc-lateral {
+  background: #141624;
+  border: 2px solid #1b1214;
+  border-radius: 12px;
+  padding: 12px 14px;
+  align-self: start;
+}
+.cc-lateral h3 { margin: 0 0 8px; font-size: 15px; letter-spacing: 1px; color: #ffb347; }
+.cc-prev { display: flex; justify-content: center; margin-bottom: 8px; }
+.cc-prev img {
+  width: 128px;
+  height: 128px;
+  image-rendering: pixelated;
+  background: repeating-conic-gradient(#2b2f47 0 25%, #23263a 0 50%) 0 0 / 16px 16px;
+  border: 2px solid #1b1214;
+  border-radius: 10px;
+}
+.cc-nums { margin: 0; display: grid; gap: 6px; }
+.cc-nums > div { display: grid; grid-template-columns: 78px 1fr; align-items: center; gap: 8px; }
+.cc-nums dt { font-size: 12px; color: #a9a3b8; font-weight: 700; }
+.cc-nums dd { margin: 0; display: flex; align-items: center; gap: 8px; }
+.cc-nums b { min-width: 44px; }
+.cc-bar { flex: 1; height: 8px; background: #34384f; border-radius: 4px; overflow: hidden; }
+.cc-bar i { display: block; height: 100%; background: linear-gradient(90deg, #5ee0ff, #ffb347); }
+.cc-special { margin-top: 10px; background: #1f2233; border-radius: 10px; padding: 8px 10px; }
+.cc-special small { color: #5ee0ff; font-weight: 800; letter-spacing: 1px; font-size: 10px; }
+.cc-special b { display: block; }
+.cc-special p { margin: 2px 0 0; font-size: 12px; color: #a9a3b8; }
+.cc-lore { font-size: 13px; font-style: italic; color: #ffe9a8; }
+.cc-ada { font-size: 13px; color: #5ee0ff; min-height: 1em; animation: cc-parpadeo 2.4s infinite; }
+@keyframes cc-parpadeo { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+.cc-vacio { color: #a9a3b8; font-size: 13px; }
+.cc-regla { font-size: 11px; color: #a9a3b8; border-top: 1px solid #34384f; padding-top: 8px; }
+
+.cc-pie {
+  margin-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.cc-pie label { font-weight: 800; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.cc-nombre {
+  font: inherit;
+  color: #f4efe8;
+  background: #141624;
+  border: 2px solid #1b1214;
+  border-radius: 10px;
+  padding: 8px 10px;
+  width: 180px;
+}
+.cc-acciones { display: flex; gap: 10px; }

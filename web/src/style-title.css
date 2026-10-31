@@ -1,0 +1,494 @@
+/* ==========================================================================
+ * META SPACE — FOCO 2 · style-title.css
+ * Hoja de estilo AUTOCONTENIDA de la pantalla inicial (título).
+ *
+ * Cómo integrarla en el proyecto real (juego Vite + TS + Three.js):
+ *  1. Copia este archivo a `src/style-title.css` y cárgalo en `main.ts`
+ *     con `import './style-title.css';` (convive con `style.css`: todo va
+ *     bajo el espacio de nombres `ms-`, salvo la sección final COMPAT).
+ *  2. El HTML que estiliza lo genera el FOCO 1 (`ui-title.ts`, firma
+ *     `showTitle(save, start)` + callbacks de creador/códice). El contrato
+ *     exacto de clases está en `TOKENS.md` § "Contrato HTML". Esta demo
+ *     (`index.html` + `src/main.ts`) reproduce esa estructura al pie.
+ *  3. Tipografía (ver TOKENS.md § "Tipografía"): añade al <head> de
+ *     `index.html` la fuente pixel de display junto a Rubik:
+ *       <link rel="preconnect" href="https://fonts.googleapis.com" />
+ *       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+ *       <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rubik:wght@500;700;800;900&display=swap" rel="stylesheet" />
+ *     Si la fuente no carga (sin conexión), los fallbacks del sistema
+ *     (`--ms-font-display` / `--ms-font-body`) mantienen el juego legible.
+ *  4. Móvil vertical (ver TOKENS.md § "Responsive"): el CSS no puede cambiar
+ *     la cámara de Three.js; el juego debe poner `fov 72` en retrato:
+ *       if (window.matchMedia('(orientation: portrait) and (max-width: 700px)').matches) {
+ *         camera.fov = 72; camera.updateProjectionMatrix();
+ *       }
+ * ========================================================================== */
+
+/* ---- 1. TOKENS (guía rápida; tabla completa en TOKENS.md) --------------- */
+:root {
+  /* Cielo rojo del planeta muerto: de cenit a horizonte. */
+  --ms-sky-zenith: #2b0f1a;
+  --ms-sky-mid: #6b2a20;
+  --ms-sky-low: #a83c2a;
+  --ms-horizon: #e8632b;
+  /* Sol bajo. */
+  --ms-sun-core: #ffe07a;
+  --ms-sun-halo: #ffb347;
+  /* Acentos de fantasía. */
+  --ms-ada: #5ee0ff;      /* cyan de ADA */
+  --ms-plasma: #ffb347;   /* naranja de plasma */
+  --ms-gold: #ffd25a;
+  --ms-danger: #ff5a4a;
+  /* Tinta y paneles (compatibles con style.css original). */
+  --ms-ink: #f4efe8;
+  --ms-muted: #c9b8c7;
+  --ms-panel: #1f2233;
+  --ms-panel-2: #272b40;
+  --ms-line: #34384f;
+  --ms-edge: #1b1214;     /* borde oscuro pixel-art */
+  /* Tipografía. */
+  --ms-font-body: 'Rubik', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif;
+  --ms-font-display: 'Press Start 2P', 'Rubik', ui-monospace, monospace;
+  /* Tamaños fluidos del título. */
+  --ms-logo-size: clamp(28px, 7vw, 64px);
+  --ms-frame-max: 640px;
+  --ms-touch-min: 48px;   /* alto mínimo táctil */
+  /* Sombras duras pixel-art (sin difuminado: borde + escalón). */
+  --ms-shadow-btn: 0 5px 0 var(--ms-edge);
+  --ms-shadow-btn-pressed: 0 2px 0 var(--ms-edge);
+  --ms-shadow-frame: 0 6px 0 var(--ms-edge), 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+
+/* ---- 2. BASE AUTOCONTENIDA (no depende de style.css) -------------------- */
+.ms-title-overlay *,
+.ms-title-overlay *::before,
+.ms-title-overlay *::after { box-sizing: border-box; }
+
+.ms-title-page {
+  margin: 0;
+  min-height: 100%;
+  overflow: hidden;
+  background: var(--ms-sky-mid);
+  color: var(--ms-ink);
+  font-family: var(--ms-font-body);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#ms-game {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#ms-ui { position: fixed; inset: 0; }
+#ms-ui > * { pointer-events: auto; }
+
+/* Sprites pixelados: nítidos, sin suavizado. */
+.ms-pixelated {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* ---- 3. OVERLAY + FONDO (cielo rojo, sol bajo, nubes) ------------------- */
+.ms-title-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  overflow: auto;
+  background: rgba(14, 10, 20, 0.35);
+}
+
+/* El fondo vive detrás del marco y no intercepta clics. */
+.ms-title-bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    var(--ms-sky-zenith) 0%,
+    var(--ms-sky-mid) 42%,
+    var(--ms-sky-low) 68%,
+    var(--ms-horizon) 100%
+  );
+}
+
+.ms-title-sun {
+  position: absolute;
+  left: 50%;
+  bottom: 12%;
+  width: clamp(120px, 26vmin, 240px);
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--ms-sun-core) 0 34%, var(--ms-sun-halo) 55%, transparent 72%);
+  border: 4px solid var(--ms-edge);
+  animation: ms-sun-pulse 5s ease-in-out infinite;
+}
+
+/* Suelo oscuro del planeta muerto. */
+.ms-title-ground {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 16%;
+  background: linear-gradient(180deg, #3a1a24 0%, #1c0d14 100%);
+  border-top: 4px solid var(--ms-edge);
+}
+
+/* Nubes: dos capas con deriva a distinta velocidad. */
+.ms-title-cloud {
+  position: absolute;
+  height: 14px;
+  border: 3px solid var(--ms-edge);
+  background: #d98a5a;
+  opacity: 0.85;
+}
+.ms-title-cloud.ms--a {
+  top: 22%;
+  width: 220px;
+  animation: ms-cloud-drift 38s linear infinite;
+}
+.ms-title-cloud.ms--b {
+  top: 34%;
+  width: 150px;
+  background: #b85a3a;
+  animation: ms-cloud-drift 57s linear infinite reverse;
+}
+
+/* ---- 4. MARCO DEL TÍTULO ------------------------------------------------ */
+.ms-title-frame {
+  position: relative;
+  width: min(var(--ms-frame-max), 100%);
+  text-align: center;
+  background: rgba(20, 18, 32, 0.88);
+  border: 4px solid var(--ms-edge);
+  border-radius: 18px;
+  outline: 2px solid rgba(94, 224, 255, 0.35);
+  outline-offset: -8px;
+  box-shadow: var(--ms-shadow-frame);
+  padding: clamp(20px, 4vw, 34px) clamp(16px, 4vw, 30px);
+  animation: ms-title-in 0.5s ease-out both;
+}
+
+.ms-title-eyebrow {
+  margin: 0 0 6px;
+  letter-spacing: 3px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--ms-plasma);
+}
+
+.ms-title-logo {
+  margin: 4px 0 8px;
+  font-family: var(--ms-font-display);
+  font-size: var(--ms-logo-size);
+  line-height: 1.15;
+  letter-spacing: 1px;
+  color: var(--ms-ink);
+  text-shadow:
+    3px 3px 0 var(--ms-edge),
+    0 0 24px rgba(255, 179, 71, 0.35);
+}
+.ms-title-logo__space {
+  display: block;
+  color: var(--ms-ada);
+  text-shadow:
+    3px 3px 0 var(--ms-edge),
+    0 0 24px rgba(94, 224, 255, 0.45);
+}
+
+.ms-title-sub {
+  margin: 0 auto 12px;
+  max-width: 46ch;
+  line-height: 1.55;
+  color: #d9d4e6;
+}
+.ms-title-sub b { color: var(--ms-gold); }
+
+/* Línea de ADA con punto luminoso parpadeante. */
+.ms-ada-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ms-ada);
+  background: rgba(94, 224, 255, 0.08);
+  border: 2px solid rgba(94, 224, 255, 0.5);
+  border-radius: 999px;
+}
+.ms-ada-dot {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ms-ada);
+  border: 2px solid var(--ms-edge);
+  animation: ms-ada-blink 1.6s ease-in-out infinite;
+}
+
+/* ---- 5. BOTONES (normal / hover / active / disabled / foco) -------------- */
+.ms-title-actions {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.ms-btn {
+  font: inherit;
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: 0.5px;
+  color: #3a2a08;
+  background: linear-gradient(#ffe07a, #f0b830);
+  border: 3px solid var(--ms-edge);
+  border-radius: 14px;
+  box-shadow: var(--ms-shadow-btn), 0 8px 20px rgba(0, 0, 0, 0.35);
+  padding: 14px 24px;
+  min-height: var(--ms-touch-min);
+  cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.12s ease;
+}
+
+/* JUGAR: protagonista naranja plasma. */
+.ms-btn--play {
+  font-size: 24px;
+  color: #2a1a05;
+  background: linear-gradient(#ffd9a8, var(--ms-plasma) 60%, var(--ms-horizon));
+}
+
+/* Secundarios: panel oscuro con borde cyan de ADA. */
+.ms-btn--ghost {
+  color: var(--ms-ink);
+  background: linear-gradient(var(--ms-panel-2), var(--ms-panel));
+  border-color: var(--ms-ada);
+  box-shadow: 0 5px 0 #1e4a5a, 0 8px 20px rgba(0, 0, 0, 0.35);
+  font-size: 17px;
+}
+
+.ms-btn--mini {
+  font-size: 14px;
+  padding: 10px 18px;
+  color: var(--ms-ink);
+  background: transparent;
+  border-color: var(--ms-line);
+  box-shadow: none;
+}
+
+/* Hover: solo en dispositivos con puntero fino (no “pegajosidad” táctil). */
+@media (hover: hover) and (pointer: fine) {
+  .ms-btn:hover { transform: translateY(-2px); filter: brightness(1.07); }
+  .ms-btn--ghost:hover { border-color: #b8f4ff; }
+}
+
+/* Pulsado. */
+.ms-btn:active {
+  transform: translateY(3px);
+  box-shadow: var(--ms-shadow-btn-pressed);
+}
+
+/* Foco visible con teclado (accesibilidad). */
+.ms-btn:focus-visible,
+.ms-record:focus-visible {
+  outline: 3px solid var(--ms-ada);
+  outline-offset: 2px;
+}
+
+/* Deshabilitado: gris, sin sombra, sin interacción. */
+.ms-btn:disabled,
+.ms-btn[aria-disabled="true"] {
+  cursor: not-allowed;
+  color: #8d8a99;
+  background: #3a3d52;
+  border-color: #23263a;
+  box-shadow: none;
+  transform: none;
+  filter: none;
+  opacity: 0.75;
+}
+
+/* ---- 6. PANEL DE RÉCORDS (mejor tiempo, bajas, puntuación) --------------- */
+.ms-records { margin-bottom: 14px; }
+.ms-records-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--ms-muted);
+}
+.ms-records-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.ms-record {
+  background: var(--ms-panel-2);
+  border: 3px solid var(--ms-line);
+  border-radius: 12px;
+  padding: 10px 6px;
+}
+.ms-record small {
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--ms-muted);
+}
+.ms-record b {
+  display: block;
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.ms-record--time b { color: var(--ms-ada); }
+.ms-record--kills b { color: #ff8a6a; }
+.ms-record--score b { color: var(--ms-gold); }
+.ms-record--empty b { color: var(--ms-muted); }
+.ms-records-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--ms-muted);
+}
+
+/* ---- 7. DIÁLOGO «¿CÓMO JUGAR?» ------------------------------------------- */
+.ms-howto {
+  margin-top: 4px;
+  text-align: left;
+  background: var(--ms-panel);
+  border: 3px solid var(--ms-line);
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+.ms-howto[hidden] { display: none; }
+.ms-howto h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  color: var(--ms-gold);
+}
+.ms-howto ul {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  line-height: 1.6;
+  color: #d9d4e6;
+  font-size: 14px;
+}
+.ms-howto b { color: var(--ms-ink); }
+
+/* ---- 8. PIE (teclas / ayuda táctil) --------------------------------------- */
+.ms-title-foot { margin-top: 6px; }
+.ms-keys {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ms-muted);
+}
+.ms-keys b { color: var(--ms-ink); }
+.ms-touch-hint { display: none; }
+
+/* ---- 9. RESPONSIVE + TÁCTIL ------------------------------------------------
+ * Retrato estrecho: columna única, botones a ancho completo y objetivos
+ * táctiles de al menos 48 px. El `fov 72` de la cámara se pone en JS
+ * (ver cabecera §4): el CSS solo adapta la interfaz. */
+@media (max-width: 700px) {
+  .ms-title-overlay { padding: 10px; align-items: start; }
+  .ms-title-frame { border-radius: 14px; }
+  .ms-title-logo { --ms-logo-size: clamp(22px, 9vw, 34px); }
+  .ms-title-sub { font-size: 14px; }
+  .ms-title-actions { gap: 12px; }
+  .ms-btn { width: 100%; }
+  .ms-records-grid { grid-template-columns: repeat(3, 1fr); }
+  .ms-record b { font-size: 19px; }
+}
+
+@media (orientation: portrait) and (max-width: 700px) {
+  .ms-btn { min-height: 52px; }
+  .ms-keys--desktop { display: none; }
+  .ms-touch-hint {
+    display: block;
+    margin: 6px 0 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ms-ada);
+  }
+}
+
+/* Puntero grueso (táctil): sin hover, todo con tamaño de dedo. */
+@media (pointer: coarse) {
+  .ms-btn { min-height: var(--ms-touch-min); }
+}
+
+/* Altura escasa (móvil horizontal): marco compacto con desplazamiento. */
+@media (max-height: 520px) {
+  .ms-title-overlay { align-items: start; }
+  .ms-title-frame { padding: 16px; }
+  .ms-ada-line { display: none; }
+}
+
+/* ---- 10. ANIMACIONES -------------------------------------------------------
+ * ms-ada-blink: parpadeo de ADA · ms-cloud-drift: deriva de nubes ·
+ * ms-title-in: transición de entrada · ms-sun-pulse: resplandor del sol. */
+@keyframes ms-ada-blink {
+  0%, 100% { opacity: 1; box-shadow: 0 0 12px var(--ms-ada); }
+  50% { opacity: 0.45; box-shadow: none; }
+}
+
+@keyframes ms-cloud-drift {
+  from { transform: translateX(-30vw); }
+  to { transform: translateX(110vw); }
+}
+
+@keyframes ms-title-in {
+  from { opacity: 0; transform: translateY(18px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes ms-sun-pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.12); }
+}
+
+/* Movimiento reducido: se desactivan deriva, parpadeo y entrada. */
+@media (prefers-reduced-motion: reduce) {
+  .ms-title-frame { animation: none; }
+  .ms-ada-dot,
+  .ms-title-sun,
+  .ms-title-cloud { animation: none; }
+  .ms-btn { transition: none; }
+}
+
+/* ---- 11. COMPAT OPCIONAL con el `showTitle` actual ------------------------
+ * Si el FOCO 1 reutiliza `.title-box` del `style.css` original, estas reglas
+ * le dan el marco pixel + cielo sin romper nada. Cuando `ui-title.ts` use
+ * las clases `ms-`, esta sección sobra y puede borrarse. */
+.overlay.title {
+  background:
+    linear-gradient(180deg, var(--ms-sky-zenith) 0%, var(--ms-sky-mid) 45%, var(--ms-sky-low) 75%, var(--ms-horizon) 100%);
+}
+.overlay.title .title-box {
+  border: 4px solid var(--ms-edge);
+  outline: 2px solid rgba(94, 224, 255, 0.35);
+  outline-offset: -8px;
+  box-shadow: var(--ms-shadow-frame);
+  animation: ms-title-in 0.5s ease-out both;
+}
+.overlay.title .title-box h1 {
+  font-family: var(--ms-font-display);
+  text-shadow: 3px 3px 0 var(--ms-edge);
+}
+.overlay.title .btn:disabled {
+  cursor: not-allowed;
+  background: #3a3d52;
+  color: #8d8a99;
+  box-shadow: none;
+}

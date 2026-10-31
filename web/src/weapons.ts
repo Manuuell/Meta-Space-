@@ -19,6 +19,8 @@ export interface Modifiers {
 export class Weapons {
   readonly levels = new Map<WeaponId, number>();
   readonly damageDealt: Record<WeaponId, number> = { cortador: 0, pulso: 0, dron: 0, interferencia: 0 };
+  /** Multiplicador de daño del héroe personalizado (creador de personaje). */
+  damageMul = 1;
   private timers = new Map<WeaponId, number>();
 
   // Cortador: proyectiles en arrays planos y un solo InstancedMesh.
@@ -83,8 +85,9 @@ export class Weapons {
 
   private deal(id: WeaponId, i: number, amount: number, fromX: number, fromZ: number, knockback = 0.25) {
     const before = Math.max(this.enemies.hp[i], 0);
-    this.enemies.hit(i, amount, fromX, fromZ, knockback);
-    this.damageDealt[id] += Math.min(amount, before);
+    const scaled = amount * this.damageMul;
+    this.enemies.hit(i, scaled, fromX, fromZ, knockback);
+    this.damageDealt[id] += Math.min(scaled, before);
   }
 
   update(dt: number, px: number, pz: number, mods: Modifiers) {

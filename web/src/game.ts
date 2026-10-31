@@ -9,6 +9,11 @@ import { consumeLook, endFrame, isLocked, lockPointer, moveVector, unlockPointer
 import { sfx, unlockAudio } from './audio';
 import { loadSave, writeSave } from './save';
 import * as ui from './ui';
+import { showTitle } from './ui-title';
+import { openCharacterCreator } from './creator/character-creator';
+import { applyCustomHero, toCustomHero } from './creator/player-contract';
+import type { HeroTuning } from './creator/player-contract';
+import { SPECIALS } from './creator/stats';
 
 type State = 'title' | 'playing' | 'levelup' | 'paused' | 'results';
 
@@ -60,6 +65,14 @@ export class Game {
   private killsByType: Record<EnemyId, number> = { recolector: 0, baliza: 0, segador: 0 };
   private passives = new Map<PassiveId, number>();
   private relicsFound: string[] = [];
+  // Héroe personalizado del creador de personaje (Meta Space).
+  private customSprite: THREE.Texture | null = null;
+  private heroName = '';
+  private heroMaxHp = RUN.maxHp;
+  private heroSpeed = RUN.speed;
+  private heroDamageMul = 1;
+  private heroCooldownMul = 1;
+  private heroSpecial: HeroTuning['special'] | null = null;
   private spawnDebt = 0;
   private nextSegador = 120;
   private nextSwarm = 60;
@@ -126,19 +139,56 @@ export class Game {
     this.state = 'title';
     ui.hideHud();
     this.resetRun();
-    ui.showTitle(this.save, () => this.startRun());
+    let started = false;
+    showTitle(this.save, () => {
+      if (started) return;
+      started = true;
+      this.startRun();
+    }, {
+      onCreator: () => void this.openCreator(),
+    });
+  }
+
+  private async openCreator() {
+    const hero = await openCharacterCreator();
+    if (!hero) return;
+    await applyCustomHero(this, toCustomHero(hero));
+    const who = this.heroName ? ` como <b>${this.heroName}</b>` : '';
+    ui.toast('ADA', `Héroe listo${who}. Pulsa JUGAR para despegar.`, 'info', 5);
+  }
+
+  /** Hooks del contrato del creador (`player-contract.ts`). */
+  setHeroSprite(tex: THREE.Texture) {
+    this.customSprite = tex;
+    const mat = this.player.material as THREE.SpriteMaterial;
+    mat.map = tex;
+    mat.needsUpdate = true;
+  }
+
+  setHeroTuning(t: HeroTuning) {
+    this.heroMaxHp = t.maxHp;
+    this.heroSpeed = t.speed;
+    this.heroDamageMul = t.damageMul;
+    this.heroCooldownMul = t.cooldownMul;
+    this.heroSpecial = t.special;
+    this.hp = this.maxHp = t.maxHp;
+  }
+
+  setHeroName(nombre: string) {
+    this.heroName = nombre;
   }
 
   private resetRun() {
     this.weapons?.dispose();
     this.weapons = new Weapons(this.scene, this.enemies, this.world);
+    this.weapons.damageMul = this.heroDamageMul;
     this.enemies.clear();
     this.pickups.clear();
     for (const r of this.relicDrops) this.scene.remove(r.group);
     this.relicDrops = [];
 
     this.time = 0;
-    this.hp = this.maxHp = RUN.maxHp;
+    this.hp = this.maxHp = this.heroMaxHp;
     this.hpLost = 0;
     this.level = 1;
     this.xp = 0;
@@ -163,12 +213,16 @@ export class Game {
     ui.showHud();
     lockPointer(this.canvas);
     ui.toast('ADA', 'Señal de HELIOS detectada. Vienen a por mí. Mantente en movimiento.', 'info', 5);
+    if (this.heroSpecial) {
+      const sp = SPECIALS[this.heroSpecial];
+      ui.toast('ADA', `Especial listo: ${sp.name}. ${sp.blurb}`, 'info', 6);
+    }
     this.clock.getDelta();
   }
 
   private get mods(): Modifiers {
     return {
-      cooldown: Math.pow(0.92, this.passive('enfriamiento')),
+      cooldown: Math.pow(0.92, this.passive('enfriamiento')) * this.heroCooldownMul,
       area: 1 + 0.1 * this.passive('area'),
     };
   }
@@ -287,7 +341,7 @@ export class Game {
 
   private movePlayer(dt: number) {
     const move = moveVector();
-    const speed = RUN.speed * (1 + 0.1 * this.passive('velocidad'));
+    const speed = this.heroSpeed * (1 + 0.1 * this.passive('velocidad'));
     // W avanza hacia donde mira la cámara; A y D van de lado.
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
@@ -301,13 +355,20 @@ export class Game {
 
     const moving = move.x !== 0 || move.y !== 0;
     if (moving) this.walkTime += dt;
-    const step = moving ? Math.floor(this.walkTime * 8) % 2 : 0;
-    // De espaldas salvo cuando viene hacia la cámara: así se ve a ADA.
-    const frames = move.y > 0.3 ? this.frames.front : this.frames.back;
     const material = this.player.material;
-    if (material.map !== frames[step]) material.map = frames[step];
+    if (this.customSprite) {
+      // Héroe personalizado: sprite fijo del creador en vez de la animación.
+      if (material.map !== this.customSprite) material.map = this.customSprite;
+    } else {
+      const step = moving ? Math.floor(this.walkTime * 8) % 2 : 0;
+      // De espaldas salvo cuando viene hacia la cámara: así se ve a ADA.
+      const frames = move.y > 0.3 ? this.frames.front : this.frames.back;
+      if (material.map !== frames[step]) material.map = frames[step];
+    }
     if (Math.abs(move.x) > 0.1) {
-      const flip = frames === this.frames.front ? move.x < 0 : move.x > 0;
+      // Con héroe personalizado no hay vista frontal: solo espeja el avance.
+      const deFrente = !this.customSprite && move.y > 0.3;
+      const flip = deFrente ? move.x < 0 : move.x > 0;
       this.player.scale.x = (flip ? -1 : 1) * PLAYER_HEIGHT * 0.8;
     }
 

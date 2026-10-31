@@ -1,4 +1,6 @@
 import './style.css';
+import './style-title.css';
+import './creator/character-creator.css';
 import { Game } from './game';
 
 const game = new Game(document.getElementById('game') as HTMLCanvasElement);

@@ -1,494 +1,326 @@
-/* ==========================================================================
- * META SPACE — FOCO 2 · style-title.css
- * Hoja de estilo AUTOCONTENIDA de la pantalla inicial (título).
- *
- * Cómo integrarla en el proyecto real (juego Vite + TS + Three.js):
- *  1. Copia este archivo a `src/style-title.css` y cárgalo en `main.ts`
- *     con `import './style-title.css';` (convive con `style.css`: todo va
- *     bajo el espacio de nombres `ms-`, salvo la sección final COMPAT).
- *  2. El HTML que estiliza lo genera el FOCO 1 (`ui-title.ts`, firma
- *     `showTitle(save, start)` + callbacks de creador/códice). El contrato
- *     exacto de clases está en `TOKENS.md` § "Contrato HTML". Esta demo
- *     (`index.html` + `src/main.ts`) reproduce esa estructura al pie.
- *  3. Tipografía (ver TOKENS.md § "Tipografía"): añade al <head> de
- *     `index.html` la fuente pixel de display junto a Rubik:
- *       <link rel="preconnect" href="https://fonts.googleapis.com" />
- *       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
- *       <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rubik:wght@500;700;800;900&display=swap" rel="stylesheet" />
- *     Si la fuente no carga (sin conexión), los fallbacks del sistema
- *     (`--ms-font-display` / `--ms-font-body`) mantienen el juego legible.
- *  4. Móvil vertical (ver TOKENS.md § "Responsive"): el CSS no puede cambiar
- *     la cámara de Three.js; el juego debe poner `fov 72` en retrato:
- *       if (window.matchMedia('(orientation: portrait) and (max-width: 700px)').matches) {
- *         camera.fov = 72; camera.updateProjectionMatrix();
- *       }
- * ========================================================================== */
-
-/* ---- 1. TOKENS (guía rápida; tabla completa en TOKENS.md) --------------- */
+/* META SPACE — menú neorretro: pixel art + tarjetas de juego. */
 :root {
-  /* Cielo rojo del planeta muerto: de cenit a horizonte. */
-  --ms-sky-zenith: #2b0f1a;
-  --ms-sky-mid: #6b2a20;
-  --ms-sky-low: #a83c2a;
-  --ms-horizon: #e8632b;
-  /* Sol bajo. */
-  --ms-sun-core: #ffe07a;
-  --ms-sun-halo: #ffb347;
-  /* Acentos de fantasía. */
-  --ms-ada: #5ee0ff;      /* cyan de ADA */
-  --ms-plasma: #ffb347;   /* naranja de plasma */
-  --ms-gold: #ffd25a;
-  --ms-danger: #ff5a4a;
-  /* Tinta y paneles (compatibles con style.css original). */
-  --ms-ink: #f4efe8;
-  --ms-muted: #c9b8c7;
-  --ms-panel: #1f2233;
-  --ms-panel-2: #272b40;
-  --ms-line: #34384f;
-  --ms-edge: #1b1214;     /* borde oscuro pixel-art */
-  /* Tipografía. */
-  --ms-font-body: 'Rubik', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif;
-  --ms-font-display: 'Press Start 2P', 'Rubik', ui-monospace, monospace;
-  /* Tamaños fluidos del título. */
-  --ms-logo-size: clamp(28px, 7vw, 64px);
-  --ms-frame-max: 640px;
-  --ms-touch-min: 48px;   /* alto mínimo táctil */
-  /* Sombras duras pixel-art (sin difuminado: borde + escalón). */
-  --ms-shadow-btn: 0 5px 0 var(--ms-edge);
-  --ms-shadow-btn-pressed: 0 2px 0 var(--ms-edge);
-  --ms-shadow-frame: 0 6px 0 var(--ms-edge), 0 20px 60px rgba(0, 0, 0, 0.45);
+  --ms-ink: #f7f5fb;
+  --ms-muted: #b9bdd2;
+  --ms-panel: #1d2235;
+  --ms-panel-2: #272d43;
+  --ms-edge: #111526;
+  --ms-cyan: #56e5ee;
+  --ms-coral: #ff6573;
+  --ms-orange: #ffad35;
+  --ms-green: #4ed58f;
+  --ms-violet: #7464f5;
+  --ms-pink: #d64d9e;
+  --ms-gold: #ffd04d;
 }
 
-/* ---- 2. BASE AUTOCONTENIDA (no depende de style.css) -------------------- */
-.ms-title-overlay *,
-.ms-title-overlay *::before,
-.ms-title-overlay *::after { box-sizing: border-box; }
-
-.ms-title-page {
-  margin: 0;
-  min-height: 100%;
-  overflow: hidden;
-  background: var(--ms-sky-mid);
-  color: var(--ms-ink);
-  font-family: var(--ms-font-body);
-  -webkit-user-select: none;
-  user-select: none;
+.ms-title, .ms-title * { box-sizing: border-box; }
+.ms-title {
+  position: absolute; inset: 0; min-width: 320px; overflow: hidden;
+  color: var(--ms-ink); background: #11142a;
+  font-family: 'Rubik', ui-rounded, system-ui, sans-serif; isolation: isolate;
 }
-
-#ms-game {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
+.ms-title button { font: inherit; }
+.ms-title__art, .ms-title__shade { position: absolute; inset: 0; z-index: -2; pointer-events: none; }
+.ms-title__art {
+  background: url('/art/meta-space-menu-bg-v2.webp') center/cover no-repeat;
+  image-rendering: pixelated; animation: ms-art-in .7s ease-out both;
 }
-
-#ms-ui { position: fixed; inset: 0; }
-#ms-ui > * { pointer-events: auto; }
-
-/* Sprites pixelados: nítidos, sin suavizado. */
-.ms-pixelated {
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
-}
-
-/* ---- 3. OVERLAY + FONDO (cielo rojo, sol bajo, nubes) ------------------- */
-.ms-title-overlay {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  overflow: auto;
-  background: rgba(14, 10, 20, 0.35);
-}
-
-/* El fondo vive detrás del marco y no intercepta clics. */
-.ms-title-bg {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  background: linear-gradient(
-    180deg,
-    var(--ms-sky-zenith) 0%,
-    var(--ms-sky-mid) 42%,
-    var(--ms-sky-low) 68%,
-    var(--ms-horizon) 100%
-  );
-}
-
-.ms-title-sun {
-  position: absolute;
-  left: 50%;
-  bottom: 12%;
-  width: clamp(120px, 26vmin, 240px);
-  aspect-ratio: 1;
-  transform: translateX(-50%);
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--ms-sun-core) 0 34%, var(--ms-sun-halo) 55%, transparent 72%);
-  border: 4px solid var(--ms-edge);
-  animation: ms-sun-pulse 5s ease-in-out infinite;
-}
-
-/* Suelo oscuro del planeta muerto. */
-.ms-title-ground {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 16%;
-  background: linear-gradient(180deg, #3a1a24 0%, #1c0d14 100%);
-  border-top: 4px solid var(--ms-edge);
-}
-
-/* Nubes: dos capas con deriva a distinta velocidad. */
-.ms-title-cloud {
-  position: absolute;
-  height: 14px;
-  border: 3px solid var(--ms-edge);
-  background: #d98a5a;
-  opacity: 0.85;
-}
-.ms-title-cloud.ms--a {
-  top: 22%;
-  width: 220px;
-  animation: ms-cloud-drift 38s linear infinite;
-}
-.ms-title-cloud.ms--b {
-  top: 34%;
-  width: 150px;
-  background: #b85a3a;
-  animation: ms-cloud-drift 57s linear infinite reverse;
-}
-
-/* ---- 4. MARCO DEL TÍTULO ------------------------------------------------ */
-.ms-title-frame {
-  position: relative;
-  width: min(var(--ms-frame-max), 100%);
-  text-align: center;
-  background: rgba(20, 18, 32, 0.88);
-  border: 4px solid var(--ms-edge);
-  border-radius: 18px;
-  outline: 2px solid rgba(94, 224, 255, 0.35);
-  outline-offset: -8px;
-  box-shadow: var(--ms-shadow-frame);
-  padding: clamp(20px, 4vw, 34px) clamp(16px, 4vw, 30px);
-  animation: ms-title-in 0.5s ease-out both;
-}
-
-.ms-title-eyebrow {
-  margin: 0 0 6px;
-  letter-spacing: 3px;
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  color: var(--ms-plasma);
-}
-
-.ms-title-logo {
-  margin: 4px 0 8px;
-  font-family: var(--ms-font-display);
-  font-size: var(--ms-logo-size);
-  line-height: 1.15;
-  letter-spacing: 1px;
-  color: var(--ms-ink);
-  text-shadow:
-    3px 3px 0 var(--ms-edge),
-    0 0 24px rgba(255, 179, 71, 0.35);
-}
-.ms-title-logo__space {
-  display: block;
-  color: var(--ms-ada);
-  text-shadow:
-    3px 3px 0 var(--ms-edge),
-    0 0 24px rgba(94, 224, 255, 0.45);
-}
-
-.ms-title-sub {
-  margin: 0 auto 12px;
-  max-width: 46ch;
-  line-height: 1.55;
-  color: #d9d4e6;
-}
-.ms-title-sub b { color: var(--ms-gold); }
-
-/* Línea de ADA con punto luminoso parpadeante. */
-.ms-ada-line {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 18px;
-  padding: 8px 14px;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--ms-ada);
-  background: rgba(94, 224, 255, 0.08);
-  border: 2px solid rgba(94, 224, 255, 0.5);
-  border-radius: 999px;
-}
-.ms-ada-dot {
-  width: 12px;
-  height: 12px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--ms-ada);
-  border: 2px solid var(--ms-edge);
-  animation: ms-ada-blink 1.6s ease-in-out infinite;
-}
-
-/* ---- 5. BOTONES (normal / hover / active / disabled / foco) -------------- */
-.ms-title-actions {
-  display: grid;
-  gap: 10px;
-  margin-bottom: 18px;
-}
-
-.ms-btn {
-  font: inherit;
-  font-weight: 800;
-  font-size: 20px;
-  letter-spacing: 0.5px;
-  color: #3a2a08;
-  background: linear-gradient(#ffe07a, #f0b830);
-  border: 3px solid var(--ms-edge);
-  border-radius: 14px;
-  box-shadow: var(--ms-shadow-btn), 0 8px 20px rgba(0, 0, 0, 0.35);
-  padding: 14px 24px;
-  min-height: var(--ms-touch-min);
-  cursor: pointer;
-  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.12s ease;
-}
-
-/* JUGAR: protagonista naranja plasma. */
-.ms-btn--play {
-  font-size: 24px;
-  color: #2a1a05;
-  background: linear-gradient(#ffd9a8, var(--ms-plasma) 60%, var(--ms-horizon));
-}
-
-/* Secundarios: panel oscuro con borde cyan de ADA. */
-.ms-btn--ghost {
-  color: var(--ms-ink);
-  background: linear-gradient(var(--ms-panel-2), var(--ms-panel));
-  border-color: var(--ms-ada);
-  box-shadow: 0 5px 0 #1e4a5a, 0 8px 20px rgba(0, 0, 0, 0.35);
-  font-size: 17px;
-}
-
-.ms-btn--mini {
-  font-size: 14px;
-  padding: 10px 18px;
-  color: var(--ms-ink);
-  background: transparent;
-  border-color: var(--ms-line);
-  box-shadow: none;
-}
-
-/* Hover: solo en dispositivos con puntero fino (no “pegajosidad” táctil). */
-@media (hover: hover) and (pointer: fine) {
-  .ms-btn:hover { transform: translateY(-2px); filter: brightness(1.07); }
-  .ms-btn--ghost:hover { border-color: #b8f4ff; }
-}
-
-/* Pulsado. */
-.ms-btn:active {
-  transform: translateY(3px);
-  box-shadow: var(--ms-shadow-btn-pressed);
-}
-
-/* Foco visible con teclado (accesibilidad). */
-.ms-btn:focus-visible,
-.ms-record:focus-visible {
-  outline: 3px solid var(--ms-ada);
-  outline-offset: 2px;
-}
-
-/* Deshabilitado: gris, sin sombra, sin interacción. */
-.ms-btn:disabled,
-.ms-btn[aria-disabled="true"] {
-  cursor: not-allowed;
-  color: #8d8a99;
-  background: #3a3d52;
-  border-color: #23263a;
-  box-shadow: none;
-  transform: none;
-  filter: none;
-  opacity: 0.75;
-}
-
-/* ---- 6. PANEL DE RÉCORDS (mejor tiempo, bajas, puntuación) --------------- */
-.ms-records { margin-bottom: 14px; }
-.ms-records-title {
-  margin: 0 0 8px;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  color: var(--ms-muted);
-}
-.ms-records-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-.ms-record {
-  background: var(--ms-panel-2);
-  border: 3px solid var(--ms-line);
-  border-radius: 12px;
-  padding: 10px 6px;
-}
-.ms-record small {
-  display: block;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: var(--ms-muted);
-}
-.ms-record b {
-  display: block;
-  font-size: 24px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.2;
-}
-.ms-record--time b { color: var(--ms-ada); }
-.ms-record--kills b { color: #ff8a6a; }
-.ms-record--score b { color: var(--ms-gold); }
-.ms-record--empty b { color: var(--ms-muted); }
-.ms-records-note {
-  margin: 8px 0 0;
-  font-size: 12px;
-  color: var(--ms-muted);
-}
-
-/* ---- 7. DIÁLOGO «¿CÓMO JUGAR?» ------------------------------------------- */
-.ms-howto {
-  margin-top: 4px;
-  text-align: left;
-  background: var(--ms-panel);
-  border: 3px solid var(--ms-line);
-  border-radius: 14px;
-  padding: 16px 18px;
-}
-.ms-howto[hidden] { display: none; }
-.ms-howto h2 {
-  margin: 0 0 8px;
-  font-size: 20px;
-  color: var(--ms-gold);
-}
-.ms-howto ul {
-  margin: 0 0 12px;
-  padding-left: 20px;
-  line-height: 1.6;
-  color: #d9d4e6;
-  font-size: 14px;
-}
-.ms-howto b { color: var(--ms-ink); }
-
-/* ---- 8. PIE (teclas / ayuda táctil) --------------------------------------- */
-.ms-title-foot { margin-top: 6px; }
-.ms-keys {
-  margin: 0;
-  font-size: 13px;
-  color: var(--ms-muted);
-}
-.ms-keys b { color: var(--ms-ink); }
-.ms-touch-hint { display: none; }
-
-/* ---- 9. RESPONSIVE + TÁCTIL ------------------------------------------------
- * Retrato estrecho: columna única, botones a ancho completo y objetivos
- * táctiles de al menos 48 px. El `fov 72` de la cámara se pone en JS
- * (ver cabecera §4): el CSS solo adapta la interfaz. */
-@media (max-width: 700px) {
-  .ms-title-overlay { padding: 10px; align-items: start; }
-  .ms-title-frame { border-radius: 14px; }
-  .ms-title-logo { --ms-logo-size: clamp(22px, 9vw, 34px); }
-  .ms-title-sub { font-size: 14px; }
-  .ms-title-actions { gap: 12px; }
-  .ms-btn { width: 100%; }
-  .ms-records-grid { grid-template-columns: repeat(3, 1fr); }
-  .ms-record b { font-size: 19px; }
-}
-
-@media (orientation: portrait) and (max-width: 700px) {
-  .ms-btn { min-height: 52px; }
-  .ms-keys--desktop { display: none; }
-  .ms-touch-hint {
-    display: block;
-    margin: 6px 0 0;
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--ms-ada);
-  }
-}
-
-/* Puntero grueso (táctil): sin hover, todo con tamaño de dedo. */
-@media (pointer: coarse) {
-  .ms-btn { min-height: var(--ms-touch-min); }
-}
-
-/* Altura escasa (móvil horizontal): marco compacto con desplazamiento. */
-@media (max-height: 520px) {
-  .ms-title-overlay { align-items: start; }
-  .ms-title-frame { padding: 16px; }
-  .ms-ada-line { display: none; }
-}
-
-/* ---- 10. ANIMACIONES -------------------------------------------------------
- * ms-ada-blink: parpadeo de ADA · ms-cloud-drift: deriva de nubes ·
- * ms-title-in: transición de entrada · ms-sun-pulse: resplandor del sol. */
-@keyframes ms-ada-blink {
-  0%, 100% { opacity: 1; box-shadow: 0 0 12px var(--ms-ada); }
-  50% { opacity: 0.45; box-shadow: none; }
-}
-
-@keyframes ms-cloud-drift {
-  from { transform: translateX(-30vw); }
-  to { transform: translateX(110vw); }
-}
-
-@keyframes ms-title-in {
-  from { opacity: 0; transform: translateY(18px) scale(0.985); }
-  to { opacity: 1; transform: none; }
-}
-
-@keyframes ms-sun-pulse {
-  0%, 100% { filter: brightness(1); }
-  50% { filter: brightness(1.12); }
-}
-
-/* Movimiento reducido: se desactivan deriva, parpadeo y entrada. */
-@media (prefers-reduced-motion: reduce) {
-  .ms-title-frame { animation: none; }
-  .ms-ada-dot,
-  .ms-title-sun,
-  .ms-title-cloud { animation: none; }
-  .ms-btn { transition: none; }
-}
-
-/* ---- 11. COMPAT OPCIONAL con el `showTitle` actual ------------------------
- * Si el FOCO 1 reutiliza `.title-box` del `style.css` original, estas reglas
- * le dan el marco pixel + cielo sin romper nada. Cuando `ui-title.ts` use
- * las clases `ms-`, esta sección sobra y puede borrarse. */
-.overlay.title {
+.ms-title__shade {
+  z-index: -1;
   background:
-    linear-gradient(180deg, var(--ms-sky-zenith) 0%, var(--ms-sky-mid) 45%, var(--ms-sky-low) 75%, var(--ms-horizon) 100%);
+    linear-gradient(90deg, rgba(10,11,35,.43), rgba(10,11,35,.08) 53%, rgba(9,11,30,.34)),
+    linear-gradient(180deg, rgba(11,12,32,.35), transparent 22% 72%, rgba(8,10,26,.68));
 }
-.overlay.title .title-box {
-  border: 4px solid var(--ms-edge);
-  outline: 2px solid rgba(94, 224, 255, 0.35);
-  outline-offset: -8px;
-  box-shadow: var(--ms-shadow-frame);
-  animation: ms-title-in 0.5s ease-out both;
+
+/* Barra superior flotante */
+.ms-topbar {
+  position: absolute; z-index: 4; top: 18px; left: 34px; right: 34px;
+  display: flex; align-items: center; justify-content: space-between; gap: 24px;
 }
-.overlay.title .title-box h1 {
-  font-family: var(--ms-font-display);
-  text-shadow: 3px 3px 0 var(--ms-edge);
+.ms-shortcuts, .ms-topbar__profile { display: flex; align-items: center; gap: 9px; }
+.ms-pill {
+  min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 0 17px; border: 2px solid rgba(255,255,255,.08); border-radius: 22px;
+  color: #fff; background: rgba(27,31,53,.92); box-shadow: 0 5px 0 rgba(8,10,24,.42);
+  font-size: 13px; font-weight: 900; letter-spacing: .2px;
 }
-.overlay.title .btn:disabled {
-  cursor: not-allowed;
-  background: #3a3d52;
-  color: #8d8a99;
-  box-shadow: none;
+.ms-pill i { font-style: normal; font-size: 16px; }
+.ms-pill--lang { min-width: 56px; padding: 0 12px; }
+.ms-pill--icon { width: 44px; padding: 0; color: var(--ms-cyan); }
+.ms-pill--coral { background: linear-gradient(#ff8790,#e94f69); }
+.ms-pill--green { background: linear-gradient(#5fe3a4,#28ad7a); }
+.ms-pill--violet { background: linear-gradient(#8f7bff,#6355d9); }
+
+.ms-topbar__profile {
+  min-height: 58px; padding: 7px 15px 7px 8px; gap: 14px;
+  border: 2px solid rgba(255,255,255,.07); border-radius: 31px;
+  background: rgba(28,33,52,.94); box-shadow: 0 7px 22px rgba(7,8,22,.35);
+}
+.ms-avatar {
+  width: 50px; height: 50px; display: grid; place-items: center; border: 4px solid #ff6aa1; border-radius: 50%;
+  color: var(--ms-cyan); background: linear-gradient(145deg,#3f4768,#22283d); box-shadow: 0 0 0 2px #151a2c;
+  font-size: 14px; font-weight: 900;
+}
+.ms-operator, .ms-resource { display: flex; flex-direction: column; justify-content: center; min-width: 78px; }
+.ms-operator { padding-right: 16px; border-right: 2px solid rgba(255,255,255,.12); }
+.ms-topbar small { color: #aeb4ca; font-size: 8px; font-weight: 900; letter-spacing: 1.4px; }
+.ms-topbar b { font-size: 14px; line-height: 1.2; }
+.ms-resource b { color: #f2f2fb; font-variant-numeric: tabular-nums; }
+.ms-topbar__status {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 15px;
+  color: #bffbff; background: #171d31; font-size: 10px; font-weight: 900;
+}
+.ms-topbar__status i { width: 8px; height: 8px; border-radius: 50%; background: var(--ms-cyan); box-shadow: 0 0 9px var(--ms-cyan); animation: ms-pulse 1.6s infinite; }
+
+/* Estructura */
+.ms-title__layout {
+  position: absolute; inset: 92px 38px 54px;
+  display: grid; grid-template-columns: minmax(580px,760px) minmax(390px,480px);
+  align-items: center; justify-content: space-between; gap: clamp(28px,4vw,72px);
+}
+.ms-title__main { width: 100%; align-self: center; animation: ms-rise .55s .08s ease-out both; }
+.ms-wordmark { margin: 0 0 17px 8px; filter: drop-shadow(0 5px 0 #25245f) drop-shadow(0 9px 2px rgba(6,7,26,.55)); }
+.ms-wordmark > p { margin: 0 0 3px 6px; color: #d8d7ff; font-size: 10px; font-weight: 900; letter-spacing: 4px; text-shadow: 0 2px #191a3b; }
+.ms-wordmark__line { display: flex; align-items: flex-end; gap: 15px; }
+.ms-wordmark h1 {
+  margin: 0; color: var(--ms-cyan); font-size: clamp(60px,5.5vw,90px); line-height: .9;
+  letter-spacing: -5px; font-weight: 900; text-shadow: 4px 4px 0 #25245f, 0 0 1px #fff;
+}
+.ms-wordmark h1 span { color: #fff; }
+.ms-wordmark__line strong {
+  margin-bottom: 4px; padding: 5px 12px; border-radius: 10px; color: #fff; background: linear-gradient(#ff6e8f,#e63e67);
+  box-shadow: 0 4px 0 #7d2747; font-size: 11px; letter-spacing: 1px;
+}
+.ms-wordmark__sub { width: min(455px,72%); display: flex; align-items: center; gap: 12px; margin: 10px 0 0 8px; }
+.ms-wordmark__sub i { height: 2px; flex: 1; background: linear-gradient(90deg,#8689ff,transparent); }
+.ms-wordmark__sub i:last-child { transform: scaleX(-1); }
+.ms-wordmark__sub b { color: #f7f5ff; font-size: 9px; letter-spacing: 5px; white-space: nowrap; text-shadow: 0 2px #25245f; }
+
+/* Mosaico principal */
+.ms-actions {
+  display: grid; grid-template-columns: 1.35fr 1fr .95fr; grid-template-rows: 76px 76px;
+  grid-template-areas: 'play creator codex' 'play help codex'; gap: 9px;
+}
+.ms-tile {
+  position: relative; min-width: 0; display: flex; align-items: center; gap: 12px; overflow: hidden;
+  padding: 12px 14px; color: #fff; text-align: left; border: 3px solid rgba(255,255,255,.25); border-radius: 20px;
+  box-shadow: 0 7px 0 rgba(14,16,40,.52), inset 0 2px rgba(255,255,255,.18); cursor: pointer;
+  transition: transform .1s ease, filter .1s ease, box-shadow .1s ease;
+}
+.ms-tile::after {
+  content: ''; position: absolute; inset: 0; z-index: 0; opacity: .35; pointer-events: none;
+  background: repeating-linear-gradient(135deg,rgba(255,255,255,.28) 0 13px,transparent 13px 27px);
+}
+.ms-tile > * { position: relative; z-index: 1; }
+.ms-tile > span:last-child { min-width: 0; display: flex; flex-direction: column; }
+.ms-tile b { font-size: 20px; line-height: 1.05; text-shadow: 0 2px rgba(19,17,51,.42); }
+.ms-tile em { overflow: hidden; color: rgba(255,255,255,.88); font-size: 10px; font-style: normal; font-weight: 700; white-space: nowrap; text-overflow: ellipsis; }
+.ms-tile__icon {
+  width: 46px; height: 46px; flex: none; display: grid; place-items: center; border: 2px solid rgba(255,255,255,.25); border-radius: 14px;
+  color: #fff; background: rgba(18,22,52,.72); box-shadow: 0 4px 0 rgba(12,14,36,.38); font-size: 18px; font-weight: 900;
+}
+.ms-tile--play { grid-area: play; padding: 18px; background: linear-gradient(135deg,#ff7783,#ee465d); }
+.ms-tile--play b { font-size: 34px; }
+.ms-tile--play .ms-tile__icon { width: 66px; height: 66px; border-radius: 50%; font-size: 24px; }
+.ms-tile--creator { grid-area: creator; background: linear-gradient(135deg,#7166f4,#574ad0); }
+.ms-tile--help { grid-area: help; background: linear-gradient(135deg,#45d296,#279e70); }
+.ms-tile--codex { grid-area: codex; flex-direction: column; justify-content: center; text-align: center; background: linear-gradient(150deg,#e25aa8,#a93d91); }
+.ms-tile--codex .ms-tile__icon { width: 58px; height: 58px; border-radius: 50%; font-size: 25px; }
+.ms-tile--codex b { font-size: 21px; }
+@media (hover:hover) and (pointer:fine) {
+  .ms-tile:hover { transform: translateY(-2px); filter: brightness(1.1); box-shadow: 0 9px 0 rgba(14,16,40,.48),0 14px 24px rgba(9,9,28,.25); }
+  .ms-panel-action:hover { filter: brightness(1.1); transform: translateY(-1px); }
+}
+.ms-tile:active { transform: translateY(4px); box-shadow: 0 3px 0 rgba(14,16,40,.55); }
+.ms-tile:focus-visible, .ms-panel-action:focus-visible, .ms-dialog-close:focus-visible { outline: 4px solid #fff; outline-offset: 2px; }
+
+/* Tarjetas inferiores */
+.ms-event-row { display: grid; grid-template-columns: 1.35fr 1fr; gap: 9px; margin-top: 11px; }
+.ms-event-card, .ms-contract-card {
+  min-height: 72px; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 3px solid rgba(255,255,255,.16); border-radius: 18px;
+  box-shadow: 0 6px 0 rgba(13,15,38,.45); overflow: hidden;
+}
+.ms-event-card { background: linear-gradient(105deg,rgba(75,51,147,.96),rgba(117,62,163,.92)), repeating-linear-gradient(135deg,rgba(255,255,255,.1) 0 10px,transparent 10px 20px); }
+.ms-contract-card { background: repeating-linear-gradient(135deg,rgba(255,255,255,.06) 0 12px,transparent 12px 24px), linear-gradient(105deg,#3d4354,#2c303e); border-left-color: var(--ms-orange); }
+.ms-event-card__icon, .ms-contract-card > span:first-child { width: 50px; height: 50px; flex: none; display: grid; place-items: center; border-radius: 50%; background: rgba(24,20,61,.68); color: #d98cff; font-size: 22px; }
+.ms-event-card > span:last-child, .ms-contract-card > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.ms-event-row small { color: var(--gold,#ffd04d); font-size: 8px; font-weight: 900; letter-spacing: 1.2px; }
+.ms-event-row b { font-size: 17px; }
+.ms-event-row em { color: #d1d2de; font-size: 10px; font-style: normal; }
+
+.ms-dock { display: grid; grid-template-columns: repeat(5,1fr); gap: 8px; margin-top: 12px; }
+.ms-dock > div {
+  position: relative; min-height: 82px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border: 2px solid rgba(255,255,255,.08); border-radius: 17px; background: rgba(31,37,57,.94); box-shadow: 0 6px 0 rgba(9,11,29,.45);
+}
+.ms-dock > div::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 5px; border-radius: 0 0 15px 15px; background: var(--ms-cyan); }
+.ms-dock > div:nth-child(2)::after { background: var(--ms-violet); }
+.ms-dock > div:nth-child(3)::after { background: var(--ms-coral); }
+.ms-dock > div:nth-child(4)::after { background: var(--ms-gold); }
+.ms-dock > div:nth-child(5)::after { background: #4e9cff; }
+.ms-dock i { width: 35px; height: 35px; display: grid; place-items: center; border-radius: 10px; color: var(--ms-cyan); background: #252d49; font-size: 17px; font-style: normal; }
+.ms-dock b { margin-top: 3px; font-size: 11px; }
+.ms-dock small { color: var(--ms-muted); font-size: 9px; }
+
+/* Panel lateral estilo clasificación */
+.ms-mission-panel {
+  width: 100%; max-height: 100%; overflow: hidden; align-self: center; padding: 11px;
+  border: 3px solid rgba(68,76,111,.75); border-radius: 24px; background: rgba(26,31,48,.97);
+  box-shadow: 0 9px 0 rgba(9,11,27,.68),0 24px 50px rgba(5,7,24,.32); animation: ms-rise .55s .16s ease-out both;
+}
+.ms-panel-banner {
+  min-height: 72px; display: flex; align-items: center; gap: 13px; margin: -11px -11px 10px; padding: 11px 18px;
+  border-radius: 21px 21px 0 0; background: repeating-linear-gradient(135deg,rgba(255,255,255,.17) 0 15px,transparent 15px 30px),linear-gradient(90deg,#ffb13b,#f08d24);
+  color: #fff; text-shadow: 0 2px rgba(115,64,8,.35);
+}
+.ms-panel-banner > span { font-size: 31px; }
+.ms-panel-banner > div { display: flex; flex-direction: column; }
+.ms-panel-banner small { font-size: 8px; font-weight: 900; letter-spacing: 1.6px; }
+.ms-panel-banner b { font-size: 24px; line-height: 1; }
+.ms-panel-banner em { font-size: 10px; font-style: normal; font-weight: 700; }
+.ms-panel-tabs { height: 45px; display: grid; grid-template-columns: 1fr 48px 48px 48px; align-items: center; gap: 6px; margin-bottom: 9px; padding: 5px; border-radius: 23px; background: #141a2b; }
+.ms-panel-tabs > * { height: 35px; display: grid; place-items: center; border-radius: 18px; color: #8992ac; }
+.ms-panel-tabs b { color: #fff; background: #465172; box-shadow: inset 0 1px rgba(255,255,255,.1); font-size: 11px; }
+.ms-panel-region { display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 9px; margin-bottom: 9px; padding: 9px 12px; border: 3px solid #3a4564; border-radius: 15px; background: #1b2133; }
+.ms-panel-region > span { color: var(--ms-cyan); font-size: 18px; }
+.ms-panel-region > div { display: flex; flex-direction: column; }
+.ms-panel-region b { font-size: 13px; }
+.ms-panel-region small { color: var(--ms-muted); font-size: 9px; }
+.ms-panel-region i { color: #b4bfd8; font-size: 18px; font-style: normal; }
+.ms-primary-record {
+  min-height: 98px; display: grid; grid-template-columns: 62px 1fr auto; align-items: center; gap: 12px; padding: 11px 14px;
+  border: 3px solid #ac8824; border-radius: 18px; background: linear-gradient(105deg,#4b4530,#39372e); box-shadow: inset 0 1px rgba(255,255,255,.08);
+}
+.ms-primary-record__badge { width: 58px; height: 58px; display: grid; place-items: center; border: 4px solid #f0c946; border-radius: 50%; color: #fff; background: linear-gradient(#614bd0,#292c54); font-size: 16px; font-weight: 900; }
+.ms-primary-record > div { display: flex; flex-direction: column; min-width: 0; }
+.ms-primary-record > div small { color: #ffd860; font-size: 8px; font-weight: 900; letter-spacing: 1px; }
+.ms-primary-record > div b { font-size: 19px; }
+.ms-primary-record > div em { color: #c8c5b7; font-size: 9px; font-style: normal; }
+.ms-primary-record > strong { display: flex; flex-direction: column; align-items: flex-end; font-size: 24px; font-variant-numeric: tabular-nums; }
+.ms-primary-record > strong small { color: #c3c2ba; font-size: 8px; }
+.ms-ranking-list { display: grid; gap: 6px; margin: 9px 0; padding: 0; list-style: none; }
+.ms-ranking-list li { min-height: 53px; display: grid; grid-template-columns: 27px 40px 1fr auto; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 14px; background: #171d2e; }
+.ms-ranking-list li > i { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; color: #dce0ee; background: #323b58; font-size: 11px; font-style: normal; font-weight: 900; }
+.ms-rank-icon { width: 37px; height: 37px; display: grid; place-items: center; border-radius: 50%; color: #fff; font-weight: 900; }
+.ms-rank-icon.coral { background: #d95069; }
+.ms-rank-icon.cyan { background: #318ba1; }
+.ms-rank-icon.violet { background: #6f5fd8; }
+.ms-rank-icon.gold { background: #b68b20; }
+.ms-ranking-list li > div { display: flex; flex-direction: column; min-width: 0; }
+.ms-ranking-list b { overflow: hidden; font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
+.ms-ranking-list small { color: #8991a8; font-size: 8px; }
+.ms-ranking-list strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+.ms-relic-progress { padding: 2px 5px 7px; }
+.ms-relic-progress > span { display: flex; justify-content: space-between; margin-bottom: 5px; }
+.ms-relic-progress b { font-size: 10px; }
+.ms-relic-progress small { color: var(--ms-muted); font-size: 9px; }
+.ms-relic-progress > div { height: 7px; overflow: hidden; border-radius: 4px; background: #0f1422; }
+.ms-relic-progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#6757e7,#59dff0); }
+.ms-panel-action { width: 100%; min-height: 40px; color: #fff; border: 0; border-radius: 17px; background: repeating-linear-gradient(135deg,rgba(255,255,255,.12) 0 12px,transparent 12px 24px),linear-gradient(#59a5ff,#347be5); box-shadow: 0 5px 0 #1f4d9b; font-weight: 900; cursor: pointer; transition: .1s ease; }
+
+/* Pie */
+.ms-footer {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 43px; display: flex; align-items: center; gap: 20px;
+  padding: 0 38px; color: #aeb4c8; border-top: 2px solid rgba(255,255,255,.08); background: rgba(15,18,37,.9);
+  font-size: 8px; font-weight: 900; letter-spacing: .8px;
+}
+.ms-key { min-width: 22px; height: 19px; display: inline-grid; place-items: center; margin-right: 5px; color: #fff; border: 1px solid #59617b; border-radius: 5px; background: #2f3651; box-shadow: 0 2px #111526; font-style: normal; }
+.ms-footer__build { margin-left: auto; color: #697188; }
+
+/* Diálogos funcionales */
+.ms-dialog-backdrop { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; padding: 20px; background: rgba(9,10,28,.78); backdrop-filter: blur(7px); }
+.ms-dialog { width: min(700px,100%); max-height: min(760px,calc(100vh - 40px)); overflow: auto; padding: 22px; color: var(--ms-ink); border: 3px solid #556089; border-radius: 22px; background: linear-gradient(150deg,#282e49,#171c30); box-shadow: 0 8px 0 #0d1022,0 28px 80px rgba(0,0,0,.55); }
+.ms-dialog__signal { display: flex; align-items: center; gap: 8px; padding-bottom: 12px; color: var(--ms-cyan); border-bottom: 1px solid rgba(255,255,255,.13); font-size: 9px; font-weight: 900; letter-spacing: 1.6px; }
+.ms-dialog__signal i { width: 8px; height: 8px; border-radius: 50%; background: var(--ms-cyan); box-shadow: 0 0 9px var(--ms-cyan); }
+.ms-dialog-kicker { margin: 20px 0 4px; color: var(--ms-gold); font-size: 9px; font-weight: 900; letter-spacing: 2px; }
+.ms-dialog h2 { margin: 0 0 10px; font-size: 30px; }
+.ms-dialog-lead { margin: 0 0 18px; color: #d4d7e5; line-height: 1.55; }
+.ms-dialog-note { padding: 12px; color: #c7fbff; border-left: 4px solid var(--ms-cyan); background: rgba(59,152,163,.18); font-size: 12px; }
+.ms-howto-list, .ms-codex-list { margin: 0; padding: 0; list-style: none; }
+.ms-howto-list li { display: grid; grid-template-columns: 140px 1fr; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.12); }
+.ms-howto-list b { color: var(--ms-gold); }
+.ms-howto-list span { color: #d3d6e2; }
+.ms-codex-list { display: grid; gap: 7px; }
+.ms-codex-item { display: grid; grid-template-columns: 38px 1fr; gap: 10px; padding: 11px; color: #7f879f; border: 2px solid #353d5b; border-radius: 12px; background: #181d31; }
+.ms-codex-item > span { color: #646d87; font-size: 11px; font-weight: 900; }
+.ms-codex-item div { display: flex; flex-direction: column; }
+.ms-codex-item b { font-size: 13px; }
+.ms-codex-item em, .ms-codex-item p { margin: 2px 0; font-size: 11px; }
+.ms-codex-item.is-found { color: #d7dbea; border-color: rgba(86,229,238,.35); }
+.ms-codex-item.is-found > span, .ms-codex-item.is-found b { color: var(--ms-cyan); }
+.ms-dialog-close { width: 100%; margin-top: 16px; padding: 12px; color: #fff; border: 0; border-radius: 16px; background: linear-gradient(#6d7dff,#574bd2); box-shadow: 0 5px #302774; font-weight: 900; cursor: pointer; }
+
+@keyframes ms-art-in { from { opacity: 0; transform: scale(1.02); } to { opacity: 1; transform: none; } }
+@keyframes ms-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes ms-pulse { 50% { opacity: .38; box-shadow: none; } }
+
+@media (max-width:1180px) {
+  .ms-title { overflow: auto; }
+  .ms-title__layout { position: relative; inset: auto; width: calc(100% - 44px); min-height: 100%; margin: 0 auto; padding: 105px 0 70px; grid-template-columns: minmax(520px,1fr) 380px; gap: 22px; }
+  .ms-pill--violet { display: none; }
+  .ms-wordmark h1 { font-size: 62px; }
+  .ms-dock > div { min-height: 72px; }
+}
+
+@media (max-width:880px) {
+  .ms-title__art { position: fixed; background-position: 58% center; }
+  .ms-title__shade { position: fixed; background: rgba(12,14,39,.48); }
+  .ms-topbar { position: fixed; top: 10px; left: 12px; right: 12px; }
+  .ms-pill--coral, .ms-pill--green, .ms-pill--violet, .ms-resource, .ms-topbar__status { display: none; }
+  .ms-topbar__profile { min-height: 52px; padding-block: 4px; }
+  .ms-avatar { width: 42px; height: 42px; }
+  .ms-title__layout { width: calc(100% - 24px); grid-template-columns: 1fr; padding-top: 88px; }
+  .ms-wordmark { text-align: center; margin-left: 0; }
+  .ms-wordmark__line { justify-content: center; }
+  .ms-wordmark__sub { margin-inline: auto; }
+  .ms-mission-panel { max-width: 620px; margin: 0 auto; }
+  .ms-footer { position: fixed; padding: 0 12px; }
+  .ms-footer span:nth-child(2), .ms-footer span:nth-child(3), .ms-footer span:nth-child(4), .ms-footer__build { display: none; }
+}
+
+@media (max-width:560px) {
+  .ms-title__art { background-position: 64% center; opacity: .68; }
+  .ms-shortcuts { gap: 5px; }
+  .ms-pill { min-height: 40px; }
+  .ms-pill--icon { width: 40px; }
+  .ms-operator { display: none; }
+  .ms-topbar__profile { padding-right: 7px; }
+  .ms-wordmark > p { font-size: 8px; letter-spacing: 2.4px; }
+  .ms-wordmark h1 { font-size: clamp(43px,13vw,60px); letter-spacing: -3px; }
+  .ms-wordmark__line { gap: 8px; }
+  .ms-wordmark__line strong { padding: 4px 7px; font-size: 8px; }
+  .ms-wordmark__sub { width: 80%; }
+  .ms-actions { grid-template-columns: 1fr 1fr; grid-template-rows: 120px 76px 76px; grid-template-areas: 'play play' 'creator codex' 'help codex'; }
+  .ms-tile--play b { font-size: 31px; }
+  .ms-event-row { grid-template-columns: 1fr; }
+  .ms-dock { grid-template-columns: repeat(3,1fr); }
+  .ms-dock > div:nth-child(4), .ms-dock > div:nth-child(5) { display: none; }
+  .ms-primary-record { grid-template-columns: 52px 1fr; }
+  .ms-primary-record > strong { grid-column: 2; align-items: flex-start; font-size: 18px; }
+  .ms-howto-list li { grid-template-columns: 1fr; gap: 2px; }
+}
+
+@media (max-height:720px) and (min-width:881px) {
+  .ms-title__layout { top: 78px; }
+  .ms-wordmark { margin-bottom: 8px; }
+  .ms-wordmark h1 { font-size: 54px; }
+  .ms-wordmark > p, .ms-wordmark__sub { display: none; }
+  .ms-actions { grid-template-rows: 66px 66px; }
+  .ms-tile--play .ms-tile__icon { width: 55px; height: 55px; }
+  .ms-tile--play b { font-size: 29px; }
+  .ms-event-row { margin-top: 8px; }
+  .ms-event-card, .ms-contract-card { min-height: 61px; }
+  .ms-dock { margin-top: 8px; }
+  .ms-dock > div { min-height: 65px; }
+  .ms-panel-banner { min-height: 62px; }
+  .ms-panel-banner b { font-size: 20px; }
+  .ms-panel-tabs { height: 40px; }
+  .ms-panel-tabs > * { height: 30px; }
+  .ms-primary-record { min-height: 84px; }
+  .ms-ranking-list li { min-height: 46px; }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  .ms-title__art, .ms-title__main, .ms-mission-panel, .ms-topbar__status i { animation: none; }
 }

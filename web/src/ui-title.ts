@@ -3,6 +3,7 @@
 // como HTML accesible para evitar texto rasterizado y facilitar localización.
 
 import { RELICS } from './data';
+import { getOperator, getProfileTitle } from './profile/profile-data';
 
 export interface TitleSave {
   runs: number;
@@ -11,6 +12,11 @@ export interface TitleSave {
   bestScore?: number;
   relics: string[];
   scrapBank: number;
+  profileId?: string;
+  profileName?: string;
+  profileFrame?: string;
+  profileTitle?: string;
+  profileBackdrop?: string;
 }
 
 export interface TitleOptions {
@@ -134,6 +140,9 @@ export function showTitle(save: TitleSave, start: () => void, opts?: TitleOption
   const bestTime = hasRecords ? formatTitleTime(save.bestTime) : '—';
   const bestKills = hasRecords && (save.bestKills ?? 0) > 0 ? compactNumber(save.bestKills!) : '—';
   const bestScore = hasRecords && (save.bestScore ?? 0) > 0 ? compactNumber(save.bestScore!) : '—';
+  const operator = getOperator(save.profileId);
+  const operatorName = save.profileName?.trim() || operator.name;
+  const profileTitle = getProfileTitle(save.profileTitle);
 
   const node = element(`
     <main class="ms-title" role="dialog" aria-modal="true" aria-labelledby="ms-title-heading">
@@ -148,13 +157,13 @@ export function showTitle(save: TitleSave, start: () => void, opts?: TitleOption
           <span class="ms-pill ms-pill--green"><i>⌁</i> ADA</span>
           <span class="ms-pill ms-pill--violet"><i>▣</i> Archivo</span>
         </div>
-        <div class="ms-topbar__profile">
-          <span class="ms-avatar" aria-hidden="true">A9</span>
-          <span class="ms-operator"><small>OPERADOR</small><b>ARES-IX</b></span>
+        <button type="button" class="ms-topbar__profile ms-profile-open" aria-label="Abrir perfil de ${esc(operatorName)}">
+          <span class="ms-avatar pm-frame--${save.profileFrame ?? 'ada'} pm-bg--${save.profileBackdrop ?? 'moon'}"><img src="${operator.image}" alt="" /></span>
+          <span class="ms-operator"><small>${esc(profileTitle.name)}</small><b>${esc(operatorName)}</b></span>
           <span class="ms-resource"><small>CHATARRA</small><b>◆ ${compactNumber(save.scrapBank)}</b></span>
           <span class="ms-resource"><small>RELIQUIAS</small><b>◈ ${save.relics.length}/${relicTotal}</b></span>
           <span class="ms-topbar__status"><i></i> ADA</span>
-        </div>
+        </button>
       </header>
 
       <section class="ms-title__layout">
@@ -283,6 +292,7 @@ export function showTitle(save: TitleSave, start: () => void, opts?: TitleOption
 
   node.querySelector('.ms-play')!.addEventListener('click', play);
   node.querySelector('.ms-creator')!.addEventListener('click', creator);
+  node.querySelector('.ms-profile-open')!.addEventListener('click', creator);
   node.querySelector('.ms-codex')!.addEventListener('click', codex);
   node.querySelector('.ms-codex-secondary')!.addEventListener('click', codex);
   node.querySelector('.ms-howto')!.addEventListener('click', help);

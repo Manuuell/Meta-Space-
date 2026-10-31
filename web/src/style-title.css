@@ -56,12 +56,16 @@
   min-height: 58px; padding: 7px 15px 7px 8px; gap: 14px;
   border: 2px solid rgba(255,255,255,.07); border-radius: 31px;
   background: rgba(28,33,52,.94); box-shadow: 0 7px 22px rgba(7,8,22,.35);
+  color: var(--ms-ink); cursor: pointer;
 }
 .ms-avatar {
   width: 50px; height: 50px; display: grid; place-items: center; border: 4px solid #ff6aa1; border-radius: 50%;
   color: var(--ms-cyan); background: linear-gradient(145deg,#3f4768,#22283d); box-shadow: 0 0 0 2px #151a2c;
   font-size: 14px; font-weight: 900;
 }
+.ms-avatar img { width: 100%; height: 100%; object-fit: contain; object-position: center bottom; border-radius: 50%; image-rendering: pixelated; }
+@media (hover:hover) and (pointer:fine) { .ms-topbar__profile:hover { filter: brightness(1.08); transform: translateY(-1px); } }
+.ms-topbar__profile:focus-visible { outline: 3px solid var(--ms-cyan); outline-offset: 3px; }
 .ms-operator, .ms-resource { display: flex; flex-direction: column; justify-content: center; min-width: 78px; }
 .ms-operator { padding-right: 16px; border-right: 2px solid rgba(255,255,255,.12); }
 .ms-topbar small { color: #aeb4ca; font-size: 8px; font-weight: 900; letter-spacing: 1.4px; }

@@ -14,6 +14,7 @@ import { openCharacterCreator } from './creator/character-creator';
 import { applyCustomHero, toCustomHero } from './creator/player-contract';
 import type { HeroTuning } from './creator/player-contract';
 import { SPECIALS } from './creator/stats';
+import { openProfileMenu } from './profile/profile-menu';
 
 type State = 'title' | 'playing' | 'levelup' | 'paused' | 'results';
 
@@ -77,6 +78,7 @@ export class Game {
   private nextSegador = 120;
   private nextSwarm = 60;
   private pendingLevels = 0;
+  private destroyTitle: (() => void) | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -136,20 +138,38 @@ export class Game {
   // --------------------------------------------------------- Estados
 
   private toTitle() {
+    this.destroyTitle?.();
+    this.destroyTitle = null;
     this.state = 'title';
     ui.hideHud();
     this.resetRun();
     let started = false;
-    showTitle(this.save, () => {
+    this.destroyTitle = showTitle(this.save, () => {
       if (started) return;
       started = true;
+      this.destroyTitle = null;
       this.startRun();
     }, {
-      onCreator: () => void this.openCreator(),
+      onCreator: () => void this.openProfile(),
     });
   }
 
-  private async openCreator() {
+  private async openProfile() {
+    const profile = await openProfileMenu({
+      profileId: this.save.profileId,
+      profileName: this.save.profileName,
+      profileFrame: this.save.profileFrame,
+      profileTitle: this.save.profileTitle,
+      profileBackdrop: this.save.profileBackdrop,
+      onCustom: () => void this.openCustomCreator(),
+    });
+    if (!profile) return;
+    Object.assign(this.save, profile);
+    writeSave(this.save);
+    this.toTitle();
+  }
+
+  private async openCustomCreator() {
     const hero = await openCharacterCreator();
     if (!hero) return;
     await applyCustomHero(this, toCustomHero(hero));

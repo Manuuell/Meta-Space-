@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cdcfc3e69648643d1960ab60c1a32768, type: 3}
+  m_Name: Relic_Caja_negra_de_lanzador
+  m_EditorClassIdentifier: 
+  relicId: relic_black_box
+  displayName: Caja negra de lanzador
+  requiredCapability: 2
+  scanSeconds: 9
+  exposureCost: 14
+  loreEntry: Cuatrocientas personas a bordo. El fallo fue una valvula de la segunda
+    etapa sin sistema de respaldo. Alguien decidio que el respaldo pesaba demasiado.
+  technicalNote: Registrador de vuelo. La redundancia cuesta masa y casi nunca se
+    usa. Casi.
+  unlocksPart: {fileID: 11400000, guid: d7485103d6f2c4192b028d11ae3b082b, type: 2}
+  grantsCapability: 0
+  grantsAnyCapability: 0
+  scrapYield: 30

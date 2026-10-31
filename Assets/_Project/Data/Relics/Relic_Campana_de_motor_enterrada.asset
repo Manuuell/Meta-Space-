@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cdcfc3e69648643d1960ab60c1a32768, type: 3}
+  m_Name: Relic_Campana_de_motor_enterrada
+  m_EditorClassIdentifier: 
+  relicId: relic_descent_engine
+  displayName: Campana de motor enterrada
+  requiredCapability: 1
+  scanSeconds: 7
+  exposureCost: 9
+  loreEntry: El diseno es casi identico al que tu misma agencia uso para bajar a
+    la Luna. Lo copiaron durante quinientos anos porque funcionaba.
+  technicalNote: Motor de descenso estrangulable. Isp 311 s, 45 kN de empuje.
+  unlocksPart: {fileID: 11400000, guid: 87607d319e5d04f2ba1c145c27a7fe51, type: 2}
+  grantsCapability: 0
+  grantsAnyCapability: 0
+  scrapYield: 45

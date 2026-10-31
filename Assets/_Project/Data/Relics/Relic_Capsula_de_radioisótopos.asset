@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cdcfc3e69648643d1960ab60c1a32768, type: 3}
+  m_Name: "Relic_Capsula_de_radiois\xF3topos"
+  m_EditorClassIdentifier: 
+  relicId: relic_rtg_probe
+  displayName: "Capsula de radiois\xF3topos"
+  requiredCapability: 2
+  scanSeconds: 11
+  exposureCost: 16
+  loreEntry: De una sonda planetaria. Siguieron mirando hacia afuera hasta el final,
+    incluso cuando ya no quedaba nadie que esperase la respuesta.
+  technicalNote: Generador termoelectrico de plutonio-238. 110 W constantes, 45 kg,
+    semivida de 88 anos. Lleva siglos tibia.
+  unlocksPart: {fileID: 11400000, guid: 7f3532bd284cc499998a2b1ed4e5e071, type: 2}
+  grantsCapability: 3
+  grantsAnyCapability: 1
+  scrapYield: 40

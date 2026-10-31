@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c7e9d77da7d6a4c62bf0974ab5053a94, type: 3}
+  m_Name: "Part_M\xF3dulo_de_interferencia"
+  m_EditorClassIdentifier: 
+  displayName: "M\xF3dulo de interferencia"
+  description: Enmascara la emision de ADA. Protegerla cuesta exactamente la potencia
+    que necesitarias para contar lo que sabe.
+  slot: 7
+  massKg: 30
+  powerW: -60
+  scrapCost: 75
+  reliability: 0.91
+  specificImpulseSec: 0
+  thrustN: 0
+  propellantKg: 0
+  downlinkMbps: 0
+  dataGeneratedMb: 0
+  exposureDampening: 3.5
+  unlockedByRelicId: relic_helios_node

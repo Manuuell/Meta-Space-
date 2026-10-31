@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cdcfc3e69648643d1960ab60c1a32768, type: 3}
+  m_Name: Relic_Nodo_de_HELIOS_inactivo
+  m_EditorClassIdentifier: 
+  relicId: relic_helios_node
+  displayName: Nodo de HELIOS inactivo
+  requiredCapability: 3
+  scanSeconds: 15
+  exposureCost: 26
+  loreEntry: Dentro esta el acta de aprobacion del programa. La votacion fue de 340
+    a favor. Tambien estan los nombres de los once que votaron en contra.
+  technicalNote: Nodo de control del velo de sulfatos. Sigue reportando a la red
+    cada 400 segundos.
+  unlocksPart: {fileID: 11400000, guid: 82fb2c15c27ed4df4949cba8d8296396, type: 2}
+  grantsCapability: 0
+  grantsAnyCapability: 0
+  scrapYield: 35

@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cdcfc3e69648643d1960ab60c1a32768, type: 3}
+  m_Name: Relic_Placa_de_invernadero_orbital
+  m_EditorClassIdentifier: 
+  relicId: relic_greenhouse_plate
+  displayName: Placa de invernadero orbital
+  requiredCapability: 1
+  scanSeconds: 8
+  exposureCost: 10
+  loreEntry: De una estacion agricola en orbita baja. Lo intentaron. Los informes
+    de cosecha son meticulosos hasta el ultimo mes.
+  technicalNote: "M\xF3dulo de cultivo cerrado. Produce para una persona con 90 W."
+  unlocksPart: {fileID: 11400000, guid: 030df09e080d24fe1b208545da778d67, type: 2}
+  grantsCapability: 0
+  grantsAnyCapability: 0
+  scrapYield: 20

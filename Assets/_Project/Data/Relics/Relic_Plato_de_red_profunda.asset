@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cdcfc3e69648643d1960ab60c1a32768, type: 3}
+  m_Name: Relic_Plato_de_red_profunda
+  m_EditorClassIdentifier: 
+  relicId: relic_deep_space_antenna
+  displayName: Plato de red profunda
+  requiredCapability: 2
+  scanSeconds: 13
+  exposureCost: 20
+  loreEntry: Orientado hacia arriba, congelado en la ultima posicion que le ordenaron.
+    Llamaron a alguien durante anos. En el registro no hay una sola respuesta.
+  technicalNote: Antena parabolica de 34 m, banda X. 4 Mbps a distancia planetaria.
+  unlocksPart: {fileID: 11400000, guid: fabb4165ea835439db53ec0350d8fcef, type: 2}
+  grantsCapability: 4
+  grantsAnyCapability: 1
+  scrapYield: 55

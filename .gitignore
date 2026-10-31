@@ -1,0 +1,68 @@
+# Unity
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Artefactos de compilación
+*.apk
+*.aab
+*.unitypackage
+*.app
+sysinfo.txt
+crashlytics-build.properties
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+*.csproj
+*.sln
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Odin Inspector — licencia educativa personal, no redistribuible.
+# Cada miembro del equipo importa su propia copia desde odininspector.com.
+Assets/Plugins/Sirenix/
+Assets/Plugins/Sirenix.meta
+
+# Synty Studios — bundle educativo, licencia personal no redistribuible.
+Assets/SyntyStudios/
+Assets/SyntyStudios.meta
+
+# Asistentes IA / orquestación local — no subir
+.claude/
+.codex/
+.opencode/
+.herdr/
+auditoria-meta/
+orquestador-ia/
+herramientas-locales/
+
+# Secretos y entorno
+.env
+.env.*
+*.key
+*.pem
+secrets.json
+
+# Web
+web/node_modules/
+web/dist/
+web/.env*

@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c7e9d77da7d6a4c62bf0974ab5053a94, type: 3}
+  m_Name: "Part_Generador_de_radiois\xF3topos"
+  m_EditorClassIdentifier: 
+  displayName: "Generador de radiois\xF3topos"
+  description: 110 W pase lo que pase, de dia, de noche y en tormenta. Cuesta cuatro
+    veces mas que los paneles y no se apaga nunca.
+  slot: 2
+  massKg: 45
+  powerW: 110
+  scrapCost: 180
+  reliability: 0.995
+  specificImpulseSec: 0
+  thrustN: 0
+  propellantKg: 0
+  downlinkMbps: 0
+  dataGeneratedMb: 0
+  exposureDampening: 0
+  unlockedByRelicId: relic_rtg_probe

@@ -26,7 +26,7 @@ import type { HeroTuning } from './creator/player-contract';
 import { SPECIALS } from './creator/stats';
 import { openProfileMenu } from './profile/profile-menu';
 import { showIntro } from './intro';
-import { Dron } from './dron';
+import { Dron, FORMAS_ADA, type FormaAda } from './dron';
 import {
   AYUDA_COMANDOS, abrirLineaComando, callar, grabarVoz, hablar,
   parsearComando, reconocimientoLocal, transcribirServidor, webmAWav16k,
@@ -183,6 +183,8 @@ export class Game {
 
     this.world = new World(this.scene);
     this.dron = new Dron(this.scene, (x, z) => this.world.heightAt(x, z));
+    this.dron.setForma(this.formaInicial());
+    ui.onToast((quien) => { if (quien === 'ADA') this.dron.hablar(); });
     const mic = document.createElement('button');
     mic.textContent = '🎙';
     mic.setAttribute('aria-label', 'Hablar con el dron (o tecla T para escribir)');
@@ -348,6 +350,26 @@ export class Game {
   private barraEquipo(id: GearId, fraccion: number) {
     const b = this.barrasEquipo.get(id);
     if (b) b.style.width = `${Math.round(Math.max(0, Math.min(1, fraccion)) * 100)}%`;
+  }
+
+  /** Forma de ADA: `?ada=zorro` en la dirección, o la última elegida con K. */
+  private formaInicial(): FormaAda {
+    const ids = FORMAS_ADA.map((f) => f.id) as string[];
+    const url = new URLSearchParams(location.search).get('ada');
+    if (url && ids.includes(url)) return url as FormaAda;
+    try {
+      const guardada = localStorage.getItem('metaspace.ada');
+      if (guardada && ids.includes(guardada)) return guardada as FormaAda;
+    } catch { /* sin almacenamiento: se usa la de siempre */ }
+    return 'dron';
+  }
+
+  private cambiarFormaAda() {
+    const i = FORMAS_ADA.findIndex((f) => f.id === this.dron.forma);
+    const siguiente = FORMAS_ADA[(i + 1) % FORMAS_ADA.length];
+    this.dron.setForma(siguiente.id);
+    try { localStorage.setItem('metaspace.ada', siguiente.id); } catch { /* da igual */ }
+    ui.toast('Forma de ADA', `${siguiente.nombre} (K para cambiar)`, 'info', 2.5);
   }
 
   /** Cambia de animación con un fundido corto; las de una vez empiezan de cero. */
@@ -891,6 +913,8 @@ export class Game {
 
   private update(dt: number) {
     this.time += dt;
+    // Prueba de formas de ADA: K pasa a la siguiente (se recuerda en este navegador).
+    if (wasPressed('KeyK')) this.cambiarFormaAda();
     if (wasPressed('KeyT') && !(document.activeElement instanceof HTMLInputElement)) {
       this.abrirLineaVoz();
     }

@@ -227,7 +227,15 @@ export function drawMinimap(s: MinimapState) {
 // Los avisos se apilan en su propia columna: varios a la vez no se pisan.
 let toasts: HTMLElement | null = null;
 
+let alAvisar: ((title: string) => void) | null = null;
+
+/** Quien quiera saber que alguien habla (la forma de ADA anima su voz). */
+export function onToast(fn: (title: string) => void) {
+  alAvisar = fn;
+}
+
 export function toast(title: string, body: string, kind: 'relic' | 'info' = 'info', seconds = 6) {
+  alAvisar?.(title);
   if (!toasts || !toasts.isConnected) {
     toasts = h(`<div class="toasts"></div>`);
     root.appendChild(toasts);

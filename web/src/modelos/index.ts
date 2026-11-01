@@ -1,4 +1,5 @@
 import { crearAstronauta } from './astronauta';
+import { crearAdaMedusa, crearAdaNoa, crearAdaOrbe, crearAdaZorro } from './ada';
 import { crearBaliza } from './baliza';
 import { crearAerotabla, crearAstronautaEquipado, crearBotasImpulso, crearMochilaCohete } from './equipo';
 import { crearRecolector } from './recolector';
@@ -14,5 +15,9 @@ export const CATALOGO: { id: string; nombre: string; crear: () => Modelo }[] = [
   { id: 'mochila-cohete', nombre: 'Mochila cohete', crear: crearMochilaCohete },
   { id: 'botas-impulso', nombre: 'Botas de impulso', crear: crearBotasImpulso },
   { id: 'aerotabla', nombre: 'Aerotabla', crear: crearAerotabla },
+  { id: 'ada-zorro', nombre: 'ADA · Zorro de escarcha', crear: crearAdaZorro },
+  { id: 'ada-noa', nombre: 'ADA · Holograma de Noa', crear: crearAdaNoa },
+  { id: 'ada-medusa', nombre: 'ADA · Medusa de plasma', crear: crearAdaMedusa },
+  { id: 'ada-orbe', nombre: 'ADA · Orbe con anillos', crear: crearAdaOrbe },
   { id: 'astronauta-equipado', nombre: 'Especialista equipado', crear: crearAstronautaEquipado },
 ];

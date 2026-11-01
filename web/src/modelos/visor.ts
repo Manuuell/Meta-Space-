@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { CATALOGO, type Animacion, type Modelo } from './index';
 import { medir } from './kit';
+import { ALTURA_ADA } from './ada';
 
 // Taller de modelos (solo desarrollo, /modelos.html): cada personaje con sus
 // animaciones, para revisar el estilo antes de meterlo en el juego y
@@ -59,6 +60,8 @@ const reloj = new THREE.Clock();
 function cargar(id: string) {
   if (modelo) escena.remove(modelo.raiz);
   modelo = CATALOGO.find((c) => c.id === id)!.crear();
+  // Las formas flotantes de ADA tienen el origen en su centro: se ven en el aire.
+  if (ALTURA_ADA[id]) modelo.raiz.position.y = 1.2;
   escena.add(modelo.raiz);
   mezclador = new THREE.AnimationMixer(modelo.raiz);
   for (const b of lista.querySelectorAll<HTMLButtonElement>('.modelo')) b.classList.toggle('activo', b.dataset.id === id);

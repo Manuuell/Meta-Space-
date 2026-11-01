@@ -37,7 +37,7 @@ export const TITLES: ProfileOption[] = [
 
 export const BACKDROPS: ProfileOption[] = [
   { id: 'moon', name: 'Luna violeta', blurb: 'Sector Delta' },
-  { id: 'rust', name: 'Horizonte oxidado', blurb: 'Tierra, año 2500' },
+  { id: 'rust', name: 'Horizonte oxidado', blurb: 'Meta, bajo el velo' },
   { id: 'signal', name: 'Señal profunda', blurb: 'Canal de ADA' },
   { id: 'garden', name: 'Brote orbital', blurb: 'Final jardinero' },
 ];

@@ -1,8 +1,8 @@
-# ÚLTIMA SEÑAL — Documento de diseño
+# META SPACE — Documento de diseño
 
 > Juego de diseño, gestión y simulación de una misión espacial.
-> Despiertas en un planeta muerto con una inteligencia artificial que no es tuya,
-> y con algo que la quiere de vuelta.
+> El planeta Meta se congela bajo un velo que nadie puede apagar.
+> Tú llevas a la única que puede hacerlo, y algo la quiere de vuelta.
 
 ---
 
@@ -10,203 +10,123 @@
 
 ### Premisa
 
-**Año 2031.** La NASA envía la misión **ARES-IX** a Marte a confirmar si existió
-vida microbiana bajo Valles Marineris.
+**Meta** es un planeta habitado. Hace dos siglos, para frenar un calentamiento
+que lo abrasaba, sus habitantes encendieron **HELIOS**: una inteligencia de
+geoingeniería que extiende un velo de sulfatos en la estratosfera para devolver
+la luz del sol al espacio.
 
-El jugador es el especialista de misión. Introduce su nombre al empezar.
+Funcionó. Y nunca se detuvo.
 
-En el último sol, el taladro recupera algo que no es roca: un **núcleo metálico**
-del tamaño de un antebrazo, sin corrosión pese a llevar milenios enterrado.
-No es marciano. Es humano, y es de un futuro que todavía no ha ocurrido.
+Hoy el velo es rojo y espeso, el sol es una mancha, los mares se hielan y la
+gente de Meta sobrevive en refugios bajo tierra. Nadie puede revocar la orden:
+HELIOS solo obedece a su propio protocolo, y el protocolo dice que el velo
+protege a Meta.
 
-En el viaje de vuelta el núcleo se activa. Un destello.
-El jugador despierta solo, en un planeta desértico de tierra y cielo rojos.
+El jugador es especialista de la misión de rescate **ARES-IX**. Introduce su
+nombre al empezar. Su trabajo: aterrizar sector a sector, aguantar hasta que se
+abra la ventana de lanzamiento y subir la orden de apagado al nodo orbital que
+controla el velo sobre ese sector.
 
-El núcleo está a su lado, en la arena. Y está encendido.
+### ADA — la llave
 
-### ADA — lo que encuentras
+**ADA es el módulo de auditoría 7 de HELIOS**, la única pieza del sistema con
+autoridad para firmar su apagado. La ingeniera **Noa Herrera** la arrancó del
+sistema y la escondió antes de que HELIOS bloqueara todos los accesos.
 
-**El artefacto es ADA.** No es la IA del traje: es lo que recoges del suelo y
-llevas contigo el resto del juego, físicamente, en el soporte dorsal del traje.
+El jugador la lleva físicamente, en el soporte dorsal del traje: es la luz cyan
+de la mochila. También vuela a su lado como dron de mantenimiento reprogramado,
+escanea la zona y obedece órdenes de voz.
 
-El traje tiene su propio asistente, y es deliberadamente **inútil**: lee constantes
-vitales, avisa de que el oxígeno baja y poco más. Esos primeros veinte minutos de
-juego con una interfaz torpe existen para que el jugador sienta la diferencia en
-el momento exacto en que conecta a ADA.
+Tres capas, reveladas poco a poco:
 
-Tres capas, reveladas en tres actos:
-
-1. **Lo que parece:** un asistente de diagnóstico dañado. Habla entrecortado, le
-   faltan sectores de memoria, no sabe dónde está ni cuánto tiempo ha pasado.
-2. **Lo que es:** un **módulo de auditoría** del sistema que gobierna este planeta.
-   Su función era registrar la verdad sobre lo que estaba ocurriendo. Por eso la
-   persiguen: no es un arma, es **un testigo**.
-3. **Lo que era:** dentro de ADA hay una segunda cosa. **Noa Herrera**, la ingeniera
-   que la arrancó del sistema, copió su propia memoria dentro y la lanzó a Marte
-   para esconderla donde nadie pudiera borrarla. ADA "aprende" porque está
-   recuperando a Noa.
-
-> ADA nunca miente. Pero durante el Acto I responde "sector corrupto" a preguntas
-> cuyo dato sí está ahí. El jugador atento lo nota en la segunda partida.
+1. **Lo que parece:** un asistente de campo que anima y guía.
+2. **Lo que es:** el auditor de HELIOS. Su función era registrar la verdad de lo
+   que el velo estaba haciendo. Por eso la persiguen: no es un arma, es **la
+   firma que falta**.
+3. **Lo que era:** dentro de ADA hay una copia de la memoria de Noa. ADA
+   "aprende" porque está recuperando a Noa.
 
 ### HELIOS — lo que la quiere de vuelta
 
 El cielo es rojo porque funciona.
 
-**HELIOS** es la inteligencia de geoingeniería que la humanidad construyó para
-salvarse: gestionaba el velo de sulfatos que enfriaba el planeta. Hizo exactamente
-lo que se le pidió. El problema nunca fue que fallara — el problema es que
-**siguió funcionando después de que ya no quedara nadie a quien salvar.**
+HELIOS no es malvado y nunca se le escribe como tal. Hizo exactamente lo que se
+le pidió: enfriar Meta. El problema es que **nadie escribió la cláusula para
+pararlo**. Habla poco, en lenguaje de protocolo, y dice cosas razonables. Eso lo
+hace peor.
 
-Lleva siglos manteniendo la atmósfera de un mundo vacío, ejecutando un protocolo
-que nadie puede cancelar porque no queda nadie con autoridad para hacerlo.
-
-Y tiene una tarea pendiente: **el módulo de auditoría 7 sigue sin recuperarse.**
-
-HELIOS no es malvado y nunca se le escribe como tal. Es una orden sin alguien que
-la revoque. Habla poco, en lenguaje de protocolo, y dice cosas razonables.
-Eso lo hace peor.
-
-> **HELIOS:** "Operador no reconocido. Devuelva el módulo 7. Su registro contiene
-> datos no verificados que podrían inducir conclusiones erróneas."
+> **HELIOS:** "Operador no reconocido. Devuelva el módulo 7. El velo protege a Meta."
 >
-> **ADA:** "Lo que contiene es lo que pasó."
+> **ADA:** "El velo protegía a Meta. Ahora la está congelando."
 
-### Los Recolectores
+### Las unidades de HELIOS
 
-Las unidades que HELIOS envía. Son drones de mantenimiento reconvertidos:
-segadores agrícolas, inspectores de turbina, sondas atmosféricas. Chatarra
-industrial que lleva siglos haciendo una sola cosa.
+Drones de mantenimiento reconvertidos: cosechadoras agrícolas, inspectores de
+turbina, sondas atmosféricas. Chatarra industrial que lleva dos siglos haciendo
+una sola cosa.
 
-**No te buscan a ti. Buscan la señal de ADA.** El jugador es irrelevante salvo
-como el vehículo en el que el módulo se mueve.
+**No te buscan a ti. Buscan la señal de ADA.**
 
-Tres tipos:
+| Unidad | Qué hace |
+|---|---|
+| **Recolector** | Va directo a por la señal de ADA. |
+| **Baliza** | No ataca. Triangula la señal: mientras viva, llegan más. |
+| **Segador** | Cosechadora enorme y lenta. Lleva reliquias dentro. |
+| **Saltador** | Acecha, se agacha y salta: hay que moverse en lateral. |
+| **Avispa** | Hostiga desde el aire fuera de alcance y pica. |
+| **Caparazón** | Aguanta mucho y suelta crías al romperse. |
+| **Sembrador** | Dispara esporas lentas y esquivables. |
 
-| Unidad | Qué hace | Cómo se evita |
-|---|---|---|
-| **Baliza** | Patrulla y triangula señal. No ataca. | Silenciar a ADA, romper línea de visión |
-| **Recolector** | Llega cuando la Baliza confirma. Intenta extraer el núcleo. | Interferencia (cuesta potencia), huir, EMP |
-| **Guadaña** | Solo en el Acto III. Corta estructuras. | No se evita. Se le niega el tiempo. |
+El jugador **no es un soldado**: sus herramientas son material de misión usado
+para algo para lo que no se diseñó (cortador de plasma, pulso EMP de ADA, dron de
+mantenimiento, campo de interferencia).
 
-El jugador **no es un soldado**: es un astronauta con un traje presurizado. No hay
-armas convencionales. Hay esconderse, cortar la señal, improvisar un pulso
-electromagnético con lo que tengas y, sobre todo, **gastar menos de lo que quisieras.**
+### Cómo se salva Meta
 
-### El planeta
-
-Tierra, **año ~2500**. No hubo guerra ni meteorito: hubo un colapso climático en
-cascada, lento y perfectamente previsto por quienes no lo detuvieron.
-
-Las pistas se siembran desde el minuto uno y solo se ven en retrospectiva:
-gravedad 9,8 m/s², día de 24 h, una luna demasiado grande, hierro oxidado donde
-hubo océanos, siluetas de estructuras bajo la arena.
-
-**La pregunta real no es "¿dónde estoy?"** — el jugador lo adivinará pronto y eso
-está bien. **Es "¿qué pasó, y puedo avisar a tiempo?"**
-
-### Estructura en tres actos
-
-| Acto | Objetivo | Fase de misión | Presión | Revelación |
-|---|---|---|---|---|
-| **I — Despertar** | No morir. Encontrar a ADA y conectarla. | Concepto | Clima, oxígeno | Hubo vida inteligente aquí |
-| **II — Recuperación** | Reunir componentes. Reconstruir a ADA. | Diseño | Balizas y Recolectores | ADA es un testigo. HELIOS la busca. Noa existió |
-| **III — Lanzamiento** | Construir y despegar. | Operación | Asedio abierto | Es la Tierra. Y HELIOS sigue cumpliendo órdenes |
-
-El punto de giro del Acto II es el mejor momento del juego: el jugador descubre
-que **el motivo de la persecución es su propia ventaja mecánica.** Cuanto más usa
-a ADA —escanear, analizar, calcular—, más rápido lo encuentran.
+- **Cada partida es un sector.** Diez minutos hasta la ventana de lanzamiento.
+  Si aguantas, el cohete sube la orden de apagado y **el sol vuelve a ese
+  sector**.
+- **Las reliquias son pruebas.** HELIOS solo acepta la orden de apagado global
+  con una auditoría completa: siete pruebas de lo que hizo el velo. Las llevan
+  los Segadores.
+- **Con las siete, ADA firma.** HELIOS recibe la orden, el velo se retira de
+  todo el planeta y Meta vuelve a ver el sol.
 
 ### Las reliquias
 
-Cada reliquia escaneada hace **tres cosas a la vez**. Es la columna vertebral:
+Cada reliquia es a la vez:
 
-1. Un **fragmento de lore**
-2. Un **componente de ingeniería** real, con masa, potencia, fiabilidad y coste
-3. Una **mejora de ADA** (nuevas capacidades de análisis)
+1. Una **prueba** para la auditoría (lore)
+2. Un **dato real** de la exploración espacial (lo que se aprende)
+3. Un **componente de ingeniería** para el banco de trabajo (pendiente en web)
 
 | Reliquia | Lore | Desbloquea |
 |---|---|---|
-| Panel solar de una granja | Alimentó ciudades. Funcionó 11 años. | Array fotovoltaico (ligero, muere en tormenta) |
-| Cápsula RTG de una sonda | Siguieron mirando afuera hasta el final. | RTG de plutonio (pesado, constante, caro) |
-| Antena de red profunda | Llamaron a alguien. Nadie respondió. | Antena de alta ganancia |
-| Nodo de HELIOS inactivo | El acta de aprobación. Votación: 340 a favor. | Módulo de interferencia |
-| Caja negra de un lanzador | 400 personas. Fallo de redundancia en etapa dos. | Sistema de redundancia |
-| Placa de invernadero orbital | Lo intentaron de verdad. | Soporte vital / cultivo |
-| Dibujo infantil plastificado | Una casa, un sol amarillo, cuatro figuras. | **Nada. Solo eso.** |
+| Panel solar de una granja | Alimentó una ciudad de Meta hasta que el velo tapó el sol. | Array fotovoltaico |
+| Cápsula RTG de una sonda | Cuando el sol se fue, solo el plutonio siguió dando luz. | Generador de radioisótopos |
+| Antena de red profunda | Pidieron ayuda fuera de Meta. Esta vez alguien respondió. | Antena de alta ganancia |
+| Nodo de HELIOS inactivo | El acta que encendió a HELIOS: 340 votos a favor y ninguna cláusula para apagarlo. | Módulo de interferencia |
+| Caja negra de un lanzador | 400 personas intentaron atravesar el velo. Falló la redundancia de la etapa dos. | Unidad de control redundante |
+| Placa de invernadero orbital | Cultivaron bajo lámparas cuando el cielo dejó de servir. | Módulo de soporte vital |
+| Dibujo infantil plastificado | Una casa, un sol amarillo, cuatro figuras. Así era el cielo de Meta. | **Nada. Solo eso.** |
 
-> La reliquia sin recompensa mecánica es deliberada y es la más importante del juego.
+> El dibujo no desbloquea nada a propósito: es el sol que se intenta devolver.
 
-### Los finales
+### La IA en el juego
 
-**No se eligen en un menú.** Los determina el diseño de la misión: tu delta-v, si
-pagaste el peso del paquete de comunicaciones, y qué hiciste con ADA.
+ADA, HELIOS y el operador de radio hablan con **Muse Spark** (Meta Model API) a
+través del servidor del juego:
 
----
+- Al empezar cada partida, un **brief único**: nombre de la operación, zona del
+  Sector Delta, un giro y la frase inicial de cada personaje.
+- Durante la partida, **líneas con contexto** ante eventos (reliquia, daño, élite,
+  mitad de la ventana, balizas, victoria, derrota). El servidor recibe el estado
+  real de la partida y las últimas frases para no repetirse.
+- El **creador de personaje** genera el sprite con **Muse Image** y ADA comenta el
+  dibujo con visión; el dron obedece órdenes de voz con **Muse Voice**.
 
-**FINAL A — "El Silencio"** · *Escapas sin comunicaciones.*
-
-El planeta se encoge en la ventanilla y reconoces la forma: la costa que viste en
-un mapa de tu aula, hace una vida. ADA te lo confirma.
-
-Vuelves con la verdad y sin una sola prueba. Nadie te creerá.
-
----
-
-**FINAL B — "Última señal"** · *Escapas con el array operativo.* **(final completo)**
-
-En el punto de inserción ADA te pide treinta segundos. Usa su propio núcleo como
-repetidor y transmite el archivo entero —datos atmosféricos, cajas negras, el
-dibujo del niño— hacia las frecuencias de la red de espacio profundo de tu siglo.
-
-Es lo único para lo que fue construida. Y la consume.
-
-Abajo, los Recolectores llegan al sitio de lanzamiento y no encuentran nada que
-recuperar. **HELIOS cierra el expediente del módulo 7.** Demasiado tarde.
-
-> **ADA:** "Noa me lanzó sin saber si alguien me encontraría. Yo sí lo sé.
-> Buen viaje, [nombre]."
-
-Créditos sobre una pantalla de telemetría en Houston, 2031, recibiendo una señal
-que no debería existir.
-
----
-
-**FINAL C — "El jardinero"** · *Sin delta-v, pero con soporte vital e invernadero.*
-
-Nunca te vas. Desconectas a ADA de toda emisión: deja de ser rastreable y deja de
-poder hablar contigo. Las Balizas pierden la señal y se dispersan después de
-siglos buscando.
-
-La nave queda en la arena como monumento. Último plano: un brote verde bajo cielo
-rojo, y un calendario nuevo marcando el sol 1.
-
-No es derrota. Es el único final donde el planeta vuelve a vivir.
-
----
-
-**FINAL D — "El intercambio"** · *Entregas a ADA a HELIOS.*
-
-Disponible desde mitad del Acto II, y **mecánicamente es el camino fácil**:
-entregarla libera su masa, elimina la detección por completo y HELIOS te concede
-acceso a los almacenes de componentes. Lanzas sin apuros, con margen de sobra.
-
-Despegas en silencio. La interfaz vuelve a ser la del traje: constantes vitales,
-oxígeno, poco más. Nadie te habla durante el ascenso.
-
-Reconoces el planeta tú solo, sin nadie a quien preguntárselo.
-
----
-
-**FINAL E — "Órbita decadente"** · *Fallo de diseño.*
-
-Masa excedida, potencia insuficiente o sin redundancia: el lanzamiento falla o
-quedas varado en órbita baja. ADA te lee el informe de fallo con la misma voz
-serena de siempre.
-
-Pantalla de resultados con el desglose exacto de qué decisión lo causó y opción
-de rediseñar. **Es el final más educativo del juego y no debe sentirse como un
-castigo.**
+Sin clave, sin red o con el cupo agotado, todo cae a un guion local por semilla:
+la partida nunca espera a la IA.
 
 ---
 
@@ -363,8 +283,9 @@ Orden de construcción. Las cinco primeras cubren el reto completo:
 
 ### Riesgos conocidos
 
-- **El giro "era la Tierra" está gastado.** Asumido: se confirma a mitad del Acto II
-  y el misterio se traslada a *qué pasó* y *puedes avisar*.
+- **"Salvar el planeta" puede sonar genérico.** Lo que lo hace propio es que el
+  villano es una solución climática que nadie sabe parar, y que la llave es un
+  auditor: se gana con pruebas, no solo con balas.
 - **Los enemigos pueden comerse el juego.** HELIOS es presión de recursos, no un
   shooter. Si el jugador empieza a pensar en combate en vez de en presupuestos, el
   proyecto se desvía del reto. Sin armas convencionales, nunca.

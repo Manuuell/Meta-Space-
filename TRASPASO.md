@@ -1,6 +1,42 @@
-# Traspaso — Módulo 7
+# Traspaso — Meta Space
 
-Estado a 21/10/2026. Pega este archivo al abrir el chat nuevo.
+Estado a 01/11/2026. Pega este archivo al abrir el chat nuevo.
+
+---
+
+## Meta Space para el hackathon (01/11/2026)
+
+**Trama nueva: salvar el planeta Meta.** Meta se congela bajo el velo de
+sulfatos de HELIOS, la IA climática que nadie sabe apagar. ADA (el módulo de
+auditoría 7) es la única que puede firmar el apagado. Cada partida es un
+sector: si aguantas los 10 minutos, el cohete sube la orden y vuelve el sol a
+ese sector. Las 7 reliquias son las pruebas de la auditoría que apaga el velo
+de todo el planeta. Detalle en [lore-y-mecanicas.md](lore-y-mecanicas.md); la
+trama que recibe la IA vive en `web/src/guion.ts`.
+
+**El juego se publica como web con dominio propio.** `creator-server.ts` sirve
+el juego compilado y la API de IA en el mismo origen, así que basta un proceso:
+
+```bash
+cd web
+npm run build
+MODEL_API_KEY=... npm start      # o la clave en web/.env.local
+```
+
+Para el jurado, desplegar `web/` en cualquier hosting de Node 22.18+ (Render,
+Railway, Fly, un VPS) con `npm ci && npm run build` y `npm start`. Variables en
+`web/.env.example`. La clave nunca llega al navegador; el servidor limita
+peticiones por IP, solo acepta llamadas del propio dominio y tiene un cupo
+diario (`AI_DAILY_LIMIT`). Sin clave o con el cupo agotado, todo responde con el
+guion local. También funciona como web estática (GitHub Pages, itch.io), pero
+entonces sin IA.
+
+En desarrollo: `npm run dev` y, en otra terminal, `npm run serve` (Vite reenvía
+`/api` al puerto 8787).
+
+---
+
+## Antes (21/10/2026)
 
 ---
 
@@ -45,7 +81,7 @@ equilibrio de presupuestos y `MissionOutcome` hay que portarlos a TypeScript.
 ### Herramientas de desarrollo
 
 ```bash
-cd ~/Developer/Modulo7/web
+cd ~/Developer/"Meta Space"/web
 npm install
 npm run dev      # http://127.0.0.1:5173
 npm run build    # comprueba tipos y deja el juego en web/dist
@@ -101,7 +137,7 @@ respuesta; se asumió hackathon corto y se construyó en orden de prioridad.
 
 ## Dónde está todo
 
-Proyecto en `~/Developer/Modulo7`. Unity **6000.0.85f1 LTS**, modo 2D, módulos
+Proyecto en `~/Developer/Meta Space`. Unity **6000.0.85f1 LTS**, modo 2D, módulos
 WebGL y Mac IL2CPP. Licencia **Unity Student** (válida hasta 24/10/2027, incluye
 Pro: sin marca de agua ni pantalla de carga).
 
@@ -136,7 +172,7 @@ el diseño a su final con el informe de qué decisión lo causó. Probado pulsan
 montar, quitar y lanzar funcionan.
 
 **Equilibrio del catálogo** — medido con naves de referencia reales
-(`Modulo 7 > Comprobar equilibrio`). Tres rutas viables y tres trampas:
+(`Meta Space > Comprobar equilibrio`). Tres rutas viables y tres trampas:
 
 ```
 A  · Mínima para escapar     4036 / 3900 m/s   VUELA
@@ -247,23 +283,23 @@ descartó hacer la plataforma de lanzamiento en 3D.
 
 ```bash
 U="/Applications/Unity/Hub/Editor/6000.0.85f1/Unity.app/Contents/MacOS/Unity"
-P="$HOME/Developer/Modulo7"
+P="$HOME/Developer/Meta Space"
 
 # Regenerar catálogo y comprobar equilibrio
 "$U" -batchmode -quit -nographics -projectPath "$P" \
-  -executeMethod Modulo7.EditorTools.PartCatalogBuilder.Run -logFile -
+  -executeMethod MetaSpace.EditorTools.PartCatalogBuilder.Run -logFile -
 "$U" -batchmode -quit -nographics -projectPath "$P" \
-  -executeMethod Modulo7.EditorTools.CatalogSanityCheck.Run -logFile -
+  -executeMethod MetaSpace.EditorTools.CatalogSanityCheck.Run -logFile -
 
 # Regenerar escenas
 "$U" -batchmode -quit -nographics -projectPath "$P" \
-  -executeMethod Modulo7.EditorTools.PlanetSceneBuilder.Run -logFile -
+  -executeMethod MetaSpace.EditorTools.PlanetSceneBuilder.Run -logFile -
 "$U" -batchmode -quit -nographics -projectPath "$P" \
-  -executeMethod Modulo7.EditorTools.DeadCitySceneBuilder.Run -logFile -
+  -executeMethod MetaSpace.EditorTools.DeadCitySceneBuilder.Run -logFile -
 
 # Compilar (WebGL tarda unos 100 s; sin comprimir para que abra en cualquier servidor)
 "$U" -batchmode -quit -nographics -projectPath "$P" -buildTarget WebGL \
-  -executeMethod Modulo7.EditorTools.BuildScript.WebGL -logFile -
+  -executeMethod MetaSpace.EditorTools.BuildScript.WebGL -logFile -
 
 # Servir y abrir
 cd "$P/Builds/WebGL" && python3 -m http.server 8123 --bind 127.0.0.1

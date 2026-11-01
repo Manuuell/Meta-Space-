@@ -254,7 +254,7 @@ export function renderTitleHtml(save: TitleSave, opts?: TitleOptions): string {
               <h1 id="ms-title-heading"><span>META</span>SPACE</h1>
               <strong>BETA</strong>
             </div>
-            <div class="ms-wordmark__sub"><i></i><b>ÚLTIMA SEÑAL</b><i></i></div>
+            <div class="ms-wordmark__sub"><i></i><b>SALVA EL PLANETA META</b><i></i></div>
             ${heroChipHtml(vm)}
           </div>
 
@@ -284,7 +284,7 @@ export function renderTitleHtml(save: TitleSave, opts?: TitleOptions): string {
           <div class="ms-event-row">
             <div class="ms-event-card">
               <span class="ms-event-card__icon" aria-hidden="true">◉</span>
-              <span><small>¡OPERACIÓN ACTIVA!</small><b>La última señal</b><em>HELIOS rastrea a ADA</em></span>
+              <span><small>¡OPERACIÓN ACTIVA!</small><b>Apagar el velo</b><em>HELIOS rastrea a ADA</em></span>
             </div>
             <div class="ms-contract-card">
               <span aria-hidden="true">⌁</span>
@@ -304,7 +304,7 @@ export function renderTitleHtml(save: TitleSave, opts?: TitleOptions): string {
         <aside class="ms-mission-panel" aria-label="Registro de misión">
           <div class="ms-panel-banner stripes">
             <span aria-hidden="true">✦</span>
-            <div><small>OPERACIÓN 07</small><b>Última señal</b><em>Ventana en ${vm.minutes}:00</em></div>
+            <div><small>OPERACIÓN 07</small><b>Apagar el velo</b><em>Ventana en ${vm.minutes}:00</em></div>
           </div>
           <div class="ms-panel-tabs" aria-hidden="true"><b>◉ Récords</b><span>◈</span><span>⌁</span><span>◎</span></div>
           <div class="ms-panel-region"><span aria-hidden="true">◎</span><div><b>Sector Delta</b><small>Registro global de expediciones</small></div><i aria-hidden="true">⌄</i></div>
@@ -319,13 +319,13 @@ export function renderTitleHtml(save: TitleSave, opts?: TitleOptions): string {
           <ol class="ms-ranking-list" aria-label="Marcas del Sector Delta">
             <li><i aria-hidden="true">1</i><span class="ms-rank-icon coral" aria-hidden="true">✦</span><div><b>Mejor tiempo</b><small>Supervivencia</small></div><strong>${vm.bestTime}</strong></li>
             <li><i aria-hidden="true">2</i><span class="ms-rank-icon cyan" aria-hidden="true">⌁</span><div><b>Unidades neutralizadas</b><small>HELIOS</small></div><strong>${vm.bestKills}</strong></li>
-            <li><i aria-hidden="true">3</i><span class="ms-rank-icon violet" aria-hidden="true">◈</span><div><b>Reliquias</b><small>Archivo recuperado</small></div><strong>${vm.relicCount}/${vm.relicTotal}</strong></li>
+            <li><i aria-hidden="true">3</i><span class="ms-rank-icon violet" aria-hidden="true">◈</span><div><b>Reliquias</b><small>Pruebas contra el velo</small></div><strong>${vm.relicCount}/${vm.relicTotal}</strong></li>
             <li><i aria-hidden="true">4</i><span class="ms-rank-icon gold" aria-hidden="true">◆</span><div><b>Banco</b><small>Chatarra disponible</small></div><strong>${compactNumber(save.scrapBank)}</strong></li>
           </ol>
 
           <div class="ms-relic-progress">
-            <span><b>Progreso de temporada</b><small>${vm.relicCount} de ${vm.relicTotal}</small></span>
-            <div role="progressbar" aria-label="Progreso de reliquias" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(vm.progressPct)}"><i style="width:${vm.progressPct}%"></i></div>
+            <span><b>Auditoría de HELIOS</b><small>${vm.relicCount} de ${vm.relicTotal} pruebas</small></span>
+            <div role="progressbar" aria-label="Pruebas reunidas para apagar el velo" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(vm.progressPct)}"><i style="width:${vm.progressPct}%"></i></div>
           </div>
           <button type="button" class="ms-panel-action ms-codex-secondary" data-action="codex">Ver códice completo</button>
         </aside>
@@ -344,7 +344,7 @@ export function renderTitleHtml(save: TitleSave, opts?: TitleOptions): string {
 const HOW_TO_HTML = `
   <p class="ms-dialog-kicker">PROTOCOLO DE CAMPO 07</p>
   <h2 id="ms-dialog-heading" tabindex="-1">Sobrevive hasta la ventana de lanzamiento</h2>
-  <p class="ms-dialog-lead">HELIOS rastrea la señal de ADA. Muévete, recupera chatarra y mantén a raya sus unidades durante <b>10 minutos</b>.</p>
+  <p class="ms-dialog-lead">Meta se congela bajo el velo de HELIOS y ADA es la única que puede firmar su apagado. Muévete, recupera chatarra y mantén a raya sus unidades durante <b>10 minutos</b>: al abrirse la ventana, el cohete sube la orden y el sol vuelve al sector.</p>
   <ul class="ms-howto-list">
     <li><b>WASD / flechas</b><span>Mover al astronauta</span></li>
     <li><b>Espacio</b><span>Saltar (vale anticipado y justo al borde)</span></li>
@@ -352,6 +352,7 @@ const HOW_TO_HTML = `
     <li><b>Herramientas</b><span>Se activan automáticamente</span></li>
     <li><b>Chatarra</b><span>Recógela para subir de nivel</span></li>
     <li><b>Balizas</b><span>Destrúyelas antes de que atraigan más unidades</span></li>
+    <li><b>Reliquias</b><span>Las llevan los Segadores: reúne las 7 pruebas para apagar el velo de todo Meta</span></li>
     <li><b>Esc</b><span>Pausar la misión</span></li>
   </ul>
   <p class="ms-dialog-note">La luz cyan de tu mochila es ADA. Las señales rojas pertenecen a HELIOS.</p>`;
@@ -367,7 +368,7 @@ export function renderCodexHtml(save: TitleSave, relicTotal?: number): string {
   return `
   <p class="ms-dialog-kicker">ARCHIVO DE CAMPO</p>
   <h2 id="ms-dialog-heading" tabindex="-1">Códice de reliquias</h2>
-  <p class="ms-dialog-lead">Recuperadas: <b>${save.relics.length}/${total}</b>. Cada pieza conserva un fragmento de la última señal.</p>
+  <p class="ms-dialog-lead">Recuperadas: <b>${save.relics.length}/${total}</b>. Cada reliquia es una prueba para la auditoría que obliga a HELIOS a apagar el velo.</p>
   <ol class="ms-codex-list">${items}</ol>`;
 }
 

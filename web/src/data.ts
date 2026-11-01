@@ -215,48 +215,48 @@ export interface RelicDef {
   fact: string;       // dato real: la parte que se aprende
 }
 
-// Las reliquias del documento de diseño, cada una con un dato real de la
-// exploración espacial detrás de la pieza que desbloquea.
+// Las reliquias del documento de diseño: pruebas de lo que hizo HELIOS en
+// Meta, cada una con un dato real de la exploración espacial detrás.
 export const RELICS: RelicDef[] = [
   {
     id: 'panel', name: 'Panel solar de una granja',
-    lore: 'Alimentó una ciudad. Funcionó once años.',
+    lore: 'Alimentó una ciudad de Meta hasta que el velo tapó el sol.',
     unlocks: 'Array fotovoltaico',
     fact: 'Juno fue la primera nave en llegar a Júpiter alimentada solo por paneles solares (2016), a cinco veces la distancia de la Tierra al Sol.',
   },
   {
     id: 'rtg', name: 'Cápsula RTG de una sonda',
-    lore: 'Siguieron mirando afuera hasta el final.',
+    lore: 'Cuando el sol se fue, solo el plutonio siguió dando luz.',
     unlocks: 'Generador de radioisótopos',
     fact: 'Las Voyager 1 y 2 funcionan desde 1977 con generadores de plutonio-238: el calor de su desintegración se convierte en electricidad.',
   },
   {
     id: 'antena', name: 'Antena de red profunda',
-    lore: 'Llamaron a alguien. Nadie respondió.',
+    lore: 'Pidieron ayuda fuera de Meta. Esta vez alguien respondió.',
     unlocks: 'Antena de alta ganancia',
     fact: 'La Red de Espacio Profundo de la NASA tiene antenas de 70 m en Goldstone, Madrid y Canberra: separadas 120°, siempre hay una mirando a cada nave.',
   },
   {
     id: 'nodo', name: 'Nodo de HELIOS inactivo',
-    lore: 'El acta de aprobación. Votación: 340 a favor.',
+    lore: 'El acta que encendió a HELIOS: 340 votos a favor y ninguna cláusula para apagarlo.',
     unlocks: 'Módulo de interferencia',
     fact: 'La erupción del Pinatubo (1991) lanzó unos 15 millones de toneladas de SO₂ a la estratosfera y enfrió el planeta cerca de medio grado durante un año.',
   },
   {
     id: 'caja', name: 'Caja negra de un lanzador',
-    lore: '400 personas. Fallo de redundancia en la etapa dos.',
+    lore: '400 personas intentaron atravesar el velo. Falló la redundancia de la etapa dos.',
     unlocks: 'Unidad de control redundante',
     fact: 'En el Apolo 13, el motor central de la segunda etapa del Saturno V se apagó antes de tiempo; los otros cuatro ardieron más y la misión llegó a órbita.',
   },
   {
     id: 'invernadero', name: 'Placa de invernadero orbital',
-    lore: 'Lo intentaron de verdad.',
+    lore: 'Cultivaron bajo lámparas cuando el cielo dejó de servir.',
     unlocks: 'Módulo de soporte vital',
     fact: 'En 2015 la tripulación de la Estación Espacial comió por primera vez lechuga cultivada en órbita, con el experimento Veggie.',
   },
   {
     id: 'dibujo', name: 'Dibujo infantil plastificado',
-    lore: 'Una casa, un sol amarillo, cuatro figuras.',
+    lore: 'Una casa, un sol amarillo, cuatro figuras. Así era el cielo de Meta.',
     unlocks: null,
     fact: 'Nada. Solo eso.',
   },

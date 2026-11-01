@@ -91,7 +91,7 @@ function botonesEstilo() {
   const paj = estiloBruno.pajarita;
   return `<div class="cp-estilo" role="group" aria-label="Estilo de Bruno">
     <button type="button" data-estilo="gorra" aria-pressed="${estiloBruno.gorra}">Gorra</button>
-    <button type="button" data-estilo="gafas" aria-pressed="${estiloBruno.gafas}">Gafas</button>
+    <button type="button" data-estilo="gafas" aria-pressed="${estiloBruno.gafas}" title="Siempre puestas, o se las pone y quita él a ratos">Gafas: ${estiloBruno.gafas ? 'siempre' : 'a ratos'}</button>
     <button type="button" data-estilo="pajarita" aria-pressed="${paj !== null}">Pajarita${paj === 'cuadros' ? ': cuadros' : paj === 'verde' ? ': verde' : ''}</button>
   </div>`;
 }

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import type { Sound } from './audio';
-import { esPerro, perfilDe, type FormaAda, type PerfilCompanero } from './companeros';
+import { esPerro, estiloBruno, perfilDe, type FormaAda, type PerfilCompanero } from './companeros';
 import type { Dron } from './dron';
-import { expresar, type ExpresionPerro } from './modelos/perro';
+import { expresar, ponerGafas, type ExpresionPerro } from './modelos/perro';
 import type { Enemies } from './enemies';
 import type { Pickups } from './pickups';
 import type { PuntoInteres, World } from './world';
@@ -465,6 +465,12 @@ class VidaPerro {
   // Patineta voladora: la saca para alcanzarte y de vez en cuando hace un truco.
   private patinT = 0;
   private patinYa = 0;
+  // Gafas de sol: se las pone a ratos (si el estilo no las lleva siempre).
+  private gafas = 0;          // 0 guardadas → 1 puestas
+  private gafasQuiere = false;
+  private gafasEspera = 0;    // retraso hasta que la pata llega a la cara
+  private gafasPuestasT = 0;
+  private cdGafas = 8;
   private cdPatin = 6;
   private cdTruco = 2;
 
@@ -476,6 +482,36 @@ class VidaPerro {
     this.quieto = 0;
     this.patinT = 0;
     this.cdPatin = 6;
+    this.gafas = estiloBruno.gafas ? 1 : 0;
+    this.gafasQuiere = estiloBruno.gafas;
+    this.cdGafas = 8;
+  }
+
+  /** Ponerse o quitarse las gafas. Con la pata si está libre; patinando, sin parar. */
+  private cambiarGafas(poner: boolean, conPata: boolean) {
+    if (estiloBruno.gafas || this.gafasQuiere === poner) return;
+    this.gafasQuiere = poner;
+    this.gafasPuestasT = 0;
+    this.cdGafas = poner ? 10 + Math.random() * 15 : 12 + Math.random() * 15;
+    this.gafasEspera = conPata && this.dron.accion('Gafas') ? 0.25 : 0;
+  }
+
+  /** Mueve las gafas hacia donde toca, una vez la pata ha llegado a la cara. */
+  private animarGafas(dt: number) {
+    const raiz = this.dron.modeloRaiz;
+    if (!raiz) return;
+    if (estiloBruno.gafas) { this.gafas = 1; ponerGafas(raiz, 1); return; }
+    if (this.gafasQuiere) this.gafasPuestasT += dt;
+    this.cdGafas -= dt;
+    if (this.gafasEspera > 0) { this.gafasEspera -= dt; return; }
+    const objetivo = this.gafasQuiere ? 1 : 0;
+    if (this.gafas === objetivo) return;
+    this.gafas += Math.sign(objetivo - this.gafas) * Math.min(Math.abs(objetivo - this.gafas), dt / 0.4);
+    ponerGafas(raiz, this.gafas);
+  }
+
+  get conGafas() {
+    return this.gafas > 0.5;
   }
 
   private guardarPatineta() {
@@ -511,6 +547,7 @@ class VidaPerro {
   }
 
   update(dt: number, ctx: ContextoCompanero, cazando: boolean) {
+    this.animarGafas(dt);
     const p = this.dron.posicion;
     this.quieto = ctx.velocidadJugador < 0.4 ? this.quieto + dt : 0;
     this.cdResbalar -= dt;
@@ -531,6 +568,8 @@ class VidaPerro {
       this.dron.accion('Patinar', 0.3);
       this.efectos.nieve(p.x, p.y + 0.2, p.z, 8, 2);
       ctx.sonido('zap');
+      // Para patinar, muchas veces se pone las gafas: con estilo.
+      if (Math.random() < 0.6) this.cambiarGafas(true, false);
     }
     if (this.patinT > 0) {
       this.patinT -= dt;
@@ -563,7 +602,11 @@ class VidaPerro {
 
     if (!this.plan.length) {
       if (this.quieto > 14) {
-        this.lanzar([{ tipo: 'anim', clip: 'Bostezar' }, { tipo: 'anim', clip: 'Dormir', hastaQueTeMuevas: true }]);
+        // Para dormir se quita las gafas primero.
+        const quitar: Paso[] = this.gafasQuiere && !estiloBruno.gafas
+          ? [{ tipo: 'anim', clip: 'Gafas', alEmpezar: () => this.cambiarGafas(false, true) }]
+          : [];
+        this.lanzar([...quitar, { tipo: 'anim', clip: 'Bostezar' }, { tipo: 'anim', clip: 'Dormir', hastaQueTeMuevas: true }]);
       } else {
         this.espera -= dt;
         if (this.espera <= 0 && lejos < 7 && ctx.velocidadJugador < 2 && !this.dron.ocupado) this.lanzar(this.elegir(ctx));
@@ -648,6 +691,15 @@ class VidaPerro {
         ...(premio ? [{ tipo: 'anim', clip: 'Celebrar' } as Paso] : [{ tipo: 'anim', clip: 'Sacudirse' } as Paso]),
       ];
     } });
+
+    // Gafas de sol: ponérselas un rato, o quitárselas si ya las lleva mucho.
+    if (!estiloBruno.gafas && this.cdGafas <= 0) {
+      const poner = !this.gafasQuiere;
+      opciones.push({ peso: 2.5, plan: () => [
+        { tipo: 'anim', clip: 'Gafas', mirar: { x: ctx.px, z: ctx.pz }, alEmpezar: () => this.cambiarGafas(poner, true) },
+        ...(poner ? [{ tipo: 'anim', clip: 'Celebrar' } as Paso] : []),
+      ] });
+    }
 
     // Juego libre.
     const solos: [number, Paso[]][] = [

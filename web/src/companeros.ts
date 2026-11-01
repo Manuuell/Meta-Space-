@@ -80,7 +80,7 @@ export const COMPANEROS: PerfilCompanero[] = [
   },
   {
     id: 'bruno', nombre: 'Bruno', color: '#ffd25a', crear: () => crearPerro({ ...estiloBruno }),
-    quien: 'El perro del operador. Juega, escarba, patina y no se separa de ti.',
+    quien: 'El perro del operador. Juega, escarba, patina, se pone sus gafas de sol y no se separa de ti.',
     ataque: { tipo: 'mordisco', nombre: 'Mordisco', texto: 'Corre hasta el enemigo más cercano y le muerde.', alcance: 10, dano: 18, cada: 1.0 },
     habilidad: { tipo: 'ladrido', nombre: '¡Guau!', texto: 'Un ladrido que daña, empuja y asusta a la horda. Además busca chatarra y escarba.', cada: 11, radio: 7, valor: 10 },
   },

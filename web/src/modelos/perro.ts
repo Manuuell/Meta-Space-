@@ -56,6 +56,20 @@ function ojoPerro(ojo: THREE.Object3D, lado: string) {
   cerrado.visible = false;
 }
 
+/**
+ * Gafas a medio poner: 0 guardadas, 1 puestas. Al ponérselas bajan desde la
+ * frente hasta los ojos y crecen; al quitárselas, al revés.
+ */
+export function ponerGafas(raiz: THREE.Object3D, t: number) {
+  const g = raiz.getObjectByName('gafas');
+  if (!g) return;
+  const k = Math.max(0, Math.min(1, t));
+  const suave = k * k * (3 - 2 * k);
+  g.scale.setScalar(Math.max(0.001, Math.min(1, suave * 1.6)));
+  g.position.y = 0.065 + (1 - suave) * 0.15;
+  g.rotation.x = -(1 - suave) * 0.7;
+}
+
 /** Pone una cara: qué ojos se ven, su tamaño y la inclinación de las cejas. */
 export function expresar(raiz: THREE.Object3D, e: ExpresionPerro) {
   for (const [lado, s] of [['i', 1], ['d', -1]] as const) {
@@ -222,7 +236,10 @@ export function crearPerro(opciones: OpcionesPerro = { pajarita: 'cuadros', gorr
     // Pelo que asoma por debajo de la gorra, sobre las orejas.
     for (const s of [1, -1]) pieza(cabeza, esfera(0.09), toon(BLANCO), 0.23 * s, 0.07, 0.02);
   }
-  if (opciones.gafas) {
+  {
+    // Las gafas siempre están en el modelo: con el estilo «siempre» las lleva
+    // puestas; si no, están guardadas y el juego se las pone y quita a ratos
+    // (ver `ponerGafas`).
     const gafas = nodo('gafas', cabeza, 0, 0.065, 0.292);
     const plata = toon('#c9ccd4');
     for (const s of [1, -1]) {
@@ -234,6 +251,7 @@ export function crearPerro(opciones: OpcionesPerro = { pajarita: 'cuadros', gorr
       pieza(gafas, caja(0.015, 0.02, 0.24, 0.006), plata, 0.175 * s, 0.01, -0.12);
     }
     pieza(gafas, caja(0.05, 0.02, 0.02, 0.008), plata, 0, 0.02, 0.01);
+    ponerGafas(raiz, opciones.gafas ? 1 : 0);
   }
 
   // ---------------------------------------------------- Patineta voladora
@@ -522,6 +540,15 @@ export function crearPerro(opciones: OpcionesPerro = { pajarita: 'cuadros', gorr
       ...jadeo(0.9, 3, 22),
       cola(0.9, 4, 30, 0),
     ], 'reaccion', 'Salta y hace girar la patineta bajo sus patas antes de caer encima.', false),
+
+    animacion('Gafas', 0.9, [
+      // Se lleva la pata a la cara para ponerse (o quitarse) las gafas.
+      ...sentado(0.9),
+      rot('pata_di', poses([[0, 28, 0, 0], [0.25, -125, 0, 25], [0.6, -120, 0, 20], [0.9, 28, 0, 0]])),
+      rot('cabeza', poses([[0, 0, 0, 0], [0.25, 12, 0, -10], [0.6, 8, 0, -8], [0.9, -6, 0, 0]])),
+      ...jadeo(0.9, 2, 8),
+      fijo('cola', 0.9, -80),
+    ], 'reaccion', 'Se lleva la pata a la cara para ponerse o quitarse las gafas de sol.', false),
 
     animacion('Atacar', 0.5, [
       mov(raiz, 'cuerpo', poses([[0, 0, 0, 0], [0.1, 0, -0.04, -0.08], [0.22, 0, 0.06, 0.22], [0.5, 0, 0, 0]])),

@@ -160,6 +160,11 @@ export class World {
     return v;
   }
 
+  /** ¿Hielo de lago bajo este punto? (la aerotabla corre más ahí). */
+  onIce(x: number, z: number) {
+    return this.lakeAt(x, z) > 0.5;
+  }
+
   /** La forma del mundo. Solo se usa para rellenar la cuadrícula. */
   private rawHeight(x: number, z: number) {
     // Ventisqueros suaves en la zona de juego...

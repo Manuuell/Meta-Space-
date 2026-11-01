@@ -105,6 +105,39 @@ export function crearAstronauta(): Modelo {
       rot('hombro_d', poses([[0, 0, 0, -8], [0.12, 0, 0, -25], [0.3, 0, 0, -155], [0.55, 0, 0, -60], [0.7, 0, 0, -8]])),
     ], 'movimiento', 'Se agacha, se estira con los brazos arriba y aterriza.', false),
 
+    animacion('Surfear', 1.6, [
+      // Agachado sobre la aerotabla, brazos abiertos para equilibrar.
+      mov(raiz, 'cadera', ciclo(1.6, (f) => [sen(f) * 0.03, -0.14 + sen(f, 2) * 0.02, 0])),
+      rot('pierna_i', ciclo(1.6, () => [-18, 0, 4])),
+      rot('pierna_d', ciclo(1.6, () => [-18, 0, -4])),
+      rot('pecho', ciclo(1.6, (f) => [16, sen(f) * 8, sen(f) * 6])),
+      rot('cabeza', ciclo(1.6, (f) => [-10, -sen(f) * 6, -sen(f) * 4])),
+      rot('hombro_i', ciclo(1.6, (f) => [-10, 0, 62 + sen(f) * 10])),
+      rot('hombro_d', ciclo(1.6, (f) => [-10, 0, -62 + sen(f) * 10])),
+    ], 'movimiento', 'De pie en la aerotabla: agachado, brazos abiertos, se mece con las curvas.'),
+
+    animacion('Volar', 0.8, [
+      // Colgando de la mochila cohete: piernas atrás, brazos pegados.
+      mov(raiz, 'cadera', ciclo(0.8, (f) => [0, sen(f) * 0.04, 0])),
+      rot('pecho', ciclo(0.8, (f) => [20, 0, sen(f) * 3])),
+      rot('cabeza', ciclo(0.8, () => [-16, 0, 0])),
+      rot('pierna_i', ciclo(0.8, (f) => [22 + sen(f) * 8, 0, 6])),
+      rot('pierna_d', ciclo(0.8, (f) => [28 - sen(f) * 8, 0, -6])),
+      rot('hombro_i', ciclo(0.8, (f) => [30, 0, 22 + sen(f, 2) * 4])),
+      rot('hombro_d', ciclo(0.8, (f) => [30, 0, -22 - sen(f, 2) * 4])),
+    ], 'movimiento', 'Suspendido por la mochila cohete, inclinado hacia donde va.'),
+
+    animacion('Impulso', 0.35, [
+      // Acelerón de las botas: se lanza hacia delante y vuelve.
+      rot('pecho', poses([[0, 0, 0, 0], [0.06, 32, 0, 0], [0.25, 26, 0, 0], [0.35, 10, 0, 0]])),
+      rot('cabeza', poses([[0, 0, 0, 0], [0.06, -22, 0, 0], [0.35, -6, 0, 0]])),
+      rot('hombro_i', poses([[0, 0, 0, 8], [0.06, 55, 0, 20], [0.35, 20, 0, 10]])),
+      rot('hombro_d', poses([[0, 0, 0, -8], [0.06, 55, 0, -20], [0.35, 20, 0, -10]])),
+      rot('pierna_i', poses([[0, 0, 0, 0], [0.06, -30, 0, 0], [0.35, -8, 0, 0]])),
+      rot('pierna_d', poses([[0, 0, 0, 0], [0.06, 36, 0, 0], [0.35, 10, 0, 0]])),
+      esc('cuerpo', poses([[0, 1, 1, 1], [0.06, 0.9, 1.08, 1.12], [0.35, 1, 1, 1]])),
+    ], 'movimiento', 'Se lanza hacia delante con las botas de impulso.', false),
+
     animacion('Golpe recibido', 0.45, [
       rot('pecho', poses([[0, 0, 0, 0], [0.08, -22, 0, 0], [0.45, 0, 0, 0]])),
       rot('cabeza', poses([[0, 0, 0, 0], [0.08, -15, 0, 6], [0.45, 0, 0, 0]])),

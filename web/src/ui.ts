@@ -1,4 +1,4 @@
-import { ENEMIES, EnemyId, PASSIVES, PassiveId, RELICS, RelicDef, WEAPONS, WeaponId } from './data';
+import { ENEMIES, EnemyId, GEAR, GearId, PASSIVES, PassiveId, RELICS, RelicDef, WEAPONS, WeaponId } from './data';
 import { NUEVO_ENEMY_ICON } from './enemies-nuevos';
 import { SPECIALS, type SpecialId } from './creator/stats';
 import { describirEspecial } from './progression';
@@ -253,6 +253,7 @@ export type Choice =
   | { kind: 'weapon'; id: WeaponId; level: number }
   | { kind: 'passive'; id: PassiveId; level: number }
   | { kind: 'special'; id: SpecialId; level: number }
+  | { kind: 'gear'; id: GearId; level: number }
   | { kind: 'heal' };
 
 export function showLevelUp(level: number, choices: Choice[], pick: (c: Choice) => void) {
@@ -270,6 +271,14 @@ export function showLevelUp(level: number, choices: Choice[], pick: (c: Choice) 
       tag = `Nv. ${c.level}`;
       blurb = p.blurb;
       color = '#9fb4ff';
+    } else if (c.kind === 'gear') {
+      const g = GEAR[c.id];
+      title = g.name;
+      color = g.color;
+      tag = c.level === 1 ? 'EQUIPO NUEVO' : `EQUIPO · Nv. ${c.level}`;
+      blurb = c.level === 1
+        ? `${g.blurb} <em class="card-control">${g.control}</em>`
+        : g.levels[c.level - 1].mejora;
     } else if (c.kind === 'special') {
       const special = SPECIALS[c.id];
       title = special.name;

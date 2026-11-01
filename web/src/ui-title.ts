@@ -348,6 +348,8 @@ const HOW_TO_HTML = `
   <ul class="ms-howto-list">
     <li><b>WASD / flechas</b><span>Mover al astronauta</span></li>
     <li><b>Espacio</b><span>Saltar (vale anticipado y justo al borde)</span></li>
+    <li><b>Mantener Espacio</b><span>En el aire, vuela con la mochila cohete (si la tienes)</span></li>
+    <li><b>Shift</b><span>Acelerón con las botas de impulso (si las tienes)</span></li>
     <li><b>Ratón · Q / E</b><span>Girar la cámara</span></li>
     <li><b>Herramientas</b><span>Se activan automáticamente</span></li>
     <li><b>Chatarra</b><span>Recógela para subir de nivel</span></li>

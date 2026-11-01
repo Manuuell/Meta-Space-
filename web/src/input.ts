@@ -17,6 +17,11 @@ export function wasPressed(...codes: string[]) {
   return codes.some((c) => pressed.has(c));
 }
 
+/** True mientras la tecla siga pulsada. */
+export function isHeld(...codes: string[]) {
+  return codes.some((c) => held.has(c));
+}
+
 export function endFrame() {
   pressed.clear();
 }

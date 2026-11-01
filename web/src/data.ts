@@ -4,6 +4,7 @@
 export type WeaponId = 'cortador' | 'pulso' | 'dron' | 'interferencia';
 export type EnemyId = 'recolector' | 'baliza' | 'segador' | 'saltador' | 'avispa' | 'caparazon' | 'sembrador';
 export type PassiveId = 'velocidad' | 'iman' | 'blindaje' | 'enfriamiento' | 'area' | 'reparacion';
+export type GearId = 'mochila' | 'tabla' | 'botas';
 
 import { NUEVOS } from './enemies-nuevos';
 import { xpFor as xpForProgresion } from './progression';
@@ -265,8 +266,8 @@ export const RELICS: RelicDef[] = [
 export const RUN = {
   length: 600,            // diez minutos hasta la ventana de lanzamiento
   maxHp: 100,
-  speed: 5.2,
-  pickupRadius: 3.6,
+  speed: 5.2,             // velocidad de referencia de los héroes (×MOVE.speedMul en juego)
+  pickupRadius: 5.2,
   arena: 90,              // medio lado del mapa jugable
   // Experiencia para pasar del nivel n al n+1 (curva de progresión:
   // arranque menos regalado, tramo tardío más barato; mismo total).
@@ -275,11 +276,79 @@ export const RUN = {
 
 // Físicas del astronauta: todo el ajuste del movimiento vive aquí.
 export const MOVE = {
-  groundRate: 10,    // 1/s: convergencia a la velocidad deseada en suelo
-  airRate: 2.4,      // 1/s: control en el aire (menor = con inercia lunar)
+  speedMul: 1.4,     // los héroes van a 5,9–9,1 m/s (base 7,3): Meta es grande
+  groundRate: 15,    // 1/s: convergencia a la velocidad deseada en suelo
+  airRate: 4,        // 1/s: control en el aire (menor = con inercia lunar)
   gravity: 26,       // m/s²
   jumpSpeed: 9.4,    // m/s (~1.7 m de salto)
   maxFall: 24,       // m/s de caída máxima
+  boardRate: 6,      // 1/s: en la aerotabla se derrapa un poco
+  jetRate: 6,        // 1/s: control con la mochila cohete encendida
+  jetAccel: 44,      // m/s² de empuje (contra 26 de gravedad)
+  jetMaxUp: 7,       // m/s de subida máxima
+  jetCeiling: 9,     // m sobre el suelo: más arriba ya no sube
+  dashDist: 7,       // m que recorre el acelerón de las botas
+  dashTime: 0.2,     // s que dura
   coyote: 0.12,      // s de perdón al salir de una loma
   buffer: 0.15,      // s de salto anticipado antes de tocar suelo
+};
+
+// ---------------------------------------------------------------- Equipo
+
+/** Números de un nivel de equipo de movilidad. */
+export interface GearLevel {
+  /** Mochila: segundos de combustible. Botas: recarga en s. Tabla: multiplicador de velocidad. */
+  valor: number;
+  mejora: string;
+}
+
+export interface GearDef {
+  id: GearId;
+  name: string;
+  color: string;
+  blurb: string;
+  /** Cómo se usa, para la carta y el aviso al equiparlo. */
+  control: string;
+  levels: GearLevel[];
+}
+
+// Equipo de movilidad: sale en las cartas de subida de nivel como una mejora
+// más. Cambia cómo te mueves, no cuánto daño haces.
+export const GEAR: Record<GearId, GearDef> = {
+  mochila: {
+    id: 'mochila',
+    name: 'Mochila cohete',
+    color: '#ff8a3d',
+    blurb: 'Dos depósitos de plasma a los lados de ADA. Vuela por encima de la horda: arriba no te tocan.',
+    control: 'Mantén Espacio en el aire',
+    levels: [
+      { valor: 1.1, mejora: 'Depósitos básicos: 1,1 s de vuelo.' },
+      { valor: 1.8, mejora: 'Depósitos ampliados: 1,8 s de vuelo y recarga más rápida.' },
+      { valor: 2.6, mejora: 'Toberas dobles: 2,6 s de vuelo y vas más rápido en el aire.' },
+    ],
+  },
+  tabla: {
+    id: 'tabla',
+    name: 'Aerotabla',
+    color: '#5ee0ff',
+    blurb: 'Una tabla de chatarra que flota sobre plasma. Te subes sola al correr y vuela sobre el hielo.',
+    control: 'Automática al moverte',
+    levels: [
+      { valor: 1.3, mejora: 'Tabla flotante: +30 % de velocidad al deslizarte.' },
+      { valor: 1.45, mejora: 'Almohadillas finas: +45 % de velocidad.' },
+      { valor: 1.6, mejora: 'Aerotabla de carreras: +60 % y aún más rápida sobre lagos helados.' },
+    ],
+  },
+  botas: {
+    id: 'botas',
+    name: 'Botas de impulso',
+    color: '#ffd25a',
+    blurb: 'Propulsores en los talones: un acelerón que te saca de cualquier cerco.',
+    control: 'Mayúsculas (Shift)',
+    levels: [
+      { valor: 2.4, mejora: 'Acelerón de 7 m cada 2,4 s.' },
+      { valor: 1.7, mejora: 'Recarga de 1,7 s.' },
+      { valor: 1.2, mejora: 'Recarga de 1,2 s y eres intocable durante el acelerón.' },
+    ],
+  },
 };

@@ -59,13 +59,16 @@ export class Pickups {
       const d = Math.hypot(dx, dz);
       if (collectAll || d < radius) this.pulled[i] = 1;
       if (this.pulled[i]) {
-        this.speed[i] = Math.min(this.speed[i] + dt * 40, 30);
+        // Arranca ya con impulso y acelera fuerte: la chatarra llega aunque
+        // vayas corriendo (o en aerotabla) en dirección contraria.
+        this.speed[i] = Math.max(this.speed[i], 9);
+        this.speed[i] = Math.min(this.speed[i] + dt * 110, 60);
         const step = Math.min(this.speed[i] * dt, d);
         this.x[i] += (dx / (d || 1)) * step;
         this.z[i] += (dz / (d || 1)) * step;
         this.ground[i] = this.world.heightAt(this.x[i], this.z[i]);
       }
-      if (d < 0.6) {
+      if (d < 1.1) {
         collected += this.value[i];
         const last = --this.count;
         this.x[i] = this.x[last];

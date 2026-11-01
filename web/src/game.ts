@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { ENEMIES, EnemyId, MOVE, PassiveId, RELICS, RUN, WEAPONS, WeaponId } from './data';
+import { ENEMIES, EnemyId, GEAR, GearId, MOVE, PassiveId, RELICS, RUN, WEAPONS, WeaponId } from './data';
 import { World } from './world';
 import { Enemies } from './enemies';
 import { Weapons, Modifiers } from './weapons';
 import { Pickups, RelicDrop } from './pickups';
 import { astronautFrames, blobShadowTexture } from './sprites';
-import { consumeLook, endFrame, isLocked, lockPointer, moveVector, unlockPointer, wasPressed } from './input';
+import { consumeLook, endFrame, isHeld, isLocked, lockPointer, moveVector, unlockPointer, wasPressed } from './input';
 import { sfx, unlockAudio } from './audio';
 import { loadSave, writeSave } from './save';
 import * as ui from './ui';
@@ -34,6 +34,7 @@ import {
 import { Radio, type EventoNpc, type Hablante, type RunBrief } from './npcs';
 import { Camara } from './camara';
 import { crearAstronauta } from './modelos/astronauta';
+import { crearAerotabla, crearBotasImpulso, crearMochilaCohete } from './modelos/equipo';
 import {
   CUPO, NubeEsporas, angulosDePatron, criasAlMorir, oleadaEspecial, quiereDisparar, tasaEspecial,
 } from './enemies-nuevos';
@@ -151,6 +152,28 @@ export class Game {
   private baseFov = 60;
   private jumpBtn: HTMLButtonElement | null = null;
   private touchJump = false;
+  private touchJumpHeld = false;
+  private dashBtn: HTMLButtonElement | null = null;
+  private touchDash = false;
+  // Equipo de movilidad (cartas de equipo): mochila cohete, aerotabla y botas.
+  private gear = new Map<GearId, number>();
+  private combustible = 0;
+  private propulsando = false;
+  private dashCd = 0;
+  private dashTime = 0;
+  private dashX = 0;
+  private dashZ = 0;
+  private montado = false;
+  private paradoTabla = 0;
+  private mochila = crearMochilaCohete();
+  private botas = crearBotasImpulso();
+  private tabla = crearAerotabla();
+  private mezcladorEquipo = new THREE.AnimationMixer(this.astronauta.raiz);
+  private mezcladorTabla = new THREE.AnimationMixer(this.tabla.raiz);
+  private chorrosMochila: THREE.Object3D[] = [];
+  private chorrosBotas: THREE.Object3D[] = [];
+  private hudEquipo: HTMLDivElement | null = null;
+  private barrasEquipo = new Map<GearId, HTMLElement>();
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -193,6 +216,7 @@ export class Game {
       this.acciones.set(a.clip.name, accion);
     }
     this.animarAstronauta('Reposo');
+    this.montarEquipo();
 
     this.shadow = new THREE.Mesh(
       new THREE.PlaneGeometry(1.8, 1.8).rotateX(-Math.PI / 2),
@@ -216,9 +240,29 @@ export class Game {
         e.preventDefault();
         unlockAudio();
         this.touchJump = true;
+        this.touchJumpHeld = true;
       });
+      // Mantener el botón sostiene la mochila cohete.
+      const soltar = () => (this.touchJumpHeld = false);
+      b.addEventListener('pointerup', soltar);
+      b.addEventListener('pointercancel', soltar);
+      b.addEventListener('pointerleave', soltar);
       document.body.appendChild(b);
       this.jumpBtn = b;
+
+      // Acelerón de las botas de impulso: solo aparece al tenerlas.
+      const d = document.createElement('button');
+      d.textContent = '»';
+      d.setAttribute('aria-label', 'Acelerón');
+      d.style.cssText = 'position:fixed;right:18px;bottom:196px;width:56px;height:56px;border-radius:50%;'
+        + 'border:2px solid rgba(255,210,90,.8);background:rgba(20,26,44,.72);color:#ffd25a;font-size:28px;'
+        + 'z-index:30;display:none;touch-action:none;';
+      d.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        this.touchDash = true;
+      });
+      document.body.appendChild(d);
+      this.dashBtn = d;
     }
 
     // Cualquier gesto desbloquea el audio (los navegadores lo exigen).
@@ -239,6 +283,71 @@ export class Game {
 
     this.toTitle();
     this.renderer.setAnimationLoop(() => this.frame());
+  }
+
+  /**
+   * Cuelga el equipo del astronauta: la mochila cohete del pecho y las botas
+   * de las piernas, para que se muevan con sus huesos. La aerotabla va suelta
+   * bajo los pies. Todo empieza oculto hasta que sale su carta.
+   */
+  private montarEquipo() {
+    const r = this.astronauta.raiz;
+    const m = this.mochila.raiz.getObjectByName('mochila_cohete')!;
+    m.position.set(0, 0, 0);
+    r.getObjectByName('pecho')!.add(m);
+    for (const lado of ['i', 'd']) {
+      const b = this.botas.raiz.getObjectByName(`bota_${lado}`)!;
+      b.position.set(0, 0, 0);
+      r.getObjectByName(`pierna_${lado}`)!.add(b);
+      this.chorrosBotas.push(b.getObjectByName(`chorro_bota_${lado}`)!);
+      this.chorrosMochila.push(m.getObjectByName(`chorro_mochila_${lado}`)!);
+    }
+    for (const c of [...this.chorrosBotas, ...this.chorrosMochila]) c.scale.setScalar(0.001);
+    // Las llamas parpadean siempre; el juego solo decide su tamaño.
+    for (const a of [...this.mochila.animaciones, ...this.botas.animaciones]) this.mezcladorEquipo.clipAction(a.clip).play();
+    this.mezcladorTabla.clipAction(this.tabla.animaciones[0].clip).play();
+    this.scene.add(this.tabla.raiz);
+    this.vestirEquipo();
+  }
+
+  /** Muestra las piezas de equipo que se tienen y repinta su HUD. */
+  private vestirEquipo() {
+    const r = this.astronauta.raiz;
+    r.getObjectByName('mochila_cohete')!.visible = this.gear.has('mochila');
+    for (const lado of ['i', 'd']) r.getObjectByName(`bota_${lado}`)!.visible = this.gear.has('botas');
+    this.tabla.raiz.visible = this.montado;
+    const jugando = this.state === 'playing';
+    if (this.dashBtn) this.dashBtn.style.display = jugando && this.gear.has('botas') ? 'block' : 'none';
+
+    if (!this.hudEquipo) {
+      const d = document.createElement('div');
+      d.style.cssText = 'position:fixed;left:100px;bottom:98px;gap:6px;z-index:30;pointer-events:none;'
+        + 'font:700 11px Rubik,system-ui,sans-serif;letter-spacing:.02em;';
+      document.body.appendChild(d);
+      this.hudEquipo = d;
+    }
+    this.hudEquipo.innerHTML = '';
+    this.barrasEquipo.clear();
+    this.hudEquipo.style.display = jugando && this.gear.size ? 'flex' : 'none';
+    for (const [id, nv] of this.gear) {
+      const g = GEAR[id];
+      const chip = document.createElement('div');
+      chip.style.cssText = `padding:4px 8px 6px;border-radius:8px;background:rgba(20,26,44,.8);border:1.5px solid ${g.color};color:#fff;min-width:92px;`;
+      chip.textContent = `${g.name} · ${nv}`;
+      const pista = document.createElement('div');
+      pista.style.cssText = 'margin-top:4px;height:4px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden;';
+      const barra = document.createElement('div');
+      barra.style.cssText = `height:100%;width:100%;background:${g.color};`;
+      pista.appendChild(barra);
+      chip.appendChild(pista);
+      this.hudEquipo.appendChild(chip);
+      this.barrasEquipo.set(id, barra);
+    }
+  }
+
+  private barraEquipo(id: GearId, fraccion: number) {
+    const b = this.barrasEquipo.get(id);
+    if (b) b.style.width = `${Math.round(Math.max(0, Math.min(1, fraccion)) * 100)}%`;
   }
 
   /** Cambia de animación con un fundido corto; las de una vez empiezan de cero. */
@@ -279,6 +388,8 @@ export class Game {
     ui.hideHud();
     this.camara?.iniciarTransicion('titulo');
     if (this.jumpBtn) this.jumpBtn.style.display = 'none';
+    if (this.hudEquipo) this.hudEquipo.style.display = 'none';
+    if (this.dashBtn) this.dashBtn.style.display = 'none';
     if (this.micBtn) this.micBtn.style.display = 'none';
     this.resetRun();
     let started = false;
@@ -642,6 +753,13 @@ export class Game {
     this.facing = 1;
     this.rumbo = Math.PI;
     this.golpeHasta = this.golpeListo = 0;
+    this.gear.clear();
+    this.combustible = 0;
+    this.propulsando = false;
+    this.dashCd = this.dashTime = 0;
+    this.montado = false;
+    this.paradoTabla = 0;
+    this.vestirEquipo();
     this.animarAstronauta('Reposo', 0);
     this.astronauta.raiz.position.copy(this.player.position);
     this.astronauta.raiz.rotation.y = this.rumbo;
@@ -654,6 +772,7 @@ export class Game {
     this.weapons.upgrade('cortador');
     this.state = 'playing';
     ui.showHud();
+    this.vestirEquipo();
     if (this.jumpBtn) this.jumpBtn.style.display = 'block';
     if (this.micBtn) this.micBtn.style.display = 'block';
     lockPointer(this.canvas);
@@ -731,7 +850,11 @@ export class Game {
       this.world.follow(this.player.position);
     }
 
-    if (this.state !== 'paused' && this.state !== 'levelup') this.mezclador.update(dt);
+    if (this.state !== 'paused' && this.state !== 'levelup') {
+      this.mezclador.update(dt);
+      this.mezcladorEquipo.update(dt);
+      this.mezcladorTabla.update(dt);
+    }
     endFrame();
     this.renderer.render(this.scene, this.camera);
   }
@@ -788,7 +911,7 @@ export class Game {
     this.noDamageTime += dt;
     this.updateHeroSpecial(dt, px, pz);
     const contact = this.enemies.update(dt, px, pz, PLAYER_RADIUS);
-    this.receiveDamage(contact);
+    this.receiveDamage(contact * this.factorContacto());
     this.hp = Math.min(this.maxHp, this.hp + this.passive('reparacion') * 0.7 * dt);
     if (!this.heridoAvisado && this.hp < this.maxHp * 0.7) {
       this.heridoAvisado = true;
@@ -813,7 +936,7 @@ export class Game {
       }
     }
     const danoEsporas = this.esporas.update(dt, px, pz, PLAYER_RADIUS);
-    this.receiveDamage(danoEsporas);
+    this.receiveDamage(danoEsporas * (this.intocable() ? 0 : 1));
 
     this.weapons.update(dt, px, pz, this.mods);
     this.enemies.sweep();
@@ -860,21 +983,64 @@ export class Game {
     const overdrive = this.heroSpecial === 'sobremarcha' && this.noDamageTime >= overdriveDelay
       ? 1.15 + (this.heroSpecialLevel - 1) * 0.05
       : 1;
-    const maxSpeed = this.heroSpeed * (1 + 0.1 * this.passive('velocidad')) * overdrive;
+    const p = this.player.position;
+    const tablaNv = this.gear.get('tabla') ?? 0;
+    const mochilaNv = this.gear.get('mochila') ?? 0;
+    const botasNv = this.gear.get('botas') ?? 0;
+
+    // Aerotabla: te subes sola al moverte y te bajas al quedarte quieto un
+    // momento en el suelo.
+    const pidiendo = Math.hypot(move.x, move.y) > 0.2;
+    if (tablaNv > 0) {
+      this.paradoTabla = pidiendo ? 0 : this.paradoTabla + dt;
+      if (pidiendo && !this.montado && this.grounded) this.montado = true;
+      else if (this.montado && this.grounded && this.paradoTabla > 0.35) this.montado = false;
+    }
+    let equipo = 1;
+    if (this.montado) {
+      equipo *= GEAR.tabla.levels[tablaNv - 1].valor;
+      if (tablaNv >= 3 && this.world.onIce(p.x, p.z)) equipo *= 1.15;
+    }
+    if (this.propulsando && mochilaNv >= 3) equipo *= 1.25;
+
+    const maxSpeed = this.heroSpeed * MOVE.speedMul * (1 + 0.1 * this.passive('velocidad')) * overdrive * equipo;
     // W avanza hacia donde mira la cámara; A y D van de lado.
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
     const wishX = rx * move.x - fx * move.y;
     const wishZ = rz * move.x - fz * move.y;
 
-    // Velocidad con inercia: converge a la deseada (rápido en suelo,
-    // flotante en el aire) en vez de cambiar de golpe.
-    const rate = this.grounded ? MOVE.groundRate : MOVE.airRate;
-    const k = 1 - Math.exp(-dt * rate);
-    this.velX += (wishX * maxSpeed - this.velX) * k;
-    this.velZ += (wishZ * maxSpeed - this.velZ) * k;
+    // Botas de impulso: acelerón en la dirección pedida (o hacia donde mira).
+    this.dashCd = Math.max(0, this.dashCd - dt);
+    if (botasNv > 0 && this.dashCd <= 0 && (wasPressed('ShiftLeft', 'ShiftRight') || this.touchDash)) {
+      let dx = wishX, dz = wishZ;
+      const len = Math.hypot(dx, dz);
+      if (len < 0.1) { dx = Math.sin(this.rumbo); dz = Math.cos(this.rumbo); } else { dx /= len; dz /= len; }
+      this.dashX = dx;
+      this.dashZ = dz;
+      this.dashTime = MOVE.dashTime;
+      this.dashCd = GEAR.botas.levels[botasNv - 1].valor;
+      this.camara.sacudidaPulso();
+      sfx('jump');
+    }
+    this.touchDash = false;
 
-    const p = this.player.position;
+    if (this.dashTime > 0) {
+      this.dashTime -= dt;
+      const v = this.dashTime > 0 ? MOVE.dashDist / MOVE.dashTime : Math.max(maxSpeed, Math.hypot(this.velX, this.velZ) * 0.5);
+      this.velX = this.dashX * v;
+      this.velZ = this.dashZ * v;
+    } else {
+      // Velocidad con inercia: converge a la deseada (rápido en suelo,
+      // flotante en el aire, deslizante en la tabla).
+      const rate = this.propulsando ? MOVE.jetRate
+        : !this.grounded ? MOVE.airRate
+        : this.montado ? MOVE.boardRate : MOVE.groundRate;
+      const k = 1 - Math.exp(-dt * rate);
+      this.velX += (wishX * maxSpeed - this.velX) * k;
+      this.velZ += (wishZ * maxSpeed - this.velZ) * k;
+    }
+
     const r = this.world.resolve(p.x + this.velX * dt, p.z + this.velZ * dt, PLAYER_RADIUS, this.tmp);
     p.x = r.x;
     p.z = r.z;
@@ -896,6 +1062,27 @@ export class Game {
       this.jumpBuffer = 0;
       sfx('jump');
     }
+    // Mochila cohete: mantener el salto en el aire empuja hacia arriba
+    // mientras quede combustible; se rellena al pisar suelo.
+    this.propulsando = false;
+    if (mochilaNv > 0) {
+      const max = GEAR.mochila.levels[mochilaNv - 1].valor;
+      const sosteniendo = isHeld('Space') || this.touchJumpHeld;
+      if (!this.grounded && sosteniendo && this.combustible > 0) {
+        this.propulsando = true;
+        // Con la mochila encendida se deja la tabla; al aterrizar vuelve sola.
+        this.montado = false;
+        this.combustible -= dt;
+        this.velY = Math.min(this.velY + MOVE.jetAccel * dt, MOVE.jetMaxUp);
+        if (p.y - ground > MOVE.jetCeiling) this.velY = Math.min(this.velY, MOVE.gravity * dt);
+      } else if (this.grounded) {
+        this.combustible = Math.min(max, this.combustible + dt * (mochilaNv >= 2 ? 1.4 : 0.9));
+      }
+      this.barraEquipo('mochila', this.combustible / max);
+    }
+    if (botasNv > 0) this.barraEquipo('botas', 1 - this.dashCd / GEAR.botas.levels[botasNv - 1].valor);
+    if (tablaNv > 0) this.barraEquipo('tabla', this.montado ? 1 : 0.25);
+
     this.velY = Math.max(-MOVE.maxFall, this.velY - MOVE.gravity * dt);
     p.y += this.velY * dt;
     if (p.y <= ground) {
@@ -923,6 +1110,9 @@ export class Game {
         this.golpeListo = this.time + 1.2;
       }
       const clip = this.time < this.golpeHasta ? 'Golpe recibido'
+        : this.dashTime > 0 ? 'Impulso'
+        : this.propulsando ? 'Volar'
+        : this.montado ? 'Surfear'
         : !this.grounded ? 'Saltar'
         : hSpeed > 3.6 ? 'Correr'
         : hSpeed > 0.4 ? 'Caminar' : 'Reposo';
@@ -955,6 +1145,20 @@ export class Game {
     const cuerpo3d = this.astronauta.raiz;
     cuerpo3d.position.copy(p);
     cuerpo3d.rotation.y = this.rumbo;
+    // Equipo a la vista: la tabla bajo los pies (el astronauta sube encima)
+    // y las llamas crecen con el empuje.
+    this.tabla.raiz.visible = this.montado && con3d;
+    if (this.montado) {
+      cuerpo3d.position.y += 0.4;
+      this.tabla.raiz.position.copy(p);
+      this.tabla.raiz.rotation.set(0, this.rumbo, 0);
+      // Se inclina hacia dentro en las curvas.
+      this.tabla.raiz.rotateZ(lean * 2.5);
+    }
+    const llamaMochila = this.propulsando ? 1 : 0.001;
+    for (const c of this.chorrosMochila) c.scale.setScalar(THREE.MathUtils.lerp(c.scale.x, llamaMochila, Math.min(1, dt * 18)));
+    const llamaBotas = this.dashTime > 0 ? 1.2 : 0.001;
+    for (const c of this.chorrosBotas) c.scale.setScalar(THREE.MathUtils.lerp(c.scale.x, llamaBotas, Math.min(1, dt * 20)));
     cuerpo3d.scale.set(0.95 * (1 + 0.18 * sq), 0.95 * (1 - 0.22 * sq), 0.95 * (1 + 0.18 * sq));
 
     this.hurtFlash -= dt;
@@ -1163,6 +1367,7 @@ export class Game {
     ui.showLevelUp(this.level, this.rollChoices(), (choice) => {
       this.registrarEleccion(choice);
       if (choice.kind === 'weapon') this.weapons.upgrade(choice.id);
+      else if (choice.kind === 'gear') this.equipar(choice.id, choice.level);
       else if (choice.kind === 'passive') {
         this.passives.set(choice.id, choice.level);
         if (choice.id === 'blindaje') {
@@ -1223,10 +1428,55 @@ export class Game {
       rechazos: new Map(this.rechazos),
     };
     const deps: DepsTirada = { tabla: TABLA_ARMAS };
-    const picks = tirarCartas(estado, deps);
-    this.ultimaOferta = picks.map((c) => claveDe(c));
+    const picks: ui.Choice[] = tirarCartas(estado, deps);
+    // El equipo de movilidad entra como una carta más: seguro hasta tener la
+    // primera pieza (desde el nivel 3) y luego de vez en cuando.
+    const equipo = this.cartaEquipo();
+    if (equipo) {
+      if (!picks.length) picks.push(equipo);
+      else {
+        let i = picks.length - 1;
+        if (picks[i].kind === 'heal' && i > 0) i--;
+        picks[i] = equipo;
+      }
+    }
+    this.ultimaOferta = picks.map((c) => (c.kind === 'heal' ? 'heal' : c.kind === 'gear' ? `gear:${c.id}:${c.level}` : claveDe(c)));
     if (!picks.length) return [{ kind: 'heal' }];
     return picks;
+  }
+
+  private cartaEquipo(): ui.Choice | null {
+    if (this.level < 3) return null;
+    const libres = (Object.keys(GEAR) as GearId[]).filter((id) => (this.gear.get(id) ?? 0) < GEAR[id].levels.length);
+    if (!libres.length) return null;
+    const garantizada = this.gear.size === 0;
+    if (!garantizada && Math.random() > 0.35) return null;
+    // Con poco equipo se prefieren piezas nuevas; luego, subir las que ya hay.
+    const nuevas = libres.filter((id) => !this.gear.has(id));
+    const lista = nuevas.length && this.gear.size < 2 ? nuevas : libres;
+    const id = lista[Math.floor(Math.random() * lista.length)];
+    return { kind: 'gear', id, level: (this.gear.get(id) ?? 0) + 1 };
+  }
+
+  private equipar(id: GearId, nivel: number) {
+    this.gear.set(id, nivel);
+    if (id === 'mochila') this.combustible = GEAR.mochila.levels[nivel - 1].valor;
+    if (id === 'botas') this.dashCd = 0;
+    const g = GEAR[id];
+    ui.toast('ADA', nivel === 1 ? `${g.name} lista. ${g.control}.` : `${g.name} mejorada: ${g.levels[nivel - 1].mejora}`, 'info', 5);
+    this.vestirEquipo();
+  }
+
+  /** Durante el acelerón de las botas a nivel 3 no te toca nada. */
+  private intocable() {
+    return this.dashTime > 0 && (this.gear.get('botas') ?? 0) >= 3;
+  }
+
+  /** Daño de contacto: volando con la mochila por encima de la horda no llega. */
+  private factorContacto() {
+    if (this.intocable()) return 0;
+    const p = this.player.position;
+    return p.y - this.world.heightAt(p.x, p.z) > 2.2 ? 0 : 1;
   }
 
   // --------------------------------------------------- Final
@@ -1239,6 +1489,10 @@ export class Game {
     this.camara?.iniciarTransicion('resultado');
     if (this.jumpBtn) this.jumpBtn.style.display = 'none';
     if (this.micBtn) this.micBtn.style.display = 'none';
+    if (this.dashBtn) this.dashBtn.style.display = 'none';
+    if (this.hudEquipo) this.hudEquipo.style.display = 'none';
+    this.montado = false;
+    this.tabla.raiz.visible = false;
     sfx(victory ? 'relic' : 'death');
     this.animarAstronauta(victory ? 'Victoria' : 'Derrota', 0.2);
     // Cierre de la misión con la voz que corresponda (llega tras el informe).

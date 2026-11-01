@@ -38,7 +38,7 @@ export type ExpresionPerro = 'normal' | 'feliz' | 'sorpresa' | 'enfado' | 'trist
 /**
  * Los ojos de Bruno: tres juegos dentro del nodo `ojo_<lado>` (el que escala
  * el parpadeo), y solo se ve uno a la vez.
- *   · `mirada_<lado>`: óvalos negros con un brillo (el brillo va al mismo lado
+ *   · `mirada_<lado>`: óvalos negros con un solo brillo (va al mismo lado
  *     en los dos ojos: en espejo parecía bizco);
  *   · `feliz_<lado>`: arcos «^ ^»;
  *   · `cerrado_<lado>`: una raya (dormido).
@@ -48,7 +48,6 @@ function ojoPerro(ojo: THREE.Object3D, lado: string) {
   const mirada = nodo(`mirada_${lado}`, ojo);
   pieza(mirada, esfera(0.036, 0.82, 1.35, 0.55), brillo('#120c0a'), 0, 0, 0, { contorno: false });
   pieza(mirada, esfera(0.011), brillo('#ffffff'), 0.009, 0.022, 0.018, sinLinea);
-  pieza(mirada, esfera(0.005), brillo('#ffffff'), -0.008, -0.02, 0.019, sinLinea);
   const feliz = nodo(`feliz_${lado}`, ojo);
   pieza(feliz, new THREE.TorusGeometry(0.034, 0.011, 6, 16, Math.PI), brillo('#120c0a'), 0, -0.012, 0.012, { contorno: false });
   feliz.visible = false;

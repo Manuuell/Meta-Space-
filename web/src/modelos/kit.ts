@@ -70,23 +70,28 @@ export function brillo(color: string): THREE.MeshBasicMaterial {
   return m;
 }
 
-let materialContorno: THREE.MeshBasicMaterial | null = null;
+const contornos = new Map<number, THREE.MeshBasicMaterial>();
 
 /**
  * Contorno por casco invertido: la misma geometría, empujada a lo largo de
  * sus normales y pintada solo por detrás. Grosor fijo en unidades del modelo,
- * así todas las piezas tienen la misma línea, como en un dibujo.
+ * así todas las piezas tienen la misma línea, como en un dibujo. Los modelos
+ * pequeños (el perro) piden uno más fino para que la línea no se los coma.
  */
-export function contorno(): THREE.MeshBasicMaterial {
-  if (materialContorno) return materialContorno;
-  materialContorno = new THREE.MeshBasicMaterial({ color: PALETA.contorno, side: THREE.BackSide });
-  materialContorno.onBeforeCompile = (shader) => {
+export function contorno(grosor = 0.032): THREE.MeshBasicMaterial {
+  let m = contornos.get(grosor);
+  if (m) return m;
+  m = new THREE.MeshBasicMaterial({ color: PALETA.contorno, side: THREE.BackSide });
+  m.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader.replace(
       '#include <begin_vertex>',
-      '#include <begin_vertex>\ntransformed += normal * 0.032;',
+      `#include <begin_vertex>\ntransformed += normal * ${grosor.toFixed(4)};`,
     );
   };
-  return materialContorno;
+  // Cada grosor compila su propio programa.
+  m.customProgramCacheKey = () => `contorno-${grosor}`;
+  contornos.set(grosor, m);
+  return m;
 }
 
 // -------------------------------------------------------------- geometrías

@@ -22,6 +22,8 @@ export const ALTURA_ADA: Record<string, number> = {
   'ada-noa': 1.5,
   'ada-medusa': 2.3,
   'ada-orbe': 2.0,
+  perro: 0,
+  'perro-paseo': 0,
 };
 
 /** Núcleo de ADA: la misma luz cyan que lleva el astronauta en la mochila. */
@@ -132,6 +134,27 @@ export function crearAdaZorro(): Modelo {
       esc('nucleo', latido(1, 4, 0.25)),
       rot('cola', ciclo(1, (f) => [-40, sen(f, 2) * 30, 0])),
     ], 'reaccion', 'Ladea la cabeza mientras habla; el núcleo late con la voz.'),
+
+    animacion('Atacar', 0.45, [
+      mov(raiz, 'cuerpo', poses([[0, 0, 0, 0], [0.1, 0, -0.04, -0.06], [0.2, 0, 0.05, 0.2], [0.45, 0, 0, 0]])),
+      rot('cabeza', poses([[0, 0, 0, 0], [0.1, -15, 0, 0], [0.2, 20, 0, 0], [0.45, 0, 0, 0]])),
+      rot('pata_di', poses([[0, 0, 0, 0], [0.2, -60, 0, 0], [0.45, 0, 0, 0]])),
+      rot('pata_dd', poses([[0, 0, 0, 0], [0.2, -60, 0, 0], [0.45, 0, 0, 0]])),
+      rot('pata_ti', poses([[0, 0, 0, 0], [0.2, 45, 0, 0], [0.45, 0, 0, 0]])),
+      rot('pata_td', poses([[0, 0, 0, 0], [0.2, 45, 0, 0], [0.45, 0, 0, 0]])),
+      rot('oreja_i', poses([[0, 0, 0, -14], [0.2, -40, 0, -10], [0.45, 0, 0, -14]])),
+      rot('oreja_d', poses([[0, 0, 0, 14], [0.2, -40, 0, 10], [0.45, 0, 0, 14]])),
+    ], 'ataque', 'Se lanza hacia delante y muerde.', false),
+
+    animacion('Habilidad', 1.4, [
+      // Aullido helado: hocico al cielo y el núcleo a tope.
+      rot('cuerpo', poses([[0, 0, 0, 0], [0.25, -18, 0, 0], [1.1, -18, 0, 0], [1.4, 0, 0, 0]])),
+      rot('cabeza', poses([[0, 0, 0, 0], [0.25, -45, 0, 0], [1.1, -50, 0, 0], [1.4, 0, 0, 0]])),
+      rot('oreja_i', poses([[0, 0, 0, -14], [0.25, -45, 0, -14], [1.1, -45, 0, -14], [1.4, 0, 0, -14]])),
+      rot('oreja_d', poses([[0, 0, 0, 14], [0.25, -45, 0, 14], [1.1, -45, 0, 14], [1.4, 0, 0, 14]])),
+      esc('nucleo', poses([[0, 1, 1, 1], [0.25, 2, 2, 2], [1.1, 1.8, 1.8, 1.8], [1.4, 1, 1, 1]])),
+      esc('luz_cola', poses([[0, 1, 1, 1], [0.25, 2.4, 2.4, 2.4], [1.1, 2, 2, 2], [1.4, 1, 1, 1]])),
+    ], 'ataque', 'Aúlla al cielo: una onda de escarcha frena a la horda.', false),
   ];
 
   return { id: 'ada-zorro', nombre: 'ADA · Zorro de escarcha', rol: 'Compañera · camina a tu lado', raiz, animaciones };
@@ -249,6 +272,20 @@ export function crearAdaNoa(): Modelo {
       rot('hombro_i', ciclo(1.2, () => [-30, 0, 12])),
       rot('codo_i', ciclo(1.2, () => [-60, 0, 0])),
     ], 'reaccion', 'Gesticula con la mano libre mientras habla.'),
+
+    animacion('Atacar', 0.5, [
+      rot('hombro_d', poses([[0, 0, 0, -10], [0.12, -88, 0, -8], [0.38, -88, 0, -8], [0.5, 0, 0, -10]])),
+      rot('codo_d', poses([[0, 0, 0, 0], [0.12, 0, 0, 0], [0.5, 0, 0, 0]])),
+      rot('torso', poses([[0, 0, 0, 0], [0.12, 0, -18, 0], [0.38, 0, -18, 0], [0.5, 0, 0, 0]])),
+    ], 'ataque', 'Señala al objetivo y le lanza un rayo de datos.', false),
+
+    animacion('Habilidad', 1.2, [
+      rot('hombro_i', poses([[0, -30, 0, 12], [0.3, 0, 0, 150], [0.9, 0, 0, 150], [1.2, -30, 0, 12]])),
+      rot('codo_i', poses([[0, -60, 0, 0], [0.3, 0, 0, 0], [0.9, 0, 0, 0], [1.2, -60, 0, 0]])),
+      rot('hombro_d', poses([[0, 0, 0, -10], [0.3, 0, 0, -150], [0.9, 0, 0, -150], [1.2, 0, 0, -10]])),
+      rot('cabeza', poses([[0, 0, 0, 0], [0.3, -20, 0, 0], [0.9, -20, 0, 0], [1.2, 0, 0, 0]])),
+      esc('figura', poses([[0, 1, 1, 1], [0.3, 1.12, 1.12, 1.12], [0.9, 1.12, 1.12, 1.12], [1.2, 1, 1, 1]])),
+    ], 'ataque', 'Alza los brazos y reconstruye el traje: parche de Noa.', false),
   ];
 
   return { id: 'ada-noa', nombre: 'ADA · Holograma de Noa', rol: 'Compañera · proyección flotante', raiz, animaciones };
@@ -352,6 +389,18 @@ export function crearAdaMedusa(): Modelo {
       rot('campana', ciclo(0.9, (f) => [0, 0, sen(f) * 8])),
       ...ondas(0.9, 8),
     ], 'reaccion', 'El núcleo late al ritmo de la voz y la campana se mece.'),
+
+    animacion('Atacar', 0.6, [
+      ...Array.from({ length: 6 }, (_, k) => rot(`tentaculo_${k}`, poses([[0, 0, 0, 0], [0.15, -70, 0, 0], [0.35, -40, 0, 0], [0.6, 0, 0, 0]]))),
+      esc('nucleo', poses([[0, 1, 1, 1], [0.15, 1.6, 1.6, 1.6], [0.6, 1, 1, 1]])),
+      rot('cuerpo', poses([[0, 0, 0, 0], [0.15, 18, 0, 0], [0.6, 0, 0, 0]])),
+    ], 'ataque', 'Latiga con los tentáculos y suelta una descarga en cadena.', false),
+
+    animacion('Habilidad', 1.2, [
+      esc('campana', poses([[0, 1, 1, 1], [0.2, 1.4, 0.65, 1.4], [0.5, 0.85, 1.2, 0.85], [0.8, 1.08, 0.94, 1.08], [1.2, 1, 1, 1]])),
+      esc('nucleo', poses([[0, 1, 1, 1], [0.2, 2.4, 2.4, 2.4], [0.9, 1.6, 1.6, 1.6], [1.2, 1, 1, 1]])),
+      mov(raiz, 'cuerpo', poses([[0, 0, 0, 0], [0.2, 0, -0.15, 0], [0.5, 0, 0.2, 0], [1.2, 0, 0, 0]])),
+    ], 'ataque', 'Un latido enorme: la marea atrae toda la chatarra.', false),
   ];
 
   return { id: 'ada-medusa', nombre: 'ADA · Medusa de plasma', rol: 'Compañera · flota a tu lado', raiz, animaciones };
@@ -432,6 +481,22 @@ export function crearAdaOrbe(): Modelo {
       esc('pupila', ciclo(0.8, (f) => [1, 1 + Math.abs(sen(f, 3)) * 0.8, 1])),
       rot('carcasa', ciclo(0.8, (f) => [sen(f, 2) * 6, 0, sen(f) * 5])),
     ], 'reaccion', 'La pupila se abre y cierra con la voz; el núcleo late.'),
+
+    animacion('Atacar', 0.5, [
+      ...giro(0.5, [[70, 0, 0], [20, 0, 60], [-40, 0, -30]], [1, -1, 1]),
+      esc('anillo_1', poses([[0, 1, 1, 1], [0.1, 1.25, 1.25, 1.25], [0.5, 1, 1, 1]])),
+      esc('anillo_2', poses([[0, 1, 1, 1], [0.15, 1.25, 1.25, 1.25], [0.5, 1, 1, 1]])),
+      esc('anillo_3', poses([[0, 1, 1, 1], [0.2, 1.25, 1.25, 1.25], [0.5, 1, 1, 1]])),
+      esc('nucleo', poses([[0, 1, 1, 1], [0.1, 1.3, 1.3, 1.3], [0.5, 1, 1, 1]])),
+    ], 'ataque', 'Los anillos destellan al cortar lo que tienen cerca.', false),
+
+    animacion('Habilidad', 1.2, [
+      ...giro(1.2, [[0, 0, 0], [60, 0, 0], [-60, 0, 0]], [4, -4, 4]),
+      esc('anillo_1', poses([[0, 1, 1, 1], [0.3, 2.2, 2.2, 2.2], [0.9, 2.2, 2.2, 2.2], [1.2, 1, 1, 1]])),
+      esc('anillo_2', poses([[0, 1, 1, 1], [0.3, 2.4, 2.4, 2.4], [0.9, 2.4, 2.4, 2.4], [1.2, 1, 1, 1]])),
+      esc('anillo_3', poses([[0, 1, 1, 1], [0.3, 2.6, 2.6, 2.6], [0.9, 2.6, 2.6, 2.6], [1.2, 1, 1, 1]])),
+      esc('nucleo', poses([[0, 1, 1, 1], [0.3, 1.8, 1.8, 1.8], [0.9, 1.8, 1.8, 1.8], [1.2, 1, 1, 1]])),
+    ], 'ataque', 'Sobrecarga: los anillos se abren y el núcleo estalla.', false),
   ];
 
   return { id: 'ada-orbe', nombre: 'ADA · Orbe con anillos', rol: 'Compañera · núcleo flotante', raiz, animaciones };

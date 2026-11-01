@@ -5,20 +5,14 @@
 // antena con baliza y halo inferior. Todo geometría procedural (sin assets).
 
 import * as THREE from 'three';
-import { ALTURA_ADA, crearAdaMedusa, crearAdaNoa, crearAdaOrbe, crearAdaZorro } from './modelos/ada';
+import { ALTURA_ADA } from './modelos/ada';
 import type { Modelo } from './modelos/kit';
+import { esPerro, perfilDe, type FormaAda } from './companeros';
+
+export type { FormaAda } from './companeros';
 
 export type ModoDron = 'seguir' | 'quieto' | 'explorar';
 
-/** Formas de ADA en prueba: el dron original y las cuatro alternativas. */
-export type FormaAda = 'dron' | 'zorro' | 'noa' | 'medusa' | 'orbe';
-export const FORMAS_ADA: { id: FormaAda; nombre: string; crear?: () => Modelo }[] = [
-  { id: 'dron', nombre: 'Dron' },
-  { id: 'zorro', nombre: 'Zorro de escarcha', crear: crearAdaZorro },
-  { id: 'noa', nombre: 'Holograma de Noa', crear: crearAdaNoa },
-  { id: 'medusa', nombre: 'Medusa de plasma', crear: crearAdaMedusa },
-  { id: 'orbe', nombre: 'Orbe con anillos', crear: crearAdaOrbe },
-];
 
 export interface BlancoDron {
   x: number;
@@ -56,6 +50,15 @@ export class Dron {
   private hablarT = 0;
   private altura = ALTURA_VUELO;
   private rumbo = 0;
+  // Órdenes de quien lo controla (ataques, la vida del perro). Valen un
+  // fotograma: hay que repetirlas mientras se quieran.
+  private destino: { x: number; z: number } | null = null;
+  private quedarse = false;
+  private mirarA: { x: number; z: number } | null = null;
+  // Animación pedida desde fuera: una de una vez hasta que acabe, o una en
+  // bucle durante `forzadoT` segundos.
+  private forzado = '';
+  private forzadoT = 0;
 
   constructor(private scene: THREE.Scene, private alturaEn: (x: number, z: number) => number) {
     // Casco: esfera achatada naranja con banda inferior oscura.
@@ -140,14 +143,17 @@ export class Dron {
     this.mezclador = null;
     this.acciones.clear();
     this.clip = '';
-    const def = FORMAS_ADA.find((f) => f.id === forma);
-    this.cuerpoDron.visible = !def?.crear;
+    this.forzado = '';
+    this.forzadoT = 0;
+    const def = perfilDe(forma);
+    this.cuerpoDron.visible = !def.crear;
     this.altura = ALTURA_VUELO;
-    if (!def?.crear) return;
+    if (!def.crear) return;
     this.modelo = def.crear();
     this.altura = ALTURA_ADA[this.modelo.id] ?? ALTURA_VUELO;
-    // Junto al astronauta de 2,6 m se quedaban cortas: un poco más grandes.
-    this.modelo.raiz.scale.setScalar(1.25);
+    // Junto al astronauta de 2,6 m se quedaban cortas: un poco más grandes
+    // (el perro, que es el más pequeño, algo más).
+    this.modelo.raiz.scale.setScalar(esPerro(forma) ? 1.5 : 1.25);
     this.group.add(this.modelo.raiz);
     this.mezclador = new THREE.AnimationMixer(this.modelo.raiz);
     for (const a of this.modelo.animaciones) {
@@ -159,6 +165,63 @@ export class Dron {
       this.acciones.set(a.clip.name, accion);
     }
     this.animar('Reposo', 0);
+  }
+
+  /** Va hacia (x, z) este fotograma, en vez de seguir al jugador. */
+  ir(x: number, z: number) {
+    this.destino = { x, z };
+  }
+
+  /** Se queda donde está este fotograma (olfateando, escarbando…). */
+  parar() {
+    this.quedarse = true;
+  }
+
+  /** Mira hacia (x, z) este fotograma aunque esté quieto. */
+  mirar(x: number, z: number) {
+    this.mirarA = { x, z };
+  }
+
+  get posicion() {
+    return this.group.position;
+  }
+
+  /** Velocidad horizontal actual (m/s). */
+  get rapidez() {
+    return Math.hypot(this.vel.x, this.vel.z);
+  }
+
+  get camina() {
+    return this.altura === 0;
+  }
+
+  /** ¿Tiene esta forma la animación? (el dron original no tiene ninguna). */
+  tiene(nombre: string) {
+    return this.acciones.has(nombre);
+  }
+
+  /**
+   * Reproduce una animación concreta: las de una vez hasta que acaban; las de
+   * bucle durante `segundos`. Devuelve false si esta forma no la tiene.
+   */
+  accion(nombre: string, segundos = 0) {
+    if (!this.acciones.has(nombre)) return false;
+    this.forzado = nombre;
+    this.forzadoT = segundos;
+    this.animar(nombre, 0.15, true);
+    return true;
+  }
+
+  /** ¿Sigue con la animación pedida? */
+  get ocupado() {
+    if (!this.forzado) return false;
+    const a = this.acciones.get(this.forzado)!;
+    return this.forzadoT > 0 || (a.loop === THREE.LoopOnce && a.isRunning());
+  }
+
+  cancelarAccion() {
+    this.forzado = '';
+    this.forzadoT = 0;
   }
 
   /** ADA está hablando: la forma lo acompaña con su animación. */
@@ -195,10 +258,7 @@ export class Dron {
     this.anillo.position.set(x, this.alturaEn(x, z) + 0.15, z);
     this.anillo.visible = true;
     this.pulsoT = 1.2;
-    if (this.modelo) {
-      // Empieza de cero aunque ya se estuviera viendo.
-      this.animar('Escanear', 0.1, true);
-    }
+    if (this.modelo) this.accion('Escanear');
   }
 
   get pulsando(): boolean {
@@ -226,6 +286,13 @@ export class Dron {
       const az = pz - fz * 1.2 - rz * 1.6;
       this.ancla.set(ax, this.alturaEn(ax, az) + this.altura, az);
     }
+    // Órdenes del fotograma: ir a un sitio o quedarse quieto.
+    if (this.destino) {
+      this.ancla.set(this.destino.x, this.alturaEn(this.destino.x, this.destino.z) + this.altura, this.destino.z);
+    } else if (this.quedarse) {
+      this.ancla.copy(this.group.position);
+      this.vel.multiplyScalar(Math.exp(-dt * 10));
+    }
     // Muelle amortiguado hacia el ancla (sin rebotes bruscos).
     const rigidez = 42;
     this.vel.x += (this.ancla.x - this.group.position.x) * rigidez * dt;
@@ -251,7 +318,13 @@ export class Dron {
     this.balizaMat.opacity = 0.45 + 0.55 * Math.abs(Math.sin(this.giro * 0.6));
     if (this.modelo) {
       this.actualizarModelo(dt, px, pz, suelo);
+      this.destino = null;
+      this.quedarse = false;
+      this.mirarA = null;
     } else {
+      this.destino = null;
+      this.quedarse = false;
+      this.mirarA = null;
       this.group.rotation.z = Math.max(-0.3, Math.min(0.3, -this.vel.x * 0.03));
       this.group.rotation.x = Math.max(-0.3, Math.min(0.3, this.vel.z * 0.03));
       this.group.position.y += Math.sin(this.giro * 0.4) * 0.15 * dt;
@@ -278,8 +351,9 @@ export class Dron {
     g.rotation.x = g.rotation.z = 0;
     const vh = Math.hypot(this.vel.x, this.vel.z);
     let objetivo = this.rumbo;
-    if (vh > 0.8) objetivo = Math.atan2(this.vel.x, this.vel.z);
-    else objetivo = Math.atan2(px - g.position.x, pz - g.position.z);
+    if (this.mirarA) objetivo = Math.atan2(this.mirarA.x - g.position.x, this.mirarA.z - g.position.z);
+    else if (vh > 0.8) objetivo = Math.atan2(this.vel.x, this.vel.z);
+    else if (!this.quedarse) objetivo = Math.atan2(px - g.position.x, pz - g.position.z);
     let d = objetivo - this.rumbo;
     d = Math.atan2(Math.sin(d), Math.cos(d));
     this.rumbo += d * Math.min(1, dt * 8);
@@ -290,15 +364,19 @@ export class Dron {
     }
 
     this.hablarT = Math.max(0, this.hablarT - dt);
-    const escaneando = this.clip === 'Escanear' && this.acciones.get('Escanear')!.isRunning();
-    if (!escaneando) {
-      if (vh > 2.2) this.animar('Moverse');
+    if (this.forzadoT > 0) this.forzadoT = Math.max(0, this.forzadoT - dt);
+    if (!this.ocupado) {
+      this.forzado = '';
+      // Los que caminan trotan despacio y galopan deprisa (si saben).
+      if (vh > 4.5 || (vh > 1.2 && !this.acciones.has('Caminar'))) this.animar('Moverse');
+      else if (vh > 1.2) this.animar('Caminar');
       else if (this.hablarT > 0) this.animar('Hablar');
       else this.animar('Reposo');
     }
-    // El galope del zorro va al ritmo de su velocidad.
     const mover = this.acciones.get('Moverse');
-    if (mover) mover.timeScale = this.altura === 0 ? Math.max(0.7, vh / 6) : 1;
+    if (mover) mover.timeScale = this.altura === 0 ? Math.max(0.7, vh / 7) : 1;
+    const caminar = this.acciones.get('Caminar');
+    if (caminar) caminar.timeScale = Math.max(0.6, vh / 2.5);
     this.mezclador!.update(dt);
   }
 

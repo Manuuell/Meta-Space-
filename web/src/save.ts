@@ -16,6 +16,8 @@ export interface Save {
   profileFrame: string;
   profileTitle: string;
   profileBackdrop: string;
+  /** Compañero elegido (id de `companeros.ts`). */
+  companero?: string;
 }
 
 const KEY = 'meta-space.save.v1';

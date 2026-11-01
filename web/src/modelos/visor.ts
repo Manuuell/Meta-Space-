@@ -25,7 +25,7 @@ camara.position.set(2.3, 2.4, 5.9);
 const controles = new OrbitControls(camara, lienzo);
 controles.target.set(0, 1.1, 0);
 controles.enableDamping = true;
-controles.minDistance = 2;
+controles.minDistance = 1;
 controles.maxDistance = 14;
 
 escena.add(new THREE.HemisphereLight('#e4ecff', '#4b4252', 1.4));
@@ -57,12 +57,25 @@ let velocidad = 1;
 let pausa = false;
 const reloj = new THREE.Clock();
 
+/** Acerca la cámara a lo que mide el modelo: el perro no mide lo que el astronauta. */
+function encuadrar(raiz: THREE.Object3D) {
+  const caja = new THREE.Box3().setFromObject(raiz);
+  const tam = caja.getSize(new THREE.Vector3());
+  const centro = caja.getCenter(new THREE.Vector3());
+  const lado = Math.max(tam.x, tam.y, tam.z, 0.8);
+  const dir = new THREE.Vector3(2.3, 1.3, 5.9).normalize();
+  controles.target.copy(centro);
+  camara.position.copy(centro).addScaledVector(dir, lado * 2.6 + 0.8);
+  controles.update();
+}
+
 function cargar(id: string) {
   if (modelo) escena.remove(modelo.raiz);
   modelo = CATALOGO.find((c) => c.id === id)!.crear();
   // Las formas flotantes de ADA tienen el origen en su centro: se ven en el aire.
   if (ALTURA_ADA[id]) modelo.raiz.position.y = 1.2;
   escena.add(modelo.raiz);
+  encuadrar(modelo.raiz);
   mezclador = new THREE.AnimationMixer(modelo.raiz);
   for (const b of lista.querySelectorAll<HTMLButtonElement>('.modelo')) b.classList.toggle('activo', b.dataset.id === id);
   pintarPanel();

@@ -26,7 +26,10 @@ import type { HeroTuning } from './creator/player-contract';
 import { SPECIALS } from './creator/stats';
 import { openProfileMenu } from './profile/profile-menu';
 import { showIntro } from './intro';
-import { Dron, FORMAS_ADA, type FormaAda } from './dron';
+import { Dron } from './dron';
+import { Companero } from './companero';
+import { COMPANEROS, perfilDe, type FormaAda } from './companeros';
+import { abrirSelectorCompanero } from './ui-companero';
 import {
   AYUDA_COMANDOS, abrirLineaComando, callar, grabarVoz, hablar,
   parsearComando, reconocimientoLocal, transcribirServidor, webmAWav16k,
@@ -125,6 +128,7 @@ export class Game {
   private radio = new Radio();
   // Dron compañero ADA: sigue, explora y escanea; obedece voz o texto.
   private dron!: Dron;
+  private companero!: Companero;
   private micBtn: HTMLButtonElement | null = null;
   private grabando: (() => void) | null = null;
   private vozApagada = false;
@@ -173,7 +177,7 @@ export class Game {
   private chorrosMochila: THREE.Object3D[] = [];
   private chorrosBotas: THREE.Object3D[] = [];
   private hudEquipo: HTMLDivElement | null = null;
-  private barrasEquipo = new Map<GearId, HTMLElement>();
+  private barrasEquipo = new Map<string, HTMLElement>();
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -183,7 +187,6 @@ export class Game {
 
     this.world = new World(this.scene);
     this.dron = new Dron(this.scene, (x, z) => this.world.heightAt(x, z));
-    this.dron.setForma(this.formaInicial());
     ui.onToast((quien) => { if (quien === 'ADA') this.dron.hablar(); });
     const mic = document.createElement('button');
     mic.textContent = '🎙';
@@ -201,6 +204,8 @@ export class Game {
     this.enemies = new Enemies(this.scene, this.world);
     this.enemies.onDeath = (i) => this.onEnemyDeath(i);
     this.pickups = new Pickups(this.scene, this.world);
+    this.companero = new Companero(this.scene, this.enemies, this.pickups, this.world, this.dron);
+    this.companero.setForma(this.formaInicial());
 
     this.player = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.frames.back[0] }));
     this.player.center.set(0.5, 0);
@@ -330,16 +335,19 @@ export class Game {
     }
     this.hudEquipo.innerHTML = '';
     this.barrasEquipo.clear();
-    this.hudEquipo.style.display = jugando && this.gear.size ? 'flex' : 'none';
-    for (const [id, nv] of this.gear) {
-      const g = GEAR[id];
+    this.hudEquipo.style.display = jugando ? 'flex' : 'none';
+    // Primero el compañero (su habilidad), luego el equipo de movilidad.
+    const comp = this.companero.perfil;
+    const fichas: [string, string, string][] = [['companero', `${comp.nombre} · ${comp.habilidad.nombre}`, comp.color === '#f4f4f4' ? '#ffd25a' : comp.color]];
+    for (const [id, nv] of this.gear) fichas.push([id, `${GEAR[id].name} · ${nv}`, GEAR[id].color]);
+    for (const [id, texto, color] of fichas) {
       const chip = document.createElement('div');
-      chip.style.cssText = `padding:4px 8px 6px;border-radius:8px;background:rgba(20,26,44,.8);border:1.5px solid ${g.color};color:#fff;min-width:92px;`;
-      chip.textContent = `${g.name} · ${nv}`;
+      chip.style.cssText = `padding:4px 8px 6px;border-radius:8px;background:rgba(20,26,44,.8);border:1.5px solid ${color};color:#fff;min-width:92px;`;
+      chip.textContent = texto;
       const pista = document.createElement('div');
       pista.style.cssText = 'margin-top:4px;height:4px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden;';
       const barra = document.createElement('div');
-      barra.style.cssText = `height:100%;width:100%;background:${g.color};`;
+      barra.style.cssText = `height:100%;width:100%;background:${color};`;
       pista.appendChild(barra);
       chip.appendChild(pista);
       this.hudEquipo.appendChild(chip);
@@ -347,29 +355,33 @@ export class Game {
     }
   }
 
-  private barraEquipo(id: GearId, fraccion: number) {
+  private barraEquipo(id: string, fraccion: number) {
     const b = this.barrasEquipo.get(id);
     if (b) b.style.width = `${Math.round(Math.max(0, Math.min(1, fraccion)) * 100)}%`;
   }
 
-  /** Forma de ADA: `?ada=zorro` en la dirección, o la última elegida con K. */
+  /** Compañero: `?ada=perro` en la dirección, o el elegido en el menú (se guarda). */
   private formaInicial(): FormaAda {
-    const ids = FORMAS_ADA.map((f) => f.id) as string[];
+    const ids = COMPANEROS.map((c) => c.id) as string[];
     const url = new URLSearchParams(location.search).get('ada');
     if (url && ids.includes(url)) return url as FormaAda;
-    try {
-      const guardada = localStorage.getItem('metaspace.ada');
-      if (guardada && ids.includes(guardada)) return guardada as FormaAda;
-    } catch { /* sin almacenamiento: se usa la de siempre */ }
-    return 'dron';
+    const guardado = this.save.companero;
+    return guardado && ids.includes(guardado) ? (guardado as FormaAda) : 'dron';
+  }
+
+  /** Cambia de compañero y lo recuerda. */
+  elegirCompanero(id: FormaAda) {
+    this.companero.setForma(id);
+    this.save.companero = id;
+    writeSave(this.save);
+    this.vestirEquipo();
   }
 
   private cambiarFormaAda() {
-    const i = FORMAS_ADA.findIndex((f) => f.id === this.dron.forma);
-    const siguiente = FORMAS_ADA[(i + 1) % FORMAS_ADA.length];
-    this.dron.setForma(siguiente.id);
-    try { localStorage.setItem('metaspace.ada', siguiente.id); } catch { /* da igual */ }
-    ui.toast('Forma de ADA', `${siguiente.nombre} (K para cambiar)`, 'info', 2.5);
+    const i = COMPANEROS.findIndex((c) => c.id === this.dron.forma);
+    const siguiente = COMPANEROS[(i + 1) % COMPANEROS.length];
+    this.elegirCompanero(siguiente.id);
+    ui.toast('Compañero', `${siguiente.nombre} (K para cambiar)`, 'info', 2.5);
   }
 
   /** Cambia de animación con un fundido corto; las de una vez empiezan de cero. */
@@ -422,6 +434,8 @@ export class Game {
       this.startRun();
     }, {
       onCreator: () => void this.openProfile(),
+      onCompanion: () => abrirSelectorCompanero(this.dron.forma, (id) => this.elegirCompanero(id), () => this.toTitle()),
+      companionName: perfilDe(this.dron.forma).nombre,
       customHeroName: this.heroName || undefined,
       customHeroSpecial: this.heroSpecial ? SPECIALS[this.heroSpecial].name : undefined,
     });
@@ -776,6 +790,7 @@ export class Game {
     this.rumbo = Math.PI;
     this.golpeHasta = this.golpeListo = 0;
     this.gear.clear();
+    this.companero.reset();
     this.combustible = 0;
     this.propulsando = false;
     this.dashCd = this.dashTime = 0;
@@ -925,7 +940,17 @@ export class Game {
 
     this.movePlayer(dt);
     this.direct(dt);
-    this.dron.update(dt, this.player.position.x, this.player.position.y, this.player.position.z, this.yaw);
+    const pj = this.player.position;
+    this.companero.update(dt, {
+      px: pj.x, py: pj.y, pz: pj.z,
+      velocidadJugador: Math.hypot(this.velX, this.velZ),
+      nivel: this.level,
+      vida: this.maxHp > 0 ? this.hp / this.maxHp : 1,
+      curar: (n) => { this.hp = Math.min(this.maxHp, this.hp + n); },
+      sonido: (n) => sfx(n),
+    });
+    this.barraEquipo('companero', this.companero.habilidadLista);
+    this.dron.update(dt, pj.x, pj.y, pj.z, this.yaw);
     if (this.explorando && this.dron.modo === 'seguir') {
       this.explorando = false;
       this.informarEscaneo();
@@ -1371,6 +1396,7 @@ export class Game {
       this.scene.remove(drop.group);
       this.relicDrops.splice(i, 1);
       this.relicsFound.push(drop.relicId);
+      this.companero.alReliquia();
       const relic = RELICS.find((r) => r.id === drop.relicId)!;
       sfx('relic');
       ui.toast(`Reliquia: ${relic.name}`, `“${relic.lore}” ${relic.fact}`, 'relic', 9);
@@ -1383,6 +1409,7 @@ export class Game {
   private levelUp() {
     this.pendingLevels--;
     this.level++;
+    this.companero.alSubirNivel();
     if (this.heroSpecial === 'pulso-ada') this.activateAdaPulse();
     this.state = 'levelup';
     this.expectUnlock = isLocked();

@@ -2,7 +2,7 @@
 // El navegador no deja sonar nada hasta el primer gesto del usuario, así que el
 // contexto se crea perezosamente.
 
-type Sound = 'shot' | 'hit' | 'pulse' | 'pickup' | 'level' | 'hurt' | 'relic' | 'death' | 'kill' | 'jump';
+export type Sound = 'shot' | 'hit' | 'pulse' | 'pickup' | 'level' | 'hurt' | 'relic' | 'death' | 'kill' | 'jump' | 'guau' | 'zap' | 'aullido' | 'cura';
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -12,6 +12,7 @@ const last = new Map<Sound, number>();
 // un segundo no puede sonar 300 veces.
 const THROTTLE: Record<Sound, number> = {
   shot: 0.06, hit: 0.05, pulse: 0.1, pickup: 0.035, level: 0, hurt: 0.25, relic: 0, death: 0, kill: 0.04, jump: 0.15,
+  guau: 0.25, zap: 0.08, aullido: 0, cura: 0,
 };
 
 export function unlockAudio() {
@@ -61,5 +62,13 @@ export function sfx(sound: Sound) {
       break;
     case 'death': tone('sawtooth', 300, 30, 1.2, 0.25); break;
     case 'jump': tone('square', 280, 620, 0.12, 0.08); break;
+    // ¡Guau!: dos golpes de voz que caen de tono.
+    case 'guau':
+      tone('square', 640, 300, 0.09, 0.09);
+      tone('triangle', 520, 240, 0.12, 0.1, 0.03);
+      break;
+    case 'zap': tone('sawtooth', 1600, 500, 0.06, 0.05); break;
+    case 'aullido': tone('triangle', 420, 760, 0.9, 0.09); tone('sine', 840, 1500, 0.9, 0.04); break;
+    case 'cura': [660, 880, 1320].forEach((f, i) => tone('sine', f, f, 0.18, 0.08, i * 0.06)); break;
   }
 }

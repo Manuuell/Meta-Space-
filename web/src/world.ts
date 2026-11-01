@@ -20,6 +20,13 @@ export interface Block {
   maxZ: number;
 }
 
+/** Algo del mapa que el perro puede ir a olfatear. */
+export interface PuntoInteres {
+  x: number;
+  z: number;
+  tipo: 'cristal' | 'arbol' | 'roca' | 'antena';
+}
+
 interface Lake {
   x: number;
   z: number;
@@ -98,6 +105,7 @@ export class World {
   readonly padPosition = new THREE.Vector3(0, 0, -62);
   private heights = new Float32Array(SIDE * SIDE);
   private lakes: Lake[] = [];
+  readonly interes: PuntoInteres[] = [];
   private matrix = new THREE.Matrix4();
   private sky: THREE.Group;
   private snow!: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial>;
@@ -533,6 +541,7 @@ export class World {
       lights.setMatrixAt(i * 2 + 1, this.matrix.compose(v.set(s.x, foot + s.h * 0.82 + 1.6, s.z), yawQ, sc.set(0.6, 0.6, 0.6)));
 
       this.addBlock({ minX: s.x - 2.2, maxX: s.x + 2.2, minZ: s.z - 2.2, maxZ: s.z + 2.2 });
+      this.interes.push({ x: s.x, z: s.z, tipo: 'antena' });
     });
     this.scene.add(bases, baseSnow, pylons, collars, stripes, dishes, lights);
   }
@@ -583,6 +592,7 @@ export class World {
       cluster(x, z, size, rand() < 0.2 ? violet : cyan);
       const r = size * 0.55;
       this.addBlock({ minX: x - r, maxX: x + r, minZ: z - r, maxZ: z + r });
+      this.interes.push({ x, z, tipo: 'cristal' });
       placed++;
     }
     // Pequeños: decorado que no estorba.
@@ -687,6 +697,7 @@ export class World {
     // Rocas: un dodecaedro aplastado, con un gorro de nieve encima.
     const rocks = place(90, 0.5, (x, y, z, m) => {
       const r = 0.4 + rand() * 0.9;
+      this.interes.push({ x, z, tipo: 'roca' });
       q.setFromEuler(euler.set(rand() * 0.4, rand() * Math.PI * 2, rand() * 0.4));
       m.compose(v.set(x, y + r * 0.2, z), q, s.set(r * (1 + rand() * 0.5), r * (0.6 + rand() * 0.4), r));
     });
@@ -716,6 +727,7 @@ export class World {
     tree.computeVertexNormals();
     const trees = place(45, 1, (x, y, z, m) => {
       const k = 0.9 + rand() * 0.9;
+      this.interes.push({ x, z, tipo: 'arbol' });
       q.setFromEuler(euler.set((rand() - 0.5) * 0.25, rand() * Math.PI * 2, (rand() - 0.5) * 0.25));
       m.compose(v.set(x, y - 0.2, z), q, s.set(k, k, k));
     });

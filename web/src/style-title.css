@@ -113,6 +113,9 @@
 .ms-pill--icon { width: var(--ms-target); padding: 0; color: var(--ms-cyan); }
 .ms-pill--coral { background: linear-gradient(#ff8790, #e94f69); border-color: rgba(255, 255, 255, .22); }
 .ms-pill--green { background: linear-gradient(#5fe3a4, #28ad7a); border-color: rgba(255, 255, 255, .22); }
+button.ms-pill { font-family: inherit; font-size: 13px; font-weight: 900; cursor: pointer; }
+button.ms-pill:hover { filter: brightness(1.08); }
+button.ms-pill:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .ms-pill--violet { background: linear-gradient(#8f7bff, #6355d9); border-color: rgba(255, 255, 255, .22); }
 
 .ms-topbar__profile {
@@ -368,7 +371,7 @@
   /* Velo más cerrado en móvil: el fondo se recorta y el texto manda. */
   .ms-title__shade { position: fixed; background: linear-gradient(180deg, rgba(12, 14, 39, .62), rgba(12, 14, 39, .42) 40%, rgba(8, 10, 26, .78)); }
   .ms-topbar { position: fixed; top: 10px; left: 12px; right: 12px; }
-  .ms-pill--coral, .ms-pill--green, .ms-pill--violet, .ms-topbar__status { display: none; }
+  .ms-pill--coral, .ms-pill--violet, .ms-pill--lang, .ms-pill--icon, .ms-topbar__status { display: none; }
   .ms-topbar__profile .ms-resource ~ .ms-resource { display: none; }
   .ms-topbar__profile { min-height: 52px; padding-block: 4px; }
   .ms-avatar { width: 42px; height: 42px; }

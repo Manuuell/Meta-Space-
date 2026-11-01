@@ -50,6 +50,29 @@ export class Pickups {
     this.ground[i] = this.world.heightAt(this.x[i], this.z[i]);
   }
 
+  /** La pieza suelta (sin atraer) más cercana a (x, z) dentro de `radio`, o null. */
+  cercana(x: number, z: number, radio: number): { x: number; z: number } | null {
+    let mejor = -1, d2 = radio * radio;
+    for (let i = 0; i < this.count; i++) {
+      if (this.pulled[i]) continue;
+      const dx = this.x[i] - x, dz = this.z[i] - z;
+      const d = dx * dx + dz * dz;
+      if (d < d2) { d2 = d; mejor = i; }
+    }
+    return mejor < 0 ? null : { x: this.x[mejor], z: this.z[mejor] };
+  }
+
+  /** Lo que hay dentro del radio sale volando hacia el jugador. Devuelve cuántas piezas. */
+  atraer(x: number, z: number, radio: number) {
+    let n = 0;
+    const r2 = radio * radio;
+    for (let i = 0; i < this.count; i++) {
+      const dx = this.x[i] - x, dz = this.z[i] - z;
+      if (!this.pulled[i] && dx * dx + dz * dz < r2) { this.pulled[i] = 1; n++; }
+    }
+    return n;
+  }
+
   /** Atrae y recoge. Devuelve el valor recogido en este fotograma. */
   update(dt: number, px: number, pz: number, radius: number, collectAll = false): number {
     this.time += dt;

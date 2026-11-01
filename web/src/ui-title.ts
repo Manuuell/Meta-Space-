@@ -45,6 +45,10 @@ export interface TitleOptions {
   root?: HTMLElement;
   /** Nombre del héroe del creador de personaje, si hay uno activo. */
   customHeroName?: string;
+  /** Abre el selector de compañero (botón ADA o tecla A). */
+  onCompanion?: () => void;
+  /** Nombre del compañero elegido, para el botón. */
+  companionName?: string;
   /** Especial del héroe personalizado, si aplica (texto corto). */
   customHeroSpecial?: string;
 }
@@ -137,6 +141,7 @@ export type TitleAction =
   | 'creator'
   | 'codex'
   | 'help'
+  | 'companion'
   | 'close-dialog'
   | 'none';
 
@@ -157,6 +162,8 @@ export function resolveTitleAction(code: string, dialogOpen: boolean): TitleActi
       return 'creator';
     case 'KeyX':
       return 'codex';
+    case 'KeyA':
+      return 'companion';
     case 'KeyH':
     case 'F1':
       return 'help';
@@ -233,7 +240,8 @@ export function renderTitleHtml(save: TitleSave, opts?: TitleOptions): string {
           <span class="ms-pill ms-pill--lang">ES</span>
           <span class="ms-pill ms-pill--icon" aria-hidden="true">⌁</span>
           <span class="ms-pill ms-pill--coral"><i>✦</i> Misión</span>
-          <span class="ms-pill ms-pill--green"><i>⌁</i> ADA</span>
+          <button type="button" class="ms-pill ms-pill--green ms-companion" data-action="companion"
+            aria-keyshortcuts="a" title="Elegir compañero (A)"><i>⌁</i> ${esc(opts?.companionName ?? 'Compañero')}</button>
           <span class="ms-pill ms-pill--violet"><i>▣</i> Archivo</span>
         </div>
         <button type="button" class="ms-topbar__profile ms-profile-open" data-action="profile"
@@ -350,6 +358,8 @@ const HOW_TO_HTML = `
     <li><b>Espacio</b><span>Saltar (vale anticipado y justo al borde)</span></li>
     <li><b>Mantener Espacio</b><span>En el aire, vuela con la mochila cohete (si la tienes)</span></li>
     <li><b>Shift</b><span>Acelerón con las botas de impulso (si las tienes)</span></li>
+    <li><b>A (en el menú)</b><span>Elegir compañero: dron, zorro, holograma de Noa, medusa, orbe o el perro</span></li>
+    <li><b>K</b><span>En partida, pasar al siguiente compañero</span></li>
     <li><b>Ratón · Q / E</b><span>Girar la cámara</span></li>
     <li><b>Herramientas</b><span>Se activan automáticamente</span></li>
     <li><b>Chatarra</b><span>Recógela para subir de nivel</span></li>
@@ -564,6 +574,9 @@ export function showTitle(save: TitleSave, start: () => void, opts?: TitleOption
       case 'help':
         openHelp();
         break;
+      case 'companion':
+        opts?.onCompanion?.();
+        break;
       default:
         break;
     }
@@ -575,6 +588,7 @@ export function showTitle(save: TitleSave, start: () => void, opts?: TitleOption
   node.querySelector('.ms-codex')!.addEventListener('click', openCodex);
   node.querySelector('.ms-codex-secondary')!.addEventListener('click', openCodex);
   node.querySelector('.ms-howto')!.addEventListener('click', openHelp);
+  node.querySelector('.ms-companion')!.addEventListener('click', () => opts?.onCompanion?.());
   window.addEventListener('keydown', onKey);
   root.appendChild(node);
   (node.querySelector('.ms-play') as HTMLButtonElement).focus();

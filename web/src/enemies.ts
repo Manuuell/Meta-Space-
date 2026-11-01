@@ -6,6 +6,10 @@ import {
   NUEVA_BASE_COLOR, NUEVA_ESCALA, NUEVO_EYE_COLOR, NUEVO_EYE_OFFSET,
   esNuevo, inmuneAlEmpuje, liftDe, moverNuevo, nuevoBodyGeometry,
 } from './enemies-nuevos';
+import { Tropa } from './modelos/tropa';
+import { crearRecolector } from './modelos/recolector';
+import { crearBaliza } from './modelos/baliza';
+import type { Modelo } from './modelos/kit';
 
 const TYPES: EnemyId[] = ['recolector', 'baliza', 'segador', 'saltador', 'avispa', 'caparazon', 'sembrador'];
 const CAPACITY = 700;
@@ -70,6 +74,38 @@ const EYE_OFFSET: Record<EnemyId, THREE.Vector3> = {
 };
 const WHITE = new THREE.Color('#ffffff');
 
+/**
+ * Tipos con modelo articulado (src/modelos): se dibujan con una Tropa y sus
+ * animaciones horneadas en vez del cuerpo fusionado y el ojo suelto.
+ */
+interface Modelado {
+  crear: () => Modelo;
+  mover: string;
+  /** Animación cerca del jugador (ataque o triangulación) y a qué distancia. */
+  cerca: string;
+  distCerca: number;
+  golpe: string;
+  muerte: string;
+  escala: number;
+  /** Altura de la raíz sobre el suelo (el modelo ya trae su flotación). */
+  altura: number;
+}
+
+const MODELADOS: Partial<Record<EnemyId, Modelado>> = {
+  recolector: {
+    crear: crearRecolector, mover: 'Caminar', cerca: 'Aspirar', distCerca: 2.4,
+    golpe: 'Golpe recibido', muerte: 'Derrota', escala: 1.1, altura: 0,
+  },
+  baliza: {
+    crear: crearBaliza, mover: 'Flotar', cerca: 'Triangular', distCerca: 14,
+    golpe: 'Golpe recibido', muerte: 'Derrota', escala: 1.1, altura: 1.0,
+  },
+};
+
+/** Restos animados: el enemigo muerto reproduce su caída antes de desaparecer. */
+interface Resto { tipo: EnemyId; x: number; z: number; heading: number; escala: number; t: number }
+const MAX_RESTOS = 160;
+
 /** Modificadores de élite (FOCO 5): adorno sobre el tipo base. */
 export type EliteMod = 'rapido' | 'blindado' | 'simbionte';
 /** Multiplicador de chatarra según élite (null = normal). */
@@ -109,6 +145,10 @@ export class Enemies {
 
   private bodies = new Map<EnemyId, THREE.InstancedMesh>();
   private eyes = new Map<EnemyId, THREE.InstancedMesh>();
+  private tropas = new Map<EnemyId, Tropa>();
+  private restos: Resto[] = [];
+  private px = 0;
+  private pz = 0;
   private matrix = new THREE.Matrix4();
   private quat = new THREE.Quaternion();
   private pos = new THREE.Vector3();
@@ -124,6 +164,12 @@ export class Enemies {
 
   constructor(scene: THREE.Scene, private world: World) {
     for (const type of TYPES) {
+      const modelado = MODELADOS[type];
+      if (modelado) {
+        this.tropas.set(type, new Tropa(scene, modelado.crear, CAPACITY,
+          [modelado.mover, modelado.cerca, modelado.golpe, modelado.muerte]));
+        continue;
+      }
       const body = new THREE.InstancedMesh(bodyGeometry(type), new THREE.MeshLambertMaterial(), CAPACITY);
       body.castShadow = true;
       body.count = 0;
@@ -201,6 +247,10 @@ export class Enemies {
    */
   update(dt: number, px: number, pz: number, playerRadius: number): number {
     this.time += dt;
+    this.px = px;
+    this.pz = pz;
+    for (const r of this.restos) r.t += dt;
+    this.restos = this.restos.filter((r) => r.t < this.tropas.get(r.tipo)!.duracion(MODELADOS[r.tipo]!.muerte) + 0.4);
     this.rebuildGrid();
 
     let contact = 0;
@@ -339,6 +389,15 @@ export class Enemies {
     for (let i = 0; i < this.count; ) {
       if (this.hp[i] > 0) { i++; continue; }
       this.onDeath(i);
+      const tipo = TYPES[this.type[i]];
+      const modelado = MODELADOS[tipo];
+      if (modelado && this.restos.length < MAX_RESTOS) {
+        const em = this.elite[i];
+        this.restos.push({
+          tipo, x: this.x[i], z: this.z[i], heading: this.heading[i],
+          escala: modelado.escala * (em >= 0 ? ELITE_ESCALA[em] : 1), t: 0,
+        });
+      }
       const last = --this.count;
       if (i !== last) this.copy(last, i);
     }
@@ -346,6 +405,7 @@ export class Enemies {
 
   clear() {
     this.count = 0;
+    this.restos = [];
   }
 
   private copy(from: number, to: number) {
@@ -372,10 +432,58 @@ export class Enemies {
     return n;
   }
 
+  /** Enemigos con modelo articulado: clip según lo que hacen y tinte de élite o golpe. */
+  private renderModelados() {
+    for (const t of this.tropas.values()) t.empezar();
+    for (let i = 0; i < this.count; i++) {
+      const type = TYPES[this.type[i]];
+      const modelado = MODELADOS[type];
+      if (!modelado) continue;
+      const tropa = this.tropas.get(type)!;
+      const em = this.elite[i];
+      const escala = modelado.escala * (em >= 0 ? ELITE_ESCALA[em] : 1);
+      this.quat.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, this.heading[i]);
+      this.pos.set(this.x[i], this.world.heightAt(this.x[i], this.z[i]) + modelado.altura, this.z[i]);
+      this.scale.setScalar(escala);
+      this.matrix.compose(this.pos, this.quat, this.scale);
+
+      let clip = modelado.mover;
+      let t = this.time + this.seed[i];
+      if (this.squash[i] > 0) {
+        clip = modelado.golpe;
+        t = (1 - this.squash[i] / 0.14) * tropa.duracion(clip);
+      } else if (Math.hypot(this.x[i] - this.px, this.z[i] - this.pz) < modelado.distCerca) {
+        clip = modelado.cerca;
+        t = (this.time + this.seed[i]) % tropa.duracion(clip);
+      }
+      this.color.setRGB(1, 1, 1);
+      if (em >= 0) this.color.lerp(this.tint.set(ELITE_TINTE[em]), 0.55);
+      if (this.flash[i] > 0) this.color.setRGB(2.4, 2.4, 2.4);
+      tropa.poner(this.matrix, clip, t, this.color);
+    }
+    for (const r of this.restos) {
+      const modelado = MODELADOS[r.tipo]!;
+      const tropa = this.tropas.get(r.tipo)!;
+      const dur = tropa.duracion(modelado.muerte);
+      // Lo que flota (la Baliza) cae hasta el suelo mientras dura la caída.
+      const f = Math.min(1, r.t / dur);
+      const altura = modelado.altura * (1 - f * f);
+      this.quat.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, r.heading);
+      this.pos.set(r.x, this.world.heightAt(r.x, r.z) + altura, r.z);
+      // Al final se encoge y desaparece.
+      this.scale.setScalar(r.escala * Math.min(1, Math.max(0, 1 - (r.t - dur) / 0.4)));
+      this.matrix.compose(this.pos, this.quat, this.scale);
+      tropa.poner(this.matrix, modelado.muerte, r.t, this.color.setRGB(1, 1, 1));
+    }
+    for (const t of this.tropas.values()) t.terminar();
+  }
+
   render() {
+    this.renderModelados();
     const counters = new Map<EnemyId, number>(TYPES.map((t) => [t, 0]));
     for (let i = 0; i < this.count; i++) {
       const type = TYPES[this.type[i]];
+      if (MODELADOS[type]) continue;
       const def = ENEMIES[type];
       const n = counters.get(type)!;
       counters.set(type, n + 1);
@@ -409,6 +517,7 @@ export class Enemies {
       this.eyes.get(type)!.setMatrixAt(n, this.matrix);
     }
     for (const type of TYPES) {
+      if (MODELADOS[type]) continue;
       const n = counters.get(type)!;
       const body = this.bodies.get(type)!;
       const eye = this.eyes.get(type)!;

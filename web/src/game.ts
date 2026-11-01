@@ -4,8 +4,7 @@ import { World } from './world';
 import { Enemies } from './enemies';
 import { Weapons, Modifiers } from './weapons';
 import { Pickups, RelicDrop } from './pickups';
-import { astronautAnims, astronautFrames, blobShadowTexture } from './sprites';
-import { AnimPlayer } from './anim';
+import { astronautFrames, blobShadowTexture } from './sprites';
 import { consumeLook, endFrame, isLocked, lockPointer, moveVector, unlockPointer, wasPressed } from './input';
 import { sfx, unlockAudio } from './audio';
 import { loadSave, writeSave } from './save';
@@ -34,6 +33,7 @@ import {
 } from './voz';
 import { Radio, type EventoNpc, type Hablante, type RunBrief } from './npcs';
 import { Camara } from './camara';
+import { crearAstronauta } from './modelos/astronauta';
 import {
   CUPO, NubeEsporas, angulosDePatron, criasAlMorir, oleadaEspecial, quiereDisparar, tasaEspecial,
 } from './enemies-nuevos';
@@ -60,9 +60,15 @@ export class Game {
 
   private player: THREE.Sprite;
   private shadow: THREE.Mesh;
+  // Astronauta 3D (src/modelos). El sprite solo se usa con el héroe del creador.
+  private astronauta = crearAstronauta();
+  private mezclador = new THREE.AnimationMixer(this.astronauta.raiz);
+  private acciones = new Map<string, THREE.AnimationAction>();
+  private clipActual = '';
+  private rumbo = Math.PI;
+  private golpeHasta = 0;
+  private golpeListo = 0;
   private frames = astronautFrames();
-  private anims = astronautAnims();
-  private anim = new AnimPlayer();
   private hurtFlash = 0;
   // Hacia dónde mira la cámara: yaw 0 es el norte (−z), donde está el cohete.
   private yaw = 0;
@@ -174,7 +180,19 @@ export class Game {
     this.player = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.frames.back[0] }));
     this.player.center.set(0.5, 0);
     this.player.scale.set(PLAYER_HEIGHT * 0.8, PLAYER_HEIGHT, 1);
+    this.player.visible = false;
     this.scene.add(this.player);
+
+    this.scene.add(this.astronauta.raiz);
+    for (const a of this.astronauta.animaciones) {
+      const accion = this.mezclador.clipAction(a.clip);
+      if (!a.bucle) {
+        accion.setLoop(THREE.LoopOnce, 1);
+        accion.clampWhenFinished = true;
+      }
+      this.acciones.set(a.clip.name, accion);
+    }
+    this.animarAstronauta('Reposo');
 
     this.shadow = new THREE.Mesh(
       new THREE.PlaneGeometry(1.8, 1.8).rotateX(-Math.PI / 2),
@@ -221,6 +239,19 @@ export class Game {
 
     this.toTitle();
     this.renderer.setAnimationLoop(() => this.frame());
+  }
+
+  /** Cambia de animación con un fundido corto; las de una vez empiezan de cero. */
+  private animarAstronauta(nombre: string, fundido = 0.15) {
+    if (nombre === this.clipActual) return;
+    const nueva = this.acciones.get(nombre);
+    if (!nueva) return;
+    const vieja = this.acciones.get(this.clipActual);
+    nueva.reset();
+    nueva.timeScale = 1;
+    nueva.play();
+    if (vieja) nueva.crossFadeFrom(vieja, fundido, false);
+    this.clipActual = nombre;
   }
 
   private resize() {
@@ -609,6 +640,11 @@ export class Game {
     this.jumpBuffer = 0;
     this.squash = 0;
     this.facing = 1;
+    this.rumbo = Math.PI;
+    this.golpeHasta = this.golpeListo = 0;
+    this.animarAstronauta('Reposo', 0);
+    this.astronauta.raiz.position.copy(this.player.position);
+    this.astronauta.raiz.rotation.y = this.rumbo;
     this.camara.fijar(0, this.pitch, this.player.position);
     this.lastPulsoDmg = this.weapons.damageDealt.pulso;
   }
@@ -696,6 +732,7 @@ export class Game {
       this.world.faceCamera(Math.atan2(this.camera.position.x, this.camera.position.z));
     }
 
+    if (this.state !== 'paused' && this.state !== 'levelup') this.mezclador.update(dt);
     endFrame();
     this.renderer.render(this.scene, this.camera);
   }
@@ -875,23 +912,37 @@ export class Game {
     // y vista (espalda/frente); el reproductor elige el frame por duración.
     const hSpeed = Math.hypot(this.velX, this.velZ);
     const material = this.player.material;
-    if (this.customSprite) {
-      // Héroe personalizado: sprite fijo del creador en vez de la animación.
-      if (material.map !== this.customSprite) material.map = this.customSprite;
-    } else {
-      // De espaldas salvo cuando viene hacia la cámara: así se ve a ADA.
-      const vista = move.y > 0.3 ? 'front' : 'back';
-      const clip = this.hurtFlash > 0 ? 'hurt' : !this.grounded ? 'salto' : hSpeed > 0.4 ? 'walk' : 'idle';
-      this.anim.play(clip, vista === 'front' ? 1 : 0);
-      const [frame] = this.anim.update(this.hurtFlash > 0 ? dt * 2 : dt);
-      const tex = this.anims[vista][clip][frame];
-      if (material.map !== tex) material.map = tex;
+    const con3d = !this.customSprite;
+    this.player.visible = !con3d;
+    this.astronauta.raiz.visible = con3d;
+    this.shadow.visible = !con3d;
+    if (con3d) {
+      // Astronauta 3D: el clip sale del estado. El golpe se ve una vez y no
+      // se repite en bucle mientras algo te roza.
+      if (this.hurtFlash > 0 && this.time >= this.golpeListo) {
+        this.golpeHasta = this.time + 0.35;
+        this.golpeListo = this.time + 1.2;
+      }
+      const clip = this.time < this.golpeHasta ? 'Golpe recibido'
+        : !this.grounded ? 'Saltar'
+        : hSpeed > 3.6 ? 'Correr'
+        : hSpeed > 0.4 ? 'Caminar' : 'Reposo';
+      this.animarAstronauta(clip);
+      // Andar y correr van al ritmo de la velocidad real.
+      const accion = this.acciones.get(clip)!;
+      if (clip === 'Caminar') accion.timeScale = Math.max(0.6, hSpeed / 2.6);
+      else if (clip === 'Correr') accion.timeScale = Math.max(0.8, hSpeed / 5.5);
+      if (hSpeed > 0.4) {
+        let giro = Math.atan2(this.velX, this.velZ) - this.rumbo;
+        giro = Math.atan2(Math.sin(giro), Math.cos(giro));
+        this.rumbo += giro * Math.min(1, dt * 12);
+      }
+    } else if (this.customSprite && material.map !== this.customSprite) {
+      // Héroe personalizado: sprite fijo del creador en vez del astronauta.
+      material.map = this.customSprite;
     }
-    if (Math.abs(move.x) > 0.1) {
-      // Con héroe personalizado no hay vista frontal: solo espeja el avance.
-      const deFrente = !this.customSprite && move.y > 0.3;
-      this.facing = (deFrente ? move.x < 0 : move.x > 0) ? -1 : 1;
-    }
+    // El sprite del creador no tiene vista frontal: solo espeja el avance.
+    if (Math.abs(move.x) > 0.1) this.facing = move.x > 0 ? -1 : 1;
     // Aplastamiento al aterrizar + inclinación lateral con la velocidad.
     this.squash = Math.max(0, this.squash - dt);
     const sq = this.squash / 0.18;
@@ -902,6 +953,10 @@ export class Game {
       1,
     );
     material.rotation = lean;
+    const cuerpo3d = this.astronauta.raiz;
+    cuerpo3d.position.copy(p);
+    cuerpo3d.rotation.y = this.rumbo;
+    cuerpo3d.scale.set(0.95 * (1 + 0.18 * sq), 0.95 * (1 - 0.22 * sq), 0.95 * (1 + 0.18 * sq));
 
     this.hurtFlash -= dt;
     material.color.set(this.hurtFlash > 0 ? '#ff6a5a' : '#ffffff');
@@ -1186,6 +1241,7 @@ export class Game {
     if (this.jumpBtn) this.jumpBtn.style.display = 'none';
     if (this.micBtn) this.micBtn.style.display = 'none';
     sfx(victory ? 'relic' : 'death');
+    this.animarAstronauta(victory ? 'Victoria' : 'Derrota', 0.2);
     // Cierre de la misión con la voz que corresponda (llega tras el informe).
     if (victory) {
       void this.radio.linea('ada', 'victoria', `ventana alcanzada: el cohete sube la orden de apagado. Estado: ${this.estadoPartida()}`).then((r) => {

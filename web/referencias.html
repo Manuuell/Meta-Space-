@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Referencias · Meta Space</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #e4e7ef; font: 700 15px system-ui, sans-serif; color: #3b4054; }
+      canvas { display: block; }
+      #etiquetas { position: fixed; left: 0; right: 0; bottom: 14px; display: flex; pointer-events: none; }
+      #etiquetas span { flex: 1; text-align: center; letter-spacing: .14em; }
+      pre { display: none; }
+    </style>
+  </head>
+  <body>
+    <canvas id="lienzo"></canvas>
+    <div id="etiquetas"></div>
+    <script type="module" src="/src/modelos/referencias.ts"></script>
+  </body>
+</html>

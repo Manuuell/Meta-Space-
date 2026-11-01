@@ -578,6 +578,7 @@ export class Game {
 
     this.hp -= amount;
     this.hpLost += amount;
+    this.companero.alDano(this.maxHp > 0 ? this.hp / this.maxHp : 1);
     this.noDamageTime = 0;
     this.hurtFlash = 0.15;
     this.camara.sacudidaDano();

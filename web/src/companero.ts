@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Sound } from './audio';
 import { esPerro, perfilDe, type FormaAda, type PerfilCompanero } from './companeros';
 import type { Dron } from './dron';
+import { expresar, type ExpresionPerro } from './modelos/perro';
 import type { Enemies } from './enemies';
 import type { Pickups } from './pickups';
 import type { PuntoInteres, World } from './world';
@@ -149,6 +150,12 @@ export class Companero {
   private a = new THREE.Vector3();
   private b = new THREE.Vector3();
   private golpeados = new Set<number>();
+  // Cara de Bruno: la que toca por lo que hace, salvo que un suceso mande otra un rato.
+  private caraActual: ExpresionPerro | '' = '';
+  private caraForzada: ExpresionPerro | null = null;
+  private caraT = 0;
+  private sonrisaT = 0;
+  private cdSonrisa = 3;
 
   constructor(
     scene: THREE.Scene,
@@ -175,6 +182,55 @@ export class Companero {
     this.efectos.limpiar();
     this.vida?.reset();
     this.dron.cancelarAccion();
+    this.caraActual = '';
+    this.caraForzada = null;
+  }
+
+  /** Una cara durante un rato (suceso: subir de nivel, que te hieran…). */
+  private sentir(e: ExpresionPerro, segundos: number) {
+    this.caraForzada = e;
+    this.caraT = segundos;
+  }
+
+  /**
+   * La cara de Bruno sigue a lo que hace: feliz al jugar, patinar o celebrar;
+   * enfadado al morder o ladrar; sorprendido al resbalar u olfatear el aire;
+   * dormido al dormir; triste si te ve muy herido. Quieto a tu lado, sonríe
+   * de vez en cuando.
+   */
+  private cara(dt: number, ctx: ContextoCompanero) {
+    const raiz = this.dron.modeloRaiz;
+    if (!raiz || !esPerro(this.perfil.id)) return;
+    this.caraT -= dt;
+    if (this.caraT <= 0) this.caraForzada = null;
+    const clip = this.dron.clipActual;
+    let e: ExpresionPerro = 'normal';
+    if (clip === 'Dormir' || clip === 'Bostezar' || clip === 'Aullar') e = 'dormido';
+    else if (this.presa || clip === 'Atacar' || clip === 'Habilidad' || clip === 'Ladrar') e = 'enfado';
+    else if (this.caraForzada) e = this.caraForzada;
+    else if (['Celebrar', 'Revolcarse', 'Patinar', 'Truco', 'Pedir', 'PerseguirCola', 'Rascarse'].includes(clip)) e = 'feliz';
+    else if (clip === 'Resbalar' || clip === 'Escanear' || clip === 'Hablar') e = 'sorpresa';
+    else if (ctx.vida < 0.3) e = 'triste';
+    else {
+      // Sonrisas sueltas cuando está tranquilo a tu lado.
+      this.sonrisaT -= dt;
+      this.cdSonrisa -= dt;
+      if (this.cdSonrisa <= 0) {
+        this.sonrisaT = 1 + Math.random() * 1.5;
+        this.cdSonrisa = 3 + Math.random() * 4;
+      }
+      if (this.sonrisaT > 0 && (clip === 'Reposo' || clip === 'Sentado' || clip === 'Caminar')) e = 'feliz';
+    }
+    if (e !== this.caraActual) {
+      expresar(raiz, e);
+      this.caraActual = e;
+    }
+  }
+
+  /** Te han herido: se enfada con quien fue o, si vas muy mal, se preocupa. */
+  alDano(vida: number) {
+    if (this.caraForzada === 'triste' || this.caraForzada === 'enfado') return;
+    this.sentir(vida < 0.35 ? 'triste' : 'enfado', vida < 0.35 ? 2.5 : 1);
   }
 
   /** Fracción de recarga de la habilidad (1 = lista), para el HUD. */
@@ -190,6 +246,7 @@ export class Companero {
     this.atacar(dt, ctx, k);
     this.habilidad(ctx, k);
     this.vida?.update(dt, ctx, this.presa !== null);
+    this.cara(dt, ctx);
   }
 
   // ------------------------------------------------------------ Ataque
@@ -367,12 +424,14 @@ export class Companero {
   // ----------------------------------------------------------- Eventos
 
   alSubirNivel() {
+    this.sentir('feliz', 2.5);
     if (this.presa) return;
     if (this.vida) this.vida.celebrar();
     else this.dron.accion('Hablar', 1.2);
   }
 
   alReliquia() {
+    this.sentir('sorpresa', 1.2);
     this.vida?.aullar();
   }
 

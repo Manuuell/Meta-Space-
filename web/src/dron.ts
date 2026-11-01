@@ -186,6 +186,16 @@ export class Dron {
     return this.group.position;
   }
 
+  /** La raíz del modelo animado (null con el dron original). */
+  get modeloRaiz() {
+    return this.modelo?.raiz ?? null;
+  }
+
+  /** La animación que se está viendo. */
+  get clipActual() {
+    return this.clip;
+  }
+
   /** Velocidad horizontal actual (m/s). */
   get rapidez() {
     return Math.hypot(this.vel.x, this.vel.z);

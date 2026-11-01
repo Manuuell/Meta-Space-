@@ -1,7 +1,7 @@
 import { crearAstronauta } from './astronauta';
 import { crearAdaMedusa, crearAdaNoa, crearAdaOrbe, crearAdaZorro } from './ada';
 import { crearBaliza } from './baliza';
-import { crearBrunoPajarita, crearBrunoPaseo, crearPerro, type OjosPerro } from './perro';
+import { crearBrunoPajarita, crearBrunoPaseo } from './perro';
 import { crearAerotabla, crearAstronautaEquipado, crearBotasImpulso, crearMochilaCohete } from './equipo';
 import { crearRecolector } from './recolector';
 import type { Modelo } from './kit';
@@ -18,12 +18,6 @@ export const CATALOGO: { id: string; nombre: string; crear: () => Modelo }[] = [
   { id: 'aerotabla', nombre: 'Aerotabla', crear: crearAerotabla },
   { id: 'bruno', nombre: 'Bruno · con pajarita', crear: crearBrunoPajarita },
   { id: 'bruno-paseo', nombre: 'Bruno · gorra y gafas', crear: crearBrunoPaseo },
-  // Versiones de ojos en prueba: se queda una y se quitan las demás.
-  ...(['pequenos', 'puntos', 'anime', 'felices'] as OjosPerro[]).map((ojos) => ({
-    id: `bruno-ojos-${ojos}`,
-    nombre: `Bruno · ojos ${ojos === 'pequenos' ? 'pequeños' : ojos}`,
-    crear: () => crearPerro({ pajarita: 'cuadros', gorra: false, gafas: false, ojos }),
-  })),
   { id: 'ada-zorro', nombre: 'ADA · Zorro de escarcha', crear: crearAdaZorro },
   { id: 'ada-noa', nombre: 'ADA · Holograma de Noa', crear: crearAdaNoa },
   { id: 'ada-medusa', nombre: 'ADA · Medusa de plasma', crear: crearAdaMedusa },

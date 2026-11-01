@@ -204,8 +204,10 @@ export function crearPerro(opciones: OpcionesPerro = { pajarita: 'cuadros', gorr
     pieza(pajarita, caja(0.05, 0.06, 0.05, 0.02), tela, 0, 0, 0.01);
   }
   if (opciones.gorra) {
-    // Bien encajada: la copa abraza el cráneo y baja hasta la frente.
-    const gorra = nodo('gorra', cabeza, 0, 0.06, -0.01);
+    // Bien encajada y echada hacia atrás, como se lleva del revés: la copa
+    // abraza el cráneo pero deja la frente, las cejas y los ojos a la vista.
+    const gorra = nodo('gorra', cabeza, 0, 0.07, -0.03);
+    gorra.rotation.x = -0.34;
     const turquesa = toon('#2fb3a3');
     const copa = new THREE.MeshToonMaterial({ map: telaGorra() });
     pieza(gorra, new THREE.SphereGeometry(0.28, 32, 12, 0, TAU, 0, Math.PI / 2).scale(1.07, 0.86, 1.05), copa);
@@ -213,9 +215,8 @@ export function crearPerro(opciones: OpcionesPerro = { pajarita: 'cuadros', gorr
     // Del revés: la visera asoma por detrás, ancha y algo levantada, y se ve
     // desde la cámara de juego.
     const visera = pieza(gorra, new THREE.CylinderGeometry(0.2, 0.2, 0.03, 24, 1, false, Math.PI / 2, Math.PI).scale(1.15, 1, 1.25), turquesa, 0, 0.03, -0.2);
-    visera.rotation.x = 0.18;
-    // Por delante, la abertura del cierre con el pelo asomando y la cinta.
-    pieza(gorra, esfera(0.075, 1.3, 0.8, 0.5), toon(BLANCO), 0, 0.07, 0.255, { contorno: false });
+    visera.rotation.x = 0.5;
+    // Por delante, la cinta del cierre con su hebilla.
     pieza(gorra, caja(0.18, 0.035, 0.03, 0.012), toon('#1d8579'), 0, 0.015, 0.262);
     pieza(gorra, caja(0.035, 0.03, 0.02, 0.01), toon('#c9ccd4'), 0.05, 0.015, 0.28, { contorno: false });
     // Pelo que asoma por debajo de la gorra, sobre las orejas.

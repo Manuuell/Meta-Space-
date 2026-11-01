@@ -147,26 +147,26 @@ export function showIntro(
     }
     ctx.globalAlpha = 1;
 
-    // Planeta rojo: solo el casquete inferior asoma por el horizonte.
+    // Meta helada: solo el casquete inferior asoma, bajo el resplandor rojo del velo.
     const horizonte = H * 0.62;
     const pr = W * 0.9;
     const py = horizonte + pr;
     const cielo = ctx.createLinearGradient(0, H * 0.2, 0, horizonte);
-    cielo.addColorStop(0, 'rgba(185,80,60,0)');
-    cielo.addColorStop(1, 'rgba(185,80,60,0.35)');
+    cielo.addColorStop(0, 'rgba(176,96,122,0)');
+    cielo.addColorStop(1, 'rgba(176,96,122,0.4)');
     ctx.fillStyle = cielo;
     ctx.fillRect(0, H * 0.2, W, horizonte - H * 0.2);
-    ctx.fillStyle = '#a83c2a';
+    ctx.fillStyle = '#b8cde6';
     ctx.beginPath();
     ctx.arc(W / 2, py, pr, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,150,110,0.5)';
+    ctx.strokeStyle = 'rgba(235,245,255,0.7)';
     ctx.lineWidth = Math.max(2, 3 * u);
     ctx.beginPath();
     ctx.arc(W / 2, py, pr, Math.PI * 1.2, Math.PI * 1.8);
     ctx.stroke();
     // Silueta de ciudad muerta sobre el horizonte del planeta.
-    ctx.fillStyle = '#3a1520';
+    ctx.fillStyle = '#2c3150';
     const hy = horizonte;
     const r2 = semilla(77);
     let x = -20;
@@ -214,7 +214,7 @@ export function showIntro(
         });
       }
     }
-    // Polvo al asentarse.
+    // Nieve levantada al asentarse.
     if (t > 4.6 && t < 6.2 && particulas.length < 220) {
       for (let i = 0; i < 4; i++) {
         const a = Math.random() * Math.PI * 2;
@@ -224,7 +224,7 @@ export function showIntro(
           vx: Math.cos(a) * (40 + Math.random() * 90) * u,
           vy: -Math.random() * 60 * u,
           vida: 1.1, max: 1.1,
-          color: '#c47a52',
+          color: '#e3edf8',
           tam: (2 + Math.random() * 3) * u,
         });
       }

@@ -729,7 +729,6 @@ export class Game {
       this.camera.position.set(Math.sin(t) * 22, 7, Math.cos(t) * 22);
       this.camera.lookAt(0, 6, -40);
       this.world.follow(this.player.position);
-      this.world.faceCamera(Math.atan2(this.camera.position.x, this.camera.position.z));
     }
 
     if (this.state !== 'paused' && this.state !== 'levelup') this.mezclador.update(dt);

@@ -37,7 +37,7 @@ export const PALETA = {
 let rampa: THREE.DataTexture | null = null;
 
 /** Rampa de tres tonos: luz, medio y sombra, sin degradado. */
-function rampaToon(): THREE.DataTexture {
+export function rampaToon(): THREE.DataTexture {
   if (rampa) return rampa;
   rampa = new THREE.DataTexture(new Uint8Array([90, 175, 255]), 3, 1, THREE.RedFormat);
   rampa.minFilter = THREE.NearestFilter;

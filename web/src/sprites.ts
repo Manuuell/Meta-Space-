@@ -147,97 +147,6 @@ function rng(seed: number) {
   return () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 }
 
-function deadTree(seed: number) {
-  const [canvas, ctx] = canvasOf(40, 56);
-  const rand = rng(seed);
-  const branch = (x: number, y: number, angle: number, length: number, width: number) => {
-    for (let i = 0; i < length; i++) {
-      x += Math.cos(angle);
-      y -= Math.sin(angle);
-      angle += (rand() - 0.5) * 0.25;
-      ctx.fillStyle = '#2a140f';
-      ctx.fillRect(Math.round(x - width / 2), Math.round(y), Math.max(1, Math.round(width)), 1);
-      ctx.fillStyle = '#5a2e20';
-      ctx.fillRect(Math.round(x - width / 2), Math.round(y), 1, 1);
-      if (width > 1.2 && rand() < 0.09) branch(x, y, angle + (rand() < 0.5 ? 0.7 : -0.7), length * 0.55, width * 0.6);
-      width = Math.max(1, width * 0.985);
-    }
-  };
-  branch(20, 55, Math.PI / 2 + (rand() - 0.5) * 0.2, 44, 4);
-  return canvas;
-}
-
-function rock(seed: number) {
-  const [canvas, ctx] = canvasOf(32, 22);
-  const rand = rng(seed);
-  for (let y = 0; y < 22; y++)
-    for (let x = 0; x < 32; x++) {
-      const dx = (x - 16) / 15, dy = (y - 21) / 19;
-      const d = dx * dx + dy * dy + (rand() - 0.5) * 0.12;
-      if (d > 1 || y > 21) continue;
-      const light = 1 - (x / 32) * 0.5 - (y / 22) * 0.4;
-      ctx.fillStyle = d > 0.86 ? '#2a1612' : light > 0.65 ? '#b07a5c' : light > 0.45 ? '#8a5642' : '#62382c';
-      ctx.fillRect(x, y, 1, 1);
-    }
-  return canvas;
-}
-
-function dryBush(seed: number) {
-  const [canvas, ctx] = canvasOf(28, 20);
-  const rand = rng(seed);
-  for (let i = 0; i < 22; i++) {
-    let x = 14 + (rand() - 0.5) * 8, y = 19;
-    const lean = (rand() - 0.5) * 1.4;
-    const len = 6 + rand() * 12;
-    const color = rand() < 0.5 ? '#8a3a20' : '#c0603a';
-    for (let j = 0; j < len; j++) {
-      x += lean * 0.6;
-      y -= 1;
-      ctx.fillStyle = color;
-      ctx.fillRect(Math.round(x), Math.round(y), 1, 1);
-    }
-  }
-  return canvas;
-}
-
-function lampPost() {
-  const [canvas, ctx] = canvasOf(20, 64);
-  ctx.fillStyle = '#2a1a1a';
-  ctx.fillRect(9, 8, 3, 56);
-  ctx.fillStyle = '#5a4a48';
-  ctx.fillRect(10, 8, 1, 56);
-  // Brazo doblado y la lámpara colgando, apagada desde hace siglos.
-  ctx.fillStyle = '#2a1a1a';
-  ctx.fillRect(9, 6, 8, 3);
-  ctx.fillRect(15, 8, 3, 6);
-  ctx.fillStyle = '#7a6a50';
-  ctx.fillRect(14, 13, 5, 3);
-  return canvas;
-}
-
-export interface PropKind {
-  texture: THREE.Texture;
-  width: number;   // metros
-  height: number;
-}
-
-export function propKinds(): PropKind[] {
-  const make = (canvas: HTMLCanvasElement, height: number): PropKind => ({
-    texture: pixelTexture(canvas),
-    height,
-    width: (canvas.width / canvas.height) * height,
-  });
-  return [
-    make(deadTree(11), 6.5),
-    make(deadTree(29), 5),
-    make(rock(3), 1.6),
-    make(rock(8), 1.1),
-    make(dryBush(5), 1.1),
-    make(dryBush(17), 0.9),
-    make(lampPost(), 6),
-  ];
-}
-
 /** Nube en píxeles: círculos solapados con una base plana. */
 export function cloudTexture(seed: number): THREE.Texture {
   const [canvas, ctx] = canvasOf(96, 36);
@@ -254,7 +163,7 @@ export function cloudTexture(seed: number): THREE.Texture {
         if (d < p.r && d > p.r - 2.2) edge = true;
       }
       if (!inside || y > 30) continue;
-      ctx.fillStyle = y > 25 ? '#d88a78' : edge && y < 20 ? '#fff0e0' : '#f4c4aa';
+      ctx.fillStyle = y > 25 ? '#a9a3c8' : edge && y < 20 ? '#ffffff' : '#dfe4f4';
       ctx.fillRect(x, y, 1, 1);
     }
   return pixelTexture(canvas);
@@ -273,7 +182,7 @@ export function blobShadowTexture(): THREE.Texture {
   return new THREE.CanvasTexture(canvas);
 }
 
-/** Grano de arena con grietas, con semilla fija para que no cambie. */
+/** Grano de nieve con grietas de hielo, con semilla fija para que no cambie. */
 export function groundTexture(): THREE.Texture {
   const size = 256;
   const canvas = document.createElement('canvas');
@@ -283,18 +192,18 @@ export function groundTexture(): THREE.Texture {
   let seed = 1971;
   const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 
-  // Casi blanco: el color lo pone el terreno (arena, duna, roca) y esto solo
+  // Casi blanco: el color lo pone el terreno (nieve, hielo, roca) y esto solo
   // añade grano. Una base oscura lo multiplicaba todo hacia el negro.
-  ctx.fillStyle = '#ece4de';
+  ctx.fillStyle = '#eef2fa';
   ctx.fillRect(0, 0, size, size);
 
   for (let i = 0; i < 2600; i++) {
     const v = 200 + rand() * 55;
-    ctx.fillStyle = `rgba(${v}, ${v * 0.92}, ${v * 0.88}, ${0.25 + rand() * 0.35})`;
+    ctx.fillStyle = `rgba(${v * 0.9}, ${v * 0.95}, ${v}, ${0.25 + rand() * 0.35})`;
     ctx.fillRect(rand() * size, rand() * size, 1 + rand() * 3, 1 + rand() * 3);
   }
 
-  ctx.strokeStyle = 'rgba(90, 50, 40, 0.3)';
+  ctx.strokeStyle = 'rgba(60, 100, 150, 0.28)';
   ctx.lineWidth = 1;
   for (let i = 0; i < 12; i++) {
     let x = rand() * size;

@@ -1,12 +1,16 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { RUN } from './data';
-import { cloudTexture, groundTexture, propKinds } from './sprites';
+import { rampaToon } from './modelos/kit';
+import { cloudTexture, groundTexture } from './sprites';
 
-// El velo de sulfatos: un horizonte anaranjado y polvoriento que oscurece hacia
-// arriba. La niebla usa el color del horizonte para que lo lejano se funda en él.
-export const HORIZON = new THREE.Color('#e3906a');
-const ZENITH = new THREE.Color('#5a1e2c');
-const MIDSKY = new THREE.Color('#b9503c');
+// Meta se congela bajo el velo de HELIOS: un horizonte gris azulado y frío que
+// sube hacia un cenit violeta, teñido del rojo del velo. La niebla usa el color
+// del horizonte para que lo lejano se funda en él.
+export const HORIZON = new THREE.Color('#b4c6dc');
+const MIDSKY = new THREE.Color('#7f8fba');
+const VEIL = new THREE.Color('#b0607a');
+const ZENITH = new THREE.Color('#33264a');
 
 /** Caja de colisión alineada con los ejes, en el plano XZ. */
 export interface Block {
@@ -16,6 +20,12 @@ export interface Block {
   maxZ: number;
 }
 
+interface Lake {
+  x: number;
+  z: number;
+  r: number;
+}
+
 const CELL = 8;
 
 // El terreno se muestrea una vez en una cuadrícula de 1 m y luego se interpola:
@@ -23,6 +33,7 @@ const CELL = 8;
 const HALF = RUN.arena + 70;
 const RES = 1;
 const SIDE = Math.round((HALF * 2) / RES) + 1;
+const LAKE_LEVEL = -0.5;
 
 function hash(x: number, z: number) {
   const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453;
@@ -46,28 +57,39 @@ function smoothstep(a: number, b: number, v: number) {
   return t * t * (3 - 2 * t);
 }
 
-/** Disco del sol con halo, apagado por el velo. */
+function random(seed: number) {
+  return () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+}
+
+/** Material toon del mundo: la misma rampa de tres tonos que los personajes. */
+function toonMat(params: THREE.MeshToonMaterialParameters = {}) {
+  return new THREE.MeshToonMaterial({ gradientMap: rampaToon(), ...params });
+}
+
+/** Sol pálido y pequeño: apenas atraviesa el velo. */
 function sunTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 128;
   const ctx = canvas.getContext('2d')!;
-  const glow = ctx.createRadialGradient(64, 64, 10, 64, 64, 64);
-  glow.addColorStop(0, 'rgba(255, 240, 215, 0.9)');
-  glow.addColorStop(0.3, 'rgba(255, 210, 170, 0.35)');
-  glow.addColorStop(1, 'rgba(255, 180, 140, 0)');
+  const glow = ctx.createRadialGradient(64, 64, 8, 64, 64, 64);
+  glow.addColorStop(0, 'rgba(255, 246, 240, 0.85)');
+  glow.addColorStop(0.3, 'rgba(230, 220, 255, 0.3)');
+  glow.addColorStop(1, 'rgba(200, 200, 255, 0)');
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, 128, 128);
-  ctx.fillStyle = '#fff4e2';
+  ctx.fillStyle = '#fff8f2';
   ctx.beginPath();
-  ctx.arc(64, 64, 17, 0, Math.PI * 2);
+  ctx.arc(64, 64, 13, 0, Math.PI * 2);
   ctx.fill();
   return new THREE.CanvasTexture(canvas);
 }
 
 /**
- * Lo estático del mapa: terreno, cielo, ruinas, decorado y la plataforma de
- * lanzamiento. Las ruinas bloquean el paso; se guardan en una cuadrícula para
- * que cientos de enemigos no comprueben cada una en cada fotograma.
+ * Lo estático del mapa: terreno helado, cielo, ruinas congeladas, cristales,
+ * antenas de HELIOS y la plataforma de lanzamiento. Lo que bloquea el paso se
+ * guarda en una cuadrícula para que cientos de enemigos no comprueben cada
+ * obstáculo en cada fotograma. Casi todo va en InstancedMesh: pocas llamadas
+ * de dibujo aunque el mapa esté lleno.
  */
 export class World {
   readonly blocks: Block[] = [];
@@ -75,23 +97,23 @@ export class World {
   readonly sun: THREE.DirectionalLight;
   readonly padPosition = new THREE.Vector3(0, 0, -62);
   private heights = new Float32Array(SIDE * SIDE);
-  private props: { mesh: THREE.InstancedMesh; x: number[]; y: number[]; z: number[] }[] = [];
+  private lakes: Lake[] = [];
   private matrix = new THREE.Matrix4();
-  private quat = new THREE.Quaternion();
-  private pos = new THREE.Vector3();
-  private one = new THREE.Vector3(1, 1, 1);
   private sky: THREE.Group;
+  private snow!: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial>;
+  private beacons!: THREE.MeshBasicMaterial;
 
   constructor(readonly scene: THREE.Scene) {
     scene.background = HORIZON;
-    scene.fog = new THREE.Fog(HORIZON, 60, 280);
+    scene.fog = new THREE.Fog(HORIZON, 55, 270);
 
+    this.placeLakes();
     this.sampleHeights();
 
-    scene.add(new THREE.HemisphereLight('#ffc0a0', '#3a1810', 1.5));
+    scene.add(new THREE.HemisphereLight('#dbe8ff', '#2c3352', 1.6));
 
-    // Sol rasante: nunca sube del todo bajo el velo de sulfatos.
-    this.sun = new THREE.DirectionalLight('#ffc49a', 2.4);
+    // Sol bajo y frío: el velo nunca lo deja subir del todo.
+    this.sun = new THREE.DirectionalLight('#fff1e6', 2.2);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     const cam = this.sun.shadow.camera;
@@ -106,20 +128,47 @@ export class World {
     this.sky = this.buildSky();
     this.buildTerrain();
     this.buildRuins();
+    this.buildAntennas();
+    this.buildCrystals();
     this.buildSkyline();
     this.buildLaunchPad();
     this.buildProps();
+    this.buildSnowfall();
   }
 
   // ---------------------------------------------------------- Terreno
 
+  /** Lagos helados: llanos de hielo en zonas abiertas, lejos del inicio y del cohete. */
+  private placeLakes() {
+    const rand = random(911);
+    let tries = 0;
+    while (this.lakes.length < 5 && tries++ < 400) {
+      const r = 9 + rand() * 8;
+      const x = (rand() * 2 - 1) * (RUN.arena - r - 10);
+      const z = (rand() * 2 - 1) * (RUN.arena - r - 10);
+      if (Math.hypot(x, z) < r + 16) continue;
+      if (Math.hypot(x - this.padPosition.x, z - this.padPosition.z) < r + 24) continue;
+      if (this.lakes.some((l) => Math.hypot(l.x - x, l.z - z) < l.r + r + 10)) continue;
+      this.lakes.push({ x, z, r });
+    }
+  }
+
+  /** 1 en el hielo de un lago, 0 fuera; la orilla es una rampa suave. */
+  private lakeAt(x: number, z: number) {
+    let v = 0;
+    for (const l of this.lakes) v = Math.max(v, smoothstep(l.r, l.r - 4, Math.hypot(x - l.x, z - l.z)));
+    return v;
+  }
+
   /** La forma del mundo. Solo se usa para rellenar la cuadrícula. */
   private rawHeight(x: number, z: number) {
-    // Lomas suaves en la zona de juego...
+    // Ventisqueros suaves en la zona de juego...
     let h = (fbm(x * 0.025, z * 0.025) - 0.45) * 5 + (fbm(x * 0.09 + 40, z * 0.09) - 0.5) * 0.8;
-    // ...y colinas altas en el borde, que cierran el mapa sin muros invisibles.
+    // ...y montañas heladas en el borde, que cierran el mapa sin muros invisibles.
     const edge = Math.max(Math.abs(x), Math.abs(z));
-    h += smoothstep(RUN.arena - 14, RUN.arena + 40, edge) ** 1.4 * (12 + fbm(x * 0.02, z * 0.02) * 16);
+    h += smoothstep(RUN.arena - 14, RUN.arena + 40, edge) ** 1.4 * (14 + fbm(x * 0.02, z * 0.02) * 18);
+    // Los lagos se hunden un poco y quedan planos.
+    h += (LAKE_LEVEL - h) * this.lakeAt(x, z);
     // Llano donde se empieza y donde está el cohete.
     const start = smoothstep(14, 5, Math.hypot(x, z));
     const pad = smoothstep(22, 13, Math.hypot(x - this.padPosition.x, z - this.padPosition.z));
@@ -151,18 +200,22 @@ export class World {
     const geometry = new THREE.PlaneGeometry(HALF * 2, HALF * 2, segments, segments).rotateX(-Math.PI / 2);
     const position = geometry.attributes.position as THREE.BufferAttribute;
     const colors = new Float32Array(position.count * 3);
-    const sand = new THREE.Color('#d08a64');
-    const dune = new THREE.Color('#e8a878');
-    const rock = new THREE.Color('#7a3a2c');
+    const snow = new THREE.Color('#eef3fb');
+    const drift = new THREE.Color('#c9d7ee');
+    const ice = new THREE.Color('#8cc7e8');
+    const rock = new THREE.Color('#4b5574');
     const c = new THREE.Color();
     for (let i = 0; i < position.count; i++) {
       const x = position.getX(i), z = position.getZ(i);
       const y = this.heightAt(x, z);
       position.setY(i, y);
-      // Pendiente: lo empinado es roca oscura; lo alto y llano, arena clara.
+      // Nieve con manchas de nieve vieja; lo empinado es roca desnuda y los
+      // lagos, hielo azul.
       const slope = Math.hypot(this.heightAt(x + 1, z) - this.heightAt(x - 1, z),
                                this.heightAt(x, z + 1) - this.heightAt(x, z - 1)) / 2;
-      c.copy(sand).lerp(dune, smoothstep(0, 3, y) * 0.6).lerp(rock, smoothstep(0.35, 1.1, slope));
+      c.copy(snow).lerp(drift, smoothstep(0.45, 0.7, fbm(x * 0.06 + 13, z * 0.06)) * 0.8);
+      c.lerp(rock, smoothstep(0.45, 1.2, slope));
+      c.lerp(ice, smoothstep(0.3, 0.9, this.lakeAt(x, z)));
       colors.set([c.r, c.g, c.b], i * 3);
     }
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -170,17 +223,28 @@ export class World {
 
     const texture = groundTexture();
     texture.repeat.set(HALF / 4, HALF / 4);
-    const ground = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ map: texture, vertexColors: true }));
+    const ground = new THREE.Mesh(geometry, toonMat({ map: texture, vertexColors: true }));
     ground.receiveShadow = true;
     this.scene.add(ground);
 
+    // Brillo del hielo: un disco algo reflectante sobre cada lago.
+    const sheen = new THREE.MeshPhongMaterial({
+      color: '#a8dcf5', specular: '#ffffff', shininess: 90, transparent: true, opacity: 0.45, depthWrite: false,
+    });
+    for (const l of this.lakes) {
+      const disc = new THREE.Mesh(new THREE.CircleGeometry(l.r - 2.5, 40).rotateX(-Math.PI / 2), sheen);
+      disc.position.set(l.x, LAKE_LEVEL + 0.04, l.z);
+      disc.receiveShadow = true;
+      this.scene.add(disc);
+    }
+
     // Más allá del terreno, un anillo hasta el horizonte para que no haya borde.
-    // Empieza dentro de las colinas del límite, que lo tapan por dentro.
+    // Empieza dentro de las montañas del límite, que lo tapan por dentro.
     const far = new THREE.Mesh(
       new THREE.RingGeometry(HALF - 8, 1100, 64).rotateX(-Math.PI / 2),
-      new THREE.MeshLambertMaterial({ color: '#b86848' }),
+      new THREE.MeshLambertMaterial({ color: '#c6d4ea' }),
     );
-    far.position.y = 11;
+    far.position.y = 13;
     this.scene.add(far);
   }
 
@@ -196,15 +260,17 @@ export class World {
         depthWrite: false,
         fog: false,
         uniforms: {
-          horizon: { value: HORIZON }, mid: { value: MIDSKY }, zenith: { value: ZENITH },
+          horizon: { value: HORIZON }, mid: { value: MIDSKY }, veil: { value: VEIL }, zenith: { value: ZENITH },
         },
         vertexShader: `varying vec3 vDir;
           void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-        fragmentShader: `uniform vec3 horizon; uniform vec3 mid; uniform vec3 zenith; varying vec3 vDir;
+        fragmentShader: `uniform vec3 horizon; uniform vec3 mid; uniform vec3 veil; uniform vec3 zenith; varying vec3 vDir;
           void main() {
             float h = max(vDir.y, 0.0);
-            vec3 c = mix(horizon, mid, smoothstep(0.0, 0.28, h));
-            c = mix(c, zenith, smoothstep(0.28, 0.9, h));
+            vec3 c = mix(horizon, mid, smoothstep(0.0, 0.25, h));
+            // El velo: una franja rojiza alta, lo único cálido del cielo.
+            c = mix(c, veil, smoothstep(0.22, 0.5, h) * (1.0 - smoothstep(0.5, 0.85, h)) * 0.55);
+            c = mix(c, zenith, smoothstep(0.45, 0.95, h));
             gl_FragColor = vec4(c, 1.0);
           }`,
       }),
@@ -218,7 +284,7 @@ export class World {
       map: sunTexture(), fog: false, depthWrite: false, transparent: true,
     }));
     sunDisc.position.set(-300, 110, 170);
-    sunDisc.scale.setScalar(90);
+    sunDisc.scale.setScalar(70);
     group.add(sunDisc);
 
     for (let i = 0; i < 14; i++) {
@@ -237,27 +303,95 @@ export class World {
     return group;
   }
 
-  /** El cielo y la luz siguen al jugador; el mapa de sombras así basta pequeño. */
+  /** Nieve que cae alrededor del jugador: un único Points que se repite en un cubo. */
+  private buildSnowfall() {
+    const count = 1800;
+    const box = new THREE.Vector3(90, 36, 90);
+    const seeds = new Float32Array(count * 3);
+    const rand = random(4242);
+    for (let i = 0; i < count; i++) seeds.set([rand() * box.x, rand() * box.y, rand() * box.z], i * 3);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(seeds, 3));
+
+    const material = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      uniforms: {
+        time: { value: 0 },
+        center: { value: new THREE.Vector3() },
+        box: { value: box },
+        scale: { value: 900 },
+      },
+      vertexShader: `uniform float time; uniform vec3 center; uniform vec3 box; uniform float scale;
+        varying float vFade;
+        void main() {
+          vec3 p = position;
+          // Cada copo cae a su ritmo y se mece; luego se envuelve en el cubo
+          // que sigue al jugador, así nunca se acaba.
+          float speed = 1.6 + fract(p.x * 0.37) * 1.4;
+          p.y -= time * speed;
+          p.x += sin(time * 0.7 + p.y * 0.3) * 1.2 + time * 0.8;
+          p.z += cos(time * 0.5 + p.x * 0.2) * 0.8;
+          vec3 origin = center - box * 0.5;
+          p = mod(p - origin, box) + origin;
+          vec4 mv = modelViewMatrix * vec4(p, 1.0);
+          gl_Position = projectionMatrix * mv;
+          gl_PointSize = min(scale * (0.05 + fract(p.z * 0.71) * 0.05) / -mv.z, 9.0);
+          vFade = 1.0 - smoothstep(25.0, 48.0, -mv.z);
+        }`,
+      fragmentShader: `varying float vFade;
+        void main() {
+          float d = length(gl_PointCoord - 0.5);
+          if (d > 0.5) discard;
+          gl_FragColor = vec4(1.0, 1.0, 1.0, (1.0 - smoothstep(0.3, 0.5, d)) * 0.85 * vFade);
+        }`,
+    });
+    this.snow = new THREE.Points(geometry, material);
+    this.snow.frustumCulled = false;
+    this.snow.renderOrder = 5;
+    this.scene.add(this.snow);
+  }
+
+  /** El cielo, la luz y la nieve siguen al jugador; el mapa de sombras así basta pequeño. */
   follow(target: THREE.Vector3) {
     this.sky.position.set(target.x, 0, target.z);
     this.sun.target.position.copy(target);
     this.sun.position.set(target.x - 50, target.y + 42, target.z + 28);
+
+    const t = performance.now() / 1000;
+    const u = this.snow.material.uniforms;
+    u.time.value = t;
+    (u.center.value as THREE.Vector3).set(target.x, target.y + 12, target.z);
+    // Las luces de las antenas laten despacio: HELIOS escucha.
+    this.beacons.color.setRGB(1, 0.16 + 0.12 * Math.sin(t * 2.4), 0.12).multiplyScalar(0.7 + 0.3 * Math.sin(t * 2.4));
   }
 
   // ----------------------------------------------------------- Ruinas
 
+  /** Comprueba que un sitio está libre: ni el inicio, ni el cohete, ni lagos, ni bloques. */
+  private free(x: number, z: number, clearance: number, lakes = true) {
+    if (Math.hypot(x, z) < 12 + clearance) return false;
+    if (Math.hypot(x - this.padPosition.x, z - this.padPosition.z) < 16 + clearance) return false;
+    if (lakes && this.lakeAt(x, z) > 0) return false;
+    return !this.blockAt(x, z, clearance);
+  }
+
+  /** Lo más bajo bajo una huella rectangular: así nada queda flotando. */
+  private groundUnder(x: number, z: number, w: number, d: number) {
+    return Math.min(
+      this.heightAt(x - w / 2, z - d / 2), this.heightAt(x + w / 2, z - d / 2),
+      this.heightAt(x - w / 2, z + d / 2), this.heightAt(x + w / 2, z + d / 2), this.heightAt(x, z));
+  }
+
   private buildRuins() {
-    let seed = 503;
-    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const rand = random(503);
 
     const shapes: { x: number; z: number; w: number; d: number; h: number }[] = [];
     let attempts = 0;
     while (shapes.length < 70 && attempts++ < 2000) {
       const x = (rand() * 2 - 1) * (RUN.arena - 12);
       const z = (rand() * 2 - 1) * (RUN.arena - 12);
-      // El centro queda libre para empezar, y la explanada del cohete también.
-      if (Math.hypot(x, z) < 12) continue;
-      if (Math.hypot(x - this.padPosition.x, z - this.padPosition.z) < 18) continue;
+      if (!this.free(x, z, 0)) continue;
 
       const w = 1.5 + rand() * 5;
       const d = 1.5 + rand() * 5;
@@ -266,33 +400,57 @@ export class World {
       shapes.push({ x, z, w, d, h });
     }
 
-    const mesh = new THREE.InstancedMesh(
-      new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshLambertMaterial(),
-      shapes.length,
-    );
-    mesh.castShadow = mesh.receiveShadow = true;
+    const box = new THREE.BoxGeometry(1, 1, 1);
+    const stone = new THREE.InstancedMesh(box, toonMat(), shapes.length);
+    const caps = new THREE.InstancedMesh(box, toonMat({ color: '#f4f8ff' }), shapes.length);
+    stone.castShadow = stone.receiveShadow = true;
+    caps.castShadow = caps.receiveShadow = true;
+
+    // Carámbanos colgando del borde de lo alto, que es lo que más se ve.
+    const icicle = new THREE.ConeGeometry(0.16, 1, 5).rotateX(Math.PI).translate(0, -0.5, 0);
+    const icicleMat = toonMat({ color: '#bfe6fb', emissive: '#22506e' });
+    const icicles: THREE.Matrix4[] = [];
 
     const color = new THREE.Color();
+    const q = new THREE.Quaternion();
     shapes.forEach((s, i) => {
       // Medio enterradas: la base se hunde por debajo del punto más bajo.
-      const ground = Math.min(
-        this.heightAt(s.x - s.w / 2, s.z - s.d / 2), this.heightAt(s.x + s.w / 2, s.z - s.d / 2),
-        this.heightAt(s.x - s.w / 2, s.z + s.d / 2), this.heightAt(s.x + s.w / 2, s.z + s.d / 2));
+      const ground = this.groundUnder(s.x, s.z, s.w, s.d);
       const depth = s.h + 1;
-      this.matrix.compose(
-        new THREE.Vector3(s.x, ground - 1 + depth / 2, s.z),
-        new THREE.Quaternion(),
-        new THREE.Vector3(s.w, depth, s.d),
-      );
-      mesh.setMatrixAt(i, this.matrix);
-      color.setHSL(0.03 + rand() * 0.03, 0.22 + rand() * 0.18, 0.3 + rand() * 0.14);
-      mesh.setColorAt(i, color);
+      const top = ground - 1 + depth;
+      this.matrix.compose(new THREE.Vector3(s.x, ground - 1 + depth / 2, s.z), q, new THREE.Vector3(s.w, depth, s.d));
+      stone.setMatrixAt(i, this.matrix);
+      color.setHSL(0.6 + rand() * 0.05, 0.12 + rand() * 0.12, 0.34 + rand() * 0.14);
+      stone.setColorAt(i, color);
+
+      // Capa de nieve encima, algo más ancha que la piedra.
+      const capH = 0.22 + rand() * 0.2;
+      this.matrix.compose(new THREE.Vector3(s.x, top + capH / 2 - 0.05, s.z), q, new THREE.Vector3(s.w + 0.2, capH, s.d + 0.2));
+      caps.setMatrixAt(i, this.matrix);
+
+      if (s.h > 1.6) {
+        for (const [side, length] of [[0, s.w], [1, s.w], [2, s.d], [3, s.d]] as const) {
+          const n = Math.floor(length / 0.7);
+          for (let k = 0; k < n; k++) {
+            if (rand() < 0.45) continue;
+            const along = -length / 2 + 0.35 + k * 0.7;
+            const px = side < 2 ? s.x + along : s.x + (side === 2 ? -1 : 1) * (s.w / 2 + 0.06);
+            const pz = side < 2 ? s.z + (side === 0 ? -1 : 1) * (s.d / 2 + 0.06) : s.z + along;
+            const len = 0.4 + rand() * 1.1;
+            icicles.push(new THREE.Matrix4().compose(
+              new THREE.Vector3(px, top, pz), q, new THREE.Vector3(1, len, 1)));
+          }
+        }
+      }
       this.addBlock({ minX: s.x - s.w / 2, maxX: s.x + s.w / 2, minZ: s.z - s.d / 2, maxZ: s.z + s.d / 2 });
     });
-    this.scene.add(mesh);
+    this.scene.add(stone, caps);
 
-    // Tope en el borde, detrás de las colinas, por si alguien las escala.
+    const hanging = new THREE.InstancedMesh(icicle, icicleMat, icicles.length);
+    icicles.forEach((m, i) => hanging.setMatrixAt(i, m));
+    this.scene.add(hanging);
+
+    // Tope en el borde, detrás de las montañas, por si alguien las escala.
     const a = RUN.arena;
     this.addBlock({ minX: -a - 5, maxX: a + 5, minZ: -a - 5, maxZ: -a });
     this.addBlock({ minX: -a - 5, maxX: a + 5, minZ: a, maxZ: a + 5 });
@@ -300,80 +458,270 @@ export class World {
     this.addBlock({ minX: a, maxX: a + 5, minZ: -a, maxZ: a });
   }
 
-  /** Torres muertas sobre las colinas del borde: el horizonte de una ciudad. */
+  // --------------------------------------------------- Antenas de HELIOS
+
+  /**
+   * Las antenas por las que HELIOS controla el velo: torres de chapa oscura
+   * con franjas púrpura, un plato orientado al cielo y una luz roja que late.
+   */
+  private buildAntennas() {
+    const rand = random(1337);
+    const spots: { x: number; z: number; h: number; yaw: number }[] = [];
+    let tries = 0;
+    while (spots.length < 7 && tries++ < 600) {
+      const angle = rand() * Math.PI * 2;
+      const radius = 30 + rand() * (RUN.arena - 42);
+      const x = Math.cos(angle) * radius, z = Math.sin(angle) * radius;
+      if (!this.free(x, z, 3)) continue;
+      if (spots.some((s) => Math.hypot(s.x - x, s.z - z) < 38)) continue;
+      spots.push({ x, z, h: 16 + rand() * 8, yaw: rand() * Math.PI * 2 });
+    }
+
+    const n = spots.length;
+    const chapa = toonMat({ color: '#474a5e' });
+    const metal = toonMat({ color: '#62667c' });
+    const nieve = toonMat({ color: '#f4f8ff' });
+    const purpura = new THREE.MeshBasicMaterial({ color: '#b46cff' });
+    this.beacons = new THREE.MeshBasicMaterial({ color: '#ff2a1a' });
+
+    // Pilón: un tronco de pirámide de cuatro caras, de altura 1, que se estira.
+    const pylon = new THREE.CylinderGeometry(0.28, 1.25, 1, 4, 1).rotateY(Math.PI / 4).translate(0, 0.5, 0);
+    const collar = new THREE.BoxGeometry(1, 1, 1);
+    const dish = new THREE.SphereGeometry(2.4, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2.4).rotateX(Math.PI);
+    const light = new THREE.SphereGeometry(0.42, 12, 8);
+
+    const bases = new THREE.InstancedMesh(collar, chapa, n);
+    const baseSnow = new THREE.InstancedMesh(collar, nieve, n);
+    const pylons = new THREE.InstancedMesh(pylon, metal, n);
+    const collars = new THREE.InstancedMesh(collar, chapa, n * 4);
+    const stripes = new THREE.InstancedMesh(collar, purpura, n * 4);
+    const dishes = new THREE.InstancedMesh(dish, metal, n);
+    const lights = new THREE.InstancedMesh(light, this.beacons, n * 2);
+    for (const m of [bases, baseSnow, pylons, collars, dishes]) m.castShadow = m.receiveShadow = true;
+    (dishes.material as THREE.MeshToonMaterial).side = THREE.DoubleSide;
+
+    const v = new THREE.Vector3(), sc = new THREE.Vector3(), q = new THREE.Quaternion();
+    const up = new THREE.Vector3(0, 1, 0);
+    spots.forEach((s, i) => {
+      const ground = this.groundUnder(s.x, s.z, 4, 4);
+      const yawQ = new THREE.Quaternion().setFromAxisAngle(up, s.yaw);
+
+      bases.setMatrixAt(i, this.matrix.compose(v.set(s.x, ground + 0.3, s.z), yawQ, sc.set(4.2, 2.2, 4.2)));
+      baseSnow.setMatrixAt(i, this.matrix.compose(v.set(s.x, ground + 1.45, s.z), yawQ, sc.set(4.4, 0.25, 4.4)));
+      const foot = ground + 1.4;
+      pylons.setMatrixAt(i, this.matrix.compose(v.set(s.x, foot, s.z), yawQ, sc.set(1.6, s.h, 1.6)));
+
+      // Collares a lo largo del pilón, cada uno con su franja púrpura encendida.
+      for (let k = 0; k < 4; k++) {
+        const f = 0.18 + k * 0.2;
+        const w = (1.25 + (0.28 - 1.25) * f) * 1.6 * 1.5 + 0.25;
+        collars.setMatrixAt(i * 4 + k, this.matrix.compose(v.set(s.x, foot + s.h * f, s.z), yawQ, sc.set(w, 0.45, w)));
+        stripes.setMatrixAt(i * 4 + k, this.matrix.compose(v.set(s.x, foot + s.h * f, s.z), yawQ, sc.set(w + 0.06, 0.12, w + 0.06)));
+      }
+
+      // El plato mira al cielo, algo ladeado: escucha al satélite del velo.
+      const tilt = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.5);
+      q.copy(yawQ).multiply(tilt);
+      dishes.setMatrixAt(i, this.matrix.compose(v.set(s.x, foot + s.h * 0.82, s.z), q, sc.set(1, 1, 1)));
+
+      lights.setMatrixAt(i * 2, this.matrix.compose(v.set(s.x, foot + s.h + 0.3, s.z), yawQ, sc.set(1, 1, 1)));
+      lights.setMatrixAt(i * 2 + 1, this.matrix.compose(v.set(s.x, foot + s.h * 0.82 + 1.6, s.z), yawQ, sc.set(0.6, 0.6, 0.6)));
+
+      this.addBlock({ minX: s.x - 2.2, maxX: s.x + 2.2, minZ: s.z - 2.2, maxZ: s.z + 2.2 });
+    });
+    this.scene.add(bases, baseSnow, pylons, collars, stripes, dishes, lights);
+  }
+
+  // ---------------------------------------------------------- Cristales
+
+  /**
+   * Cristales de hielo que brotan del suelo: los grandes cortan el paso y
+   * los pequeños salpican el mapa. Algunos se han teñido con el púrpura de HELIOS.
+   */
+  private buildCrystals() {
+    const rand = random(8088);
+    // Una punta hexagonal: prisma y pirámide, de altura 1.
+    const prism = new THREE.CylinderGeometry(0.5, 0.42, 0.75, 6).translate(0, 0.375, 0);
+    const tip = new THREE.ConeGeometry(0.5, 0.25, 6).translate(0, 0.875, 0);
+    const shard = mergeGeometries([prism.toNonIndexed(), tip.toNonIndexed()])!;
+    shard.computeVertexNormals();
+
+    const material = toonMat({ emissive: '#1d4b6e', emissiveIntensity: 0.9 });
+    const matrices: THREE.Matrix4[] = [];
+    const colors: THREE.Color[] = [];
+    const cyan = new THREE.Color('#9fe6ff'), pale = new THREE.Color('#e3f6ff'), violet = new THREE.Color('#c58cff');
+
+    const cluster = (x: number, z: number, size: number, tint: THREE.Color) => {
+      const ground = this.heightAt(x, z);
+      const pieces = 3 + Math.floor(rand() * 4);
+      for (let k = 0; k < pieces; k++) {
+        const big = k === 0;
+        const a = rand() * Math.PI * 2;
+        const off = big ? 0 : size * (0.25 + rand() * 0.35);
+        const h = size * (big ? 2.4 + rand() : 0.9 + rand() * 1.2);
+        const w = size * (big ? 0.7 : 0.35 + rand() * 0.25);
+        const lean = big ? (rand() - 0.5) * 0.25 : 0.25 + rand() * 0.45;
+        const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.cos(a) * lean, rand() * Math.PI, -Math.sin(a) * lean));
+        matrices.push(new THREE.Matrix4().compose(
+          new THREE.Vector3(x + Math.cos(a) * off, ground - 0.2, z + Math.sin(a) * off), q, new THREE.Vector3(w, h, w)));
+        colors.push(tint.clone().lerp(pale, rand() * 0.5));
+      }
+    };
+
+    // Grandes: obstáculos.
+    let placed = 0, tries = 0;
+    while (placed < 26 && tries++ < 1500) {
+      const x = (rand() * 2 - 1) * (RUN.arena - 8);
+      const z = (rand() * 2 - 1) * (RUN.arena - 8);
+      if (!this.free(x, z, 2.5, false)) continue;
+      const size = 1.2 + rand() * 1.1;
+      cluster(x, z, size, rand() < 0.2 ? violet : cyan);
+      const r = size * 0.55;
+      this.addBlock({ minX: x - r, maxX: x + r, minZ: z - r, maxZ: z + r });
+      placed++;
+    }
+    // Pequeños: decorado que no estorba.
+    placed = tries = 0;
+    while (placed < 110 && tries++ < 3000) {
+      const x = (rand() * 2 - 1) * (RUN.arena + 15);
+      const z = (rand() * 2 - 1) * (RUN.arena + 15);
+      if (!this.free(x, z, 1, false)) continue;
+      cluster(x, z, 0.3 + rand() * 0.35, rand() < 0.12 ? violet : cyan);
+      placed++;
+    }
+
+    const mesh = new THREE.InstancedMesh(shard, material, matrices.length);
+    mesh.castShadow = true;
+    matrices.forEach((m, i) => {
+      mesh.setMatrixAt(i, m);
+      mesh.setColorAt(i, colors[i]);
+    });
+    this.scene.add(mesh);
+  }
+
+  /** Torres heladas y glaciares más allá de las montañas: siluetas contra el cielo. */
   private buildSkyline() {
-    let seed = 77;
-    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    const count = 70;
-    const mesh = new THREE.InstancedMesh(
+    const rand = random(77);
+    const count = 60;
+    const towers = new THREE.InstancedMesh(
       new THREE.BoxGeometry(1, 1, 1),
       // Siluetas planas sin niebla: la niebla las aclaraba por encima del cielo.
-      new THREE.MeshBasicMaterial({ color: '#8a3e34', fog: false }),
+      new THREE.MeshBasicMaterial({ color: '#8496b8', fog: false }),
       count,
     );
+    const up = new THREE.Vector3(0, 1, 0);
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2 + rand() * 0.05;
       // Lejos, para que la niebla las deje en siluetas contra el cielo.
-      const radius = RUN.arena + 110 + rand() * 60;
+      const radius = RUN.arena + 120 + rand() * 60;
       const x = Math.cos(angle) * radius, z = Math.sin(angle) * radius;
-      const w = 10 + rand() * 14;
-      const h = 25 + rand() * 45;
+      const w = 9 + rand() * 12;
+      const h = 22 + rand() * 40;
       this.matrix.compose(
-        new THREE.Vector3(x, 10 + h / 2, z),
-        new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -angle + rand() * 0.3),
+        new THREE.Vector3(x, 12 + h / 2, z),
+        new THREE.Quaternion().setFromAxisAngle(up, -angle + rand() * 0.3),
         new THREE.Vector3(w, h, 8 + rand() * 8),
       );
-      mesh.setMatrixAt(i, this.matrix);
+      towers.setMatrixAt(i, this.matrix);
     }
-    this.scene.add(mesh);
+    this.scene.add(towers);
+
+    // Picos de glaciar, más cerca y más claros que las torres.
+    const peaks = 34;
+    const glacier = new THREE.InstancedMesh(
+      new THREE.ConeGeometry(1, 1, 5).translate(0, 0.5, 0),
+      new THREE.MeshBasicMaterial({ color: '#a5b8d6', fog: false }),
+      peaks,
+    );
+    for (let i = 0; i < peaks; i++) {
+      const angle = (i / peaks) * Math.PI * 2 + rand() * 0.12;
+      const radius = RUN.arena + 95 + rand() * 25;
+      const r = 18 + rand() * 20;
+      this.matrix.compose(
+        new THREE.Vector3(Math.cos(angle) * radius, 6, Math.sin(angle) * radius),
+        new THREE.Quaternion().setFromAxisAngle(up, rand() * Math.PI),
+        new THREE.Vector3(r, 25 + rand() * 35, r),
+      );
+      glacier.setMatrixAt(i, this.matrix);
+    }
+    this.scene.add(glacier);
   }
 
   // --------------------------------------------------------- Decorado
 
+  /** Rocas heladas, montículos de nieve y árboles muertos cubiertos de escarcha. */
   private buildProps() {
-    const kinds = propKinds();
-    let seed = 2024;
-    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    const counts = [40, 30, 70, 60, 90, 70, 18];
+    const rand = random(2024);
 
-    kinds.forEach((kind, k) => {
-      const geometry = new THREE.PlaneGeometry(kind.width, kind.height).translate(0, kind.height / 2 - 0.1, 0);
-      const material = new THREE.MeshLambertMaterial({
-        map: kind.texture, alphaTest: 0.5, side: THREE.DoubleSide,
-      });
-      const mesh = new THREE.InstancedMesh(geometry, material, counts[k]);
-      mesh.castShadow = true;
-      mesh.frustumCulled = false;
-      const entry = { mesh, x: [] as number[], y: [] as number[], z: [] as number[] };
-      let placed = 0, tries = 0;
-      while (placed < counts[k] && tries++ < 4000) {
+    const place = (count: number, clearance: number, each: (x: number, y: number, z: number, m: THREE.Matrix4) => void) => {
+      const out: THREE.Matrix4[] = [];
+      let tries = 0;
+      while (out.length < count && tries++ < count * 40) {
         const x = (rand() * 2 - 1) * (RUN.arena + 20);
         const z = (rand() * 2 - 1) * (RUN.arena + 20);
-        if (Math.hypot(x, z) < 9) continue;
-        if (Math.hypot(x - this.padPosition.x, z - this.padPosition.z) < 16) continue;
-        if (this.blockAt(x, z, 1)) continue;
-        entry.x.push(x);
-        entry.y.push(this.heightAt(x, z));
-        entry.z.push(z);
-        placed++;
+        if (!this.free(x, z, clearance)) continue;
+        const m = new THREE.Matrix4();
+        each(x, this.heightAt(x, z), z, m);
+        out.push(m);
       }
-      mesh.count = placed;
-      this.props.push(entry);
+      return out;
+    };
+    const add = (geometry: THREE.BufferGeometry, material: THREE.Material, list: THREE.Matrix4[], shadows = true) => {
+      const mesh = new THREE.InstancedMesh(geometry, material, list.length);
+      list.forEach((m, i) => mesh.setMatrixAt(i, m));
+      mesh.castShadow = shadows;
+      mesh.receiveShadow = true;
       this.scene.add(mesh);
-    });
-  }
+      return mesh;
+    };
+    const euler = new THREE.Euler();
+    const q = new THREE.Quaternion();
+    const v = new THREE.Vector3();
+    const s = new THREE.Vector3();
 
-  /** Los billboards giran para mirar siempre a la cámara (solo en vertical). */
-  faceCamera(yaw: number) {
-    this.quat.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, yaw);
-    for (const p of this.props) {
-      for (let i = 0; i < p.x.length; i++) {
-        this.pos.set(p.x[i], p.y[i], p.z[i]);
-        this.matrix.compose(this.pos, this.quat, this.one);
-        p.mesh.setMatrixAt(i, this.matrix);
-      }
-      p.mesh.instanceMatrix.needsUpdate = true;
-    }
+    // Rocas: un dodecaedro aplastado, con un gorro de nieve encima.
+    const rocks = place(90, 0.5, (x, y, z, m) => {
+      const r = 0.4 + rand() * 0.9;
+      q.setFromEuler(euler.set(rand() * 0.4, rand() * Math.PI * 2, rand() * 0.4));
+      m.compose(v.set(x, y + r * 0.2, z), q, s.set(r * (1 + rand() * 0.5), r * (0.6 + rand() * 0.4), r));
+    });
+    add(new THREE.DodecahedronGeometry(1, 0), toonMat({ color: '#56607e' }), rocks);
+    const rockCaps = rocks.map((m) => {
+      const out = new THREE.Matrix4();
+      m.decompose(v, q, s);
+      return out.compose(v.clone().add(new THREE.Vector3(0, s.y * 0.55, 0)), q, s.clone().multiply(new THREE.Vector3(0.82, 0.4, 0.82)));
+    });
+    add(new THREE.DodecahedronGeometry(1, 0), toonMat({ color: '#f4f8ff' }), rockCaps, false);
+
+    // Montículos de nieve: medias esferas achatadas.
+    const mounds = place(70, 0.3, (x, y, z, m) => {
+      const r = 0.8 + rand() * 1.8;
+      m.compose(v.set(x, y - 0.1, z), q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, rand() * 6), s.set(r * 1.4, r * 0.45, r));
+    });
+    add(new THREE.SphereGeometry(1, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), toonMat({ color: '#e8eff9' }), mounds, false);
+
+    // Árboles muertos: tronco y ramas peladas en una sola geometría.
+    const trunk = new THREE.CylinderGeometry(0.1, 0.22, 3.4, 5).translate(0, 1.7, 0);
+    const branch = (len: number, y: number, yaw: number, pitch: number) =>
+      new THREE.CylinderGeometry(0.04, 0.09, len, 4).translate(0, len / 2, 0)
+        .rotateZ(pitch).rotateY(yaw).translate(0, y, 0);
+    const tree = mergeGeometries([
+      trunk, branch(1.6, 1.6, 0, 0.8), branch(1.3, 2.2, 2.2, 0.9), branch(1.1, 2.7, 4.1, 0.7), branch(0.9, 1.1, 3.3, 1.0),
+    ].map((g) => g.toNonIndexed()))!;
+    tree.computeVertexNormals();
+    const trees = place(45, 1, (x, y, z, m) => {
+      const k = 0.9 + rand() * 0.9;
+      q.setFromEuler(euler.set((rand() - 0.5) * 0.25, rand() * Math.PI * 2, (rand() - 0.5) * 0.25));
+      m.compose(v.set(x, y - 0.2, z), q, s.set(k, k, k));
+    });
+    add(tree, toonMat({ color: '#3f3a54' }), trees);
+    // Escarcha en las ramas: la misma silueta, algo más gruesa y blanca, solo arriba.
+    const frost = trees.map((m) => {
+      const out = new THREE.Matrix4();
+      m.decompose(v, q, s);
+      return out.compose(v.clone().add(new THREE.Vector3(0, 0.08 * s.y, 0)), q, s.clone().multiply(new THREE.Vector3(1.12, 1, 1.12)));
+    });
+    add(tree, toonMat({ color: '#dceaf8', transparent: true, opacity: 0.55 }), frost, false);
   }
 
   // --------------------------------------------------------- Cohete
@@ -383,11 +731,12 @@ export class World {
     const group = new THREE.Group();
     group.position.copy(this.padPosition);
 
-    const concrete = new THREE.MeshLambertMaterial({ color: '#8a6a5e' });
-    const hull = new THREE.MeshLambertMaterial({ color: '#efe8de' });
-    const dark = new THREE.MeshLambertMaterial({ color: '#2a1a18' });
-    const orange = new THREE.MeshLambertMaterial({ color: '#f07a2a' });
-    const steel = new THREE.MeshLambertMaterial({ color: '#5a2e26' });
+    const concrete = toonMat({ color: '#7f8ba4' });
+    const snow = toonMat({ color: '#f4f8ff' });
+    const hull = toonMat({ color: '#f2f0ec' });
+    const dark = toonMat({ color: '#22243a' });
+    const orange = toonMat({ color: '#ff8a3d' });
+    const steel = toonMat({ color: '#3d4660' });
     const red = new THREE.MeshBasicMaterial({ color: '#ff2a12' });
 
     const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number) => {
@@ -399,6 +748,8 @@ export class World {
     };
 
     add(new THREE.CylinderGeometry(9, 9.5, 0.8, 32), concrete, 0, 0.4, 0);
+    // Nieve acumulada en el borde de la plataforma.
+    add(new THREE.TorusGeometry(8.6, 0.35, 6, 40).rotateX(Math.PI / 2), snow, 0, 0.85, 0);
     add(new THREE.CylinderGeometry(2.6, 2.6, 26, 20), hull, 0, 14, 0);
     add(new THREE.CylinderGeometry(2.65, 2.65, 0.8, 20), dark, 0, 27.2, 0);
     add(new THREE.CylinderGeometry(2.2, 2.6, 10, 20), hull, 0, 32.4, 0);
@@ -462,8 +813,8 @@ export class World {
   }
 
   /**
-   * Empuja un círculo fuera de cualquier ruina que pise. Devuelve la posición
-   * corregida en `out` (puede ser el mismo vector).
+   * Empuja un círculo fuera de cualquier obstáculo que pise. Devuelve la
+   * posición corregida en `out` (puede ser el mismo vector).
    */
   resolve(x: number, z: number, radius: number, out: { x: number; z: number }) {
     out.x = x;

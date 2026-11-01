@@ -26,10 +26,55 @@ const LENGUA = '#e9849c';
 const ALBARICOQUE = '#f1dcc0';
 const ALBARICOQUE_OSCURO = '#e8c9a4';
 
+/** Versiones de los ojos, en prueba para elegir la buena. */
+export type OjosPerro = 'grandes' | 'pequenos' | 'puntos' | 'anime' | 'felices';
+
 export interface OpcionesPerro {
   pajarita: 'cuadros' | 'verde' | null;
   gorra: boolean;
   gafas: boolean;
+  ojos?: OjosPerro;
+}
+
+/**
+ * Un ojo de Bruno dentro del nodo `ojo_<lado>` (el que escala el parpadeo).
+ * `s` es el lado (+1 izquierda, −1 derecha) para colocar los brillos.
+ */
+function ojoPerro(ojo: THREE.Object3D, tipo: OjosPerro, s: number) {
+  const sinLinea = { contorno: false, sombra: false };
+  switch (tipo) {
+    case 'pequenos':
+      // Como en las fotos: pequeños, castaño muy oscuro, un brillo ámbar y
+      // un cerco de pelo crema alrededor.
+      pieza(ojo, esfera(0.058, 1, 0.95, 0.35), toon(ALBARICOQUE), 0, -0.004, -0.012, { contorno: false });
+      pieza(ojo, esfera(0.04, 1, 1, 0.65), brillo('#24160f'), 0, 0, 0, { contorno: false });
+      pieza(ojo, esfera(0.026, 1, 1, 0.4), brillo('#4a2c18'), -0.004 * s, -0.006, 0.014, sinLinea);
+      pieza(ojo, esfera(0.009), brillo('#fff3dc'), 0.013 * s, 0.015, 0.026, sinLinea);
+      break;
+    case 'puntos':
+      // Dibujo clásico: óvalos negros altos con un solo brillo.
+      pieza(ojo, esfera(0.034, 0.8, 1.4, 0.55), brillo('#120c0a'), 0, 0, 0, { contorno: false });
+      pieza(ojo, esfera(0.011), brillo('#ffffff'), 0.008 * s, 0.022, 0.018, sinLinea);
+      break;
+    case 'anime':
+      // Grandes y expresivos: iris castaño, pupila y dos brillos.
+      pieza(ojo, esfera(0.066, 0.92, 1.12, 0.62), brillo('#120c0a'), 0, 0, 0, { contorno: false });
+      pieza(ojo, esfera(0.05, 0.92, 1.1, 0.5), brillo('#6b3f22'), 0, -0.008, 0.012, sinLinea);
+      pieza(ojo, esfera(0.03, 1, 1.1, 0.5), brillo('#120c0a'), 0, -0.006, 0.022, sinLinea);
+      pieza(ojo, esfera(0.022), brillo('#ffffff'), 0.02 * s, 0.026, 0.034, sinLinea);
+      pieza(ojo, esfera(0.01), brillo('#ffffff'), -0.016 * s, -0.024, 0.036, sinLinea);
+      break;
+    case 'felices': {
+      // Entornados de felicidad: dos arcos «^ ^».
+      const arco = new THREE.TorusGeometry(0.036, 0.011, 6, 16, Math.PI);
+      pieza(ojo, arco, brillo('#120c0a'), 0, -0.012, 0.012, { contorno: false });
+      break;
+    }
+    default:
+      pieza(ojo, esfera(0.062, 1, 1.08, 0.7), brillo('#1c120d'), 0, 0, 0, { contorno: false });
+      pieza(ojo, esfera(0.019), brillo('#ffffff'), 0.02 * s, 0.025, 0.04, sinLinea);
+      pieza(ojo, esfera(0.009), brillo('#ffffff'), -0.015 * s, -0.018, 0.042, sinLinea);
+  }
 }
 
 /** Tela de cuadros vichy en blanco y negro, para la pajarita. */
@@ -131,10 +176,11 @@ export function crearPerro(opciones: OpcionesPerro = { pajarita: 'cuadros', gorr
 
   // Ojos: redondos y oscuros, con su brillo.
   for (const [lado, s] of [['i', 1], ['d', -1]] as const) {
-    const ojo = nodo(`ojo_${lado}`, cabeza, 0.105 * s, 0.06, 0.235);
-    pieza(ojo, esfera(0.062, 1, 1.08, 0.7), brillo('#1c120d'), 0, 0, 0, { contorno: false });
-    pieza(ojo, esfera(0.019), brillo('#ffffff'), 0.02 * s, 0.025, 0.04, { contorno: false, sombra: false });
-    pieza(ojo, esfera(0.009), brillo('#ffffff'), -0.015 * s, -0.018, 0.042, { contorno: false, sombra: false });
+    const tipo = opciones.ojos ?? 'grandes';
+    // Los pequeños van algo más separados y bajos, como en la foto.
+    const [ox, oy, oz] = tipo === 'pequenos' ? [0.115, 0.045, 0.24] : tipo === 'puntos' ? [0.1, 0.055, 0.248] : [0.105, 0.06, 0.235];
+    const ojo = nodo(`ojo_${lado}`, cabeza, ox * s, oy, oz);
+    ojoPerro(ojo, tipo, s);
     // Orejas caídas: tres bolas de pelo colgando.
     const oreja = nodo(`oreja_${lado}`, cabeza, 0.25 * s, 0.06, -0.02);
     oreja.rotation.z = 0.15 * s;

@@ -3,7 +3,7 @@
 // Dos modos que terminan en lo mismo:
 //   PNG 128×128 con fondo recortado + JSON {hp, speed, damage, fire_rate, special, lore}
 //
-//   const heroe = await openCharacterCreator({ apiBase: 'http://localhost:8787' });
+//   const heroe = await openCharacterCreator(); // la IA se usa sola si hay servidor (ver ia.ts)
 //   if (heroe) applyCustomHero(game, heroe); // ver player-contract.ts
 //
 // Todo el texto visible va en español. Los estilos viven en
@@ -26,6 +26,7 @@ import {
   quitarFondo,
 } from './sprite';
 import { PRESETS, presetALienzo } from './presets';
+import { iaDisponible, postIa } from '../ia';
 
 export type OrigenHeroe = 'dibujo' | 'imagen' | 'predefinido';
 
@@ -39,8 +40,6 @@ export interface CreatorResult {
 }
 
 export interface CreatorOptions {
-  /** Base del servidor del FOCO 3 (p. ej. `http://localhost:8787`). Sin él, todo funciona en local. */
-  apiBase?: string;
   nombreInicial?: string;
   onConfirm?: (r: CreatorResult) => void;
   onCancel?: () => void;
@@ -78,16 +77,6 @@ function panelStats(stats: HeroStats): string {
     <div class="cc-special"><small>ESPECIAL</small><b>${esc(sp.name)}</b><p>${esc(sp.blurb)}</p></div>
     <p class="cc-lore">«${esc(stats.lore)}»</p>
     <p class="cc-ada"></p>`;
-}
-
-async function postJson(apiBase: string, ruta: string, cuerpo: unknown): Promise<unknown> {
-  const res = await fetch(`${apiBase}${ruta}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(cuerpo),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json() as Promise<unknown>;
 }
 
 /**
@@ -339,7 +328,7 @@ export function openCharacterCreator(opciones: CreatorOptions = {}): Promise<Cre
     /** Usa `POST /api/analyze-drawing` (visión de Muse Spark) sin bloquear. */
     const pedirOpinionAda = () => {
       const cajaAda = statsCaja.querySelector('.cc-ada');
-      if (!opciones.apiBase || !cajaAda || !dibujoValido) return;
+      if (!cajaAda || !dibujoValido) return;
       const id = ++opinionId;
       let png = '';
       try {
@@ -347,19 +336,14 @@ export function openCharacterCreator(opciones: CreatorOptions = {}): Promise<Cre
       } catch {
         return;
       }
-      cajaAda.textContent = 'ADA está mirando tu dibujo…';
-      postJson(opciones.apiBase, '/api/analyze-drawing', { pngDataUrl: png })
-        .then((r) => {
-          if (id !== opinionId) return;
-          const opinion = (r as { opinion?: string }).opinion;
-          if (opinion && statsCaja.querySelector('.cc-ada')) {
-            statsCaja.querySelector('.cc-ada')!.textContent = `ADA dice: ${opinion}`;
-          }
-        })
-        .catch(() => {
-          if (id !== opinionId) return;
-          cajaAda.textContent = '';
-        });
+      void iaDisponible().then(async (hay) => {
+        if (!hay || id !== opinionId) return;
+        cajaAda.textContent = 'ADA está mirando tu dibujo…';
+        const r = await postIa<{ opinion?: string }>('/api/analyze-drawing', { pngDataUrl: png }, 20000);
+        if (id !== opinionId) return;
+        const caja = statsCaja.querySelector('.cc-ada');
+        if (caja) caja.textContent = r?.opinion ? `ADA dice: ${r.opinion}` : '';
+      });
     };
 
     // ------------------------------------------------ MODO IMAGEN
@@ -378,33 +362,29 @@ export function openCharacterCreator(opciones: CreatorOptions = {}): Promise<Cre
       estadoImagen.textContent = 'Generando sprite…';
       imgResultado.hidden = true;
       // 1) Intento con el servidor (Meta Image API si hay clave).
-      if (opciones.apiBase) {
-        try {
-          const r = (await postJson(opciones.apiBase, '/api/generate-image', { prompt })) as {
-            ok: boolean;
-            pngDataUrl?: string;
-            source?: string;
-          };
-          if (r.ok && r.pngDataUrl) {
-            imagenPng = r.pngDataUrl;
-            imagenOrigen = r.source === 'meta-image' ? 'Imagen generada por la IA.' : 'Imagen del servidor local.';
-            estadoImagen.textContent = '';
-            imgResultado.src = imagenPng;
-            imgResultado.hidden = false;
-            origenTexto.textContent = imagenOrigen;
-            actualizarStatsImagen();
-            return;
-          }
-        } catch {
-          // Cae al generador local: la demo nunca se queda colgada.
+      const conIa = await iaDisponible();
+      if (conIa) {
+        const r = await postIa<{ ok: boolean; pngDataUrl?: string; source?: string }>(
+          '/api/generate-image', { prompt }, 60000,
+        );
+        if (r?.ok && r.pngDataUrl) {
+          imagenPng = r.pngDataUrl;
+          imagenOrigen = r.source === 'meta-image' ? 'Imagen generada por la IA.' : 'Imagen del servidor local.';
+          estadoImagen.textContent = '';
+          imgResultado.src = imagenPng;
+          imgResultado.hidden = false;
+          origenTexto.textContent = imagenOrigen;
+          actualizarStatsImagen();
+          return;
         }
+        // Si falla, cae al generador local: la demo nunca se queda colgada.
       }
       // 2) Respaldo local determinista (mismo prompt = mismo sprite).
       const lienzoLocal = generarSpriteProcedural(opcionesDesdePrompt(prompt));
       imagenPng = lienzoLocal.toDataURL('image/png');
-      imagenOrigen = opciones.apiBase
+      imagenOrigen = conIa
         ? 'Sin conexión con la IA: borrador local (prueba con la galería o reintenta).'
-        : 'Borrador local (arranca el servidor para usar la IA).';
+        : 'Borrador local (la IA no está conectada).';
       estadoImagen.textContent = '';
       imgResultado.src = imagenPng;
       imgResultado.hidden = false;

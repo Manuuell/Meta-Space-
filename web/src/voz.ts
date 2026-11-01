@@ -8,6 +8,9 @@
 //
 // Todo falla hacia lo siguiente sin romper el juego.
 
+// Con extensión: los tests cargan este módulo directamente en Node.
+import { postIa } from './ia.ts';
+
 export type ComandoDron = 'seguir' | 'quieto' | 'explorar' | 'luz' | 'ayuda' | 'desconocido';
 
 /** Clasifica una frase (hablada o escrita) en un comando del dron. */
@@ -99,25 +102,9 @@ export async function webmAWav16k(blob: Blob): Promise<string> {
 }
 
 /** Envía el WAV al servidor (Muse Voice Transcribe). null si no hay clave/red. */
-export async function transcribirServidor(apiBase: string, wavDataUrl: string): Promise<string | null> {
-  if (!apiBase) return null;
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 25000);
-  try {
-    const res = await fetch(`${apiBase}/api/transcribe`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ audioDataUrl: wavDataUrl }),
-      signal: ctrl.signal,
-    });
-    if (!res.ok) return null;
-    const cuerpo = (await res.json()) as { ok: boolean; texto?: string };
-    return cuerpo.ok && cuerpo.texto ? cuerpo.texto : null;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(t);
-  }
+export async function transcribirServidor(wavDataUrl: string): Promise<string | null> {
+  const cuerpo = await postIa<{ ok: boolean; texto?: string }>('/api/transcribe', { audioDataUrl: wavDataUrl }, 25000);
+  return cuerpo?.ok && cuerpo.texto ? cuerpo.texto : null;
 }
 
 interface ReconocimientoLocal {

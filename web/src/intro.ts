@@ -113,8 +113,12 @@ export function showIntro(
     if (t >= minVer) saltar();
   };
   const alTecla = (e: KeyboardEvent) => {
+    if (e.code !== 'Escape' && e.code !== 'Enter' && e.code !== 'Space') return;
+    // Sin esto, el título que se abre ahora recibe el foco en «Jugar» y la
+    // misma pulsación lo activa: la partida empezaba sin pasar por el menú.
+    e.preventDefault();
     if (e.code === 'Escape') terminar();
-    else if (e.code === 'Enter' || e.code === 'Space') alClic();
+    else alClic();
   };
   velo.addEventListener('pointerdown', alClic);
   window.addEventListener('keydown', alTecla);
@@ -263,6 +267,9 @@ export function showIntro(
       ctx.font = `700 ${Math.floor(17 * u)}px Rubik, system-ui, sans-serif`;
       ctx.fillStyle = '#ffb347';
       ctx.fillText('S E C T O R   D E L T A', W / 2, H * 0.3 + 34 * u);
+      ctx.fillStyle = '#c6cbe0';
+      ctx.font = `500 ${Math.floor(15 * u)}px Rubik, system-ui, sans-serif`;
+      ctx.fillText('Meta se congela bajo el velo de HELIOS. Apágalo.', W / 2, H * 0.3 + 62 * u);
       ctx.globalAlpha = t > 6.6 ? 0.4 + 0.4 * Math.sin(t * 3) : 0;
       ctx.fillStyle = '#c6cbe0';
       ctx.font = `500 ${Math.floor(14 * u)}px Rubik, system-ui, sans-serif`;

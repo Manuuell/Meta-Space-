@@ -115,7 +115,7 @@ export class Game {
   private destroyTitle: (() => void) | null = null;
   private introVista = false;
   // NPCs con IA (Muse Spark vía creator-server, respaldo local por semilla).
-  private radio = new Radio('http://localhost:8787');
+  private radio = new Radio();
   // Dron compañero ADA: sigue, explora y escanea; obedece voz o texto.
   private dron!: Dron;
   private micBtn: HTMLButtonElement | null = null;
@@ -125,6 +125,8 @@ export class Game {
   private brief: RunBrief | null = null;
   private heridoAvisado = false;
   private eliteAvisada = false;
+  private mitadAvisada = false;
+  private balizasAvisadas = false;
   // Progresión (FOCO 2): memoria de tiradas para anti-repetición y piedad.
   private ultimaOferta: string[] = [];
   private ultimaArma: WeaponId | null = null;
@@ -280,7 +282,7 @@ export class Game {
     const hero = await openCharacterCreator();
     if (!hero) return;
     await applyCustomHero(this, toCustomHero(hero));
-    const who = this.heroName ? ` como <b>${this.heroName}</b>` : '';
+    const who = this.heroName ? ` como ${this.heroName}` : '';
     ui.toast('ADA', `Héroe listo${who}. Pulsa JUGAR para despegar.`, 'info', 5);
   }
 
@@ -300,7 +302,7 @@ export class Game {
       this.grabando = null;
       const wav = await webmAWav16k(blob).catch(() => null);
       if (wav) {
-        const texto = await transcribirServidor('http://localhost:8787', wav);
+        const texto = await transcribirServidor(wav);
         if (texto) {
           this.ejecutarComando(texto);
           return;
@@ -575,13 +577,15 @@ export class Game {
     this.ultimaOferta = [];
     this.ultimaArma = null;
     this.rechazos = new Map();
-    this.radio = new Radio('http://localhost:8787');
+    this.radio = new Radio();
     this.dron.setModo('seguir');
     this.dron.setLuz(false);
     this.explorando = false;
     this.brief = null;
     this.heridoAvisado = false;
     this.eliteAvisada = false;
+    this.mitadAvisada = false;
+    this.balizasAvisadas = false;
     this.heroSpecialLevel = this.heroSpecial ? 1 : 0;
     this.novaCooldown = 0;
     this.shieldReady = this.heroSpecial === 'caparazon';
@@ -617,7 +621,7 @@ export class Game {
     if (this.jumpBtn) this.jumpBtn.style.display = 'block';
     if (this.micBtn) this.micBtn.style.display = 'block';
     lockPointer(this.canvas);
-    ui.toast('ADA', 'Señal de HELIOS detectada. Vienen a por mí. Mantente en movimiento.', 'info', 5);
+    ui.toast('ADA', 'HELIOS ha detectado mi señal. Aguanta 10 minutos: el cohete subirá la orden de apagado del velo.', 'info', 6);
     if (this.heroSpecial) {
       const sp = SPECIALS[this.heroSpecial];
       ui.toast('ADA', `Especial listo: ${sp.name}. ${sp.blurb}`, 'info', 6);
@@ -644,9 +648,17 @@ export class Game {
     }
   }
 
+  /** Estado de la partida en una línea: el contexto que recibe la IA. */
+  private estadoPartida() {
+    const restante = Math.max(0, RUN.length - this.time);
+    return `quedan ${Math.floor(restante / 60)}:${String(Math.floor(restante % 60)).padStart(2, '0')} de ventana, `
+      + `integridad ${Math.round((this.hp / this.maxHp) * 100)} %, nivel ${this.level}, ${this.kills} bajas, `
+      + `${this.enemies.countOf('baliza')} balizas vivas, pruebas ${this.save.relics.length + this.relicsFound.length}/${RELICS.length}`;
+  }
+
   /** Pide una línea de un NPC ante un evento (con cooldown y respaldo local). */
-  private decir(hablante: Hablante, evento: EventoNpc, contexto: string) {
-    void this.radio.linea(hablante, evento, contexto).then((r) => {
+  private decir(hablante: Hablante, evento: EventoNpc, detalle: string) {
+    void this.radio.linea(hablante, evento, `${detalle}. Estado: ${this.estadoPartida()}`).then((r) => {
       if (!r || this.state !== 'playing') return;
       const quien = hablante === 'operador' ? this.radio.nombreOperador(this.brief).toUpperCase() : r.quien;
       ui.toast(quien, r.texto, 'info', 5);
@@ -744,7 +756,15 @@ export class Game {
     this.hp = Math.min(this.maxHp, this.hp + this.passive('reparacion') * 0.7 * dt);
     if (!this.heridoAvisado && this.hp < this.maxHp * 0.7) {
       this.heridoAvisado = true;
-      this.decir('ada', 'herido', `integridad al ${Math.round((this.hp / this.maxHp) * 100)} por ciento`);
+      this.decir('ada', 'herido', 'el traje ha perdido un tercio de su integridad');
+    }
+    if (!this.mitadAvisada && this.time >= RUN.length / 2) {
+      this.mitadAvisada = true;
+      this.decir('operador', 'mitad', 'mitad de la ventana de lanzamiento');
+    }
+    if (!this.balizasAvisadas && this.enemies.countOf('baliza') >= 3) {
+      this.balizasAvisadas = true;
+      this.decir('helios', 'baliza', 'varias balizas triangulan la señal de ADA');
     }
 
     // Sembradores: abren fuego con esporas lentas y esquivables.
@@ -1168,11 +1188,11 @@ export class Game {
     sfx(victory ? 'relic' : 'death');
     // Cierre de la misión con la voz que corresponda (llega tras el informe).
     if (victory) {
-      void this.radio.linea('ada', 'victoria', `misión cumplida en ${Math.round(this.time)} segundos`).then((r) => {
+      void this.radio.linea('ada', 'victoria', `ventana alcanzada: el cohete sube la orden de apagado. Estado: ${this.estadoPartida()}`).then((r) => {
         if (r) ui.toast(r.quien, r.texto, 'info', 6);
       });
     } else {
-      void this.radio.linea('operador', 'derrota', `señal perdida en el minuto ${Math.floor(this.time / 60) + 1}`).then((r) => {
+      void this.radio.linea('operador', 'derrota', `señal perdida en el minuto ${Math.floor(this.time / 60) + 1}. Estado: ${this.estadoPartida()}`).then((r) => {
         if (r) ui.toast(r.quien, r.texto, 'info', 6);
       });
     }

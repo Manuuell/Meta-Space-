@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && node --check creator-server.ts && vite build",
-    "test": "node --test creator-server.test.ts src/voz.test.ts",
+    "test": "node --test creator-server.test.ts src/voz.test.ts src/guion.test.ts",
     "preview": "vite preview",
-    "serve": "node creator-server.ts"
+    "serve": "node creator-server.ts",
+    "start": "node creator-server.ts"
   },
   "dependencies": {
     "three": "0.186.1"
@@ -17,5 +18,8 @@
     "@types/three": "0.186.0",
     "typescript": "5.9.3",
     "vite": "8.3.5"
+  },
+  "engines": {
+    "node": ">=22.18"
   }
 }

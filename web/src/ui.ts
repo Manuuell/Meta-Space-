@@ -234,7 +234,14 @@ export function toast(title: string, body: string, kind: 'relic' | 'info' = 'inf
   }
   // Como mucho tres: el más viejo se va.
   while (toasts.children.length >= 3) toasts.firstElementChild!.remove();
-  const el = h(`<div class="toast ${kind}"><b>${title}</b><p>${body}</p></div>`);
+  // Texto plano: los avisos pueden traer líneas de la IA o nombres del jugador.
+  const el = document.createElement('div');
+  el.className = `toast ${kind}`;
+  const b = document.createElement('b');
+  b.textContent = title;
+  const p = document.createElement('p');
+  p.textContent = body;
+  el.append(b, p);
   toasts.appendChild(el);
   setTimeout(() => el.classList.add('out'), seconds * 1000);
   setTimeout(() => el.remove(), seconds * 1000 + 600);
@@ -326,10 +333,10 @@ export function showTitle(save: { runs: number; bestTime: number; relics: string
   const el = h(`
     <div class="overlay title">
       <div class="title-box">
-        <div class="eyebrow">ARES-IX · Tierra, año ~2500</div>
+        <div class="eyebrow">ARES-IX · Planeta Meta</div>
         <h1>Meta Space</h1>
-        <p class="lead">Despiertas en una ciudad muerta bajo un cielo rojo. Llevas a ADA a la espalda
-        y HELIOS quiere recuperarla. Aguanta <b>10 minutos</b> hasta la ventana de lanzamiento.</p>
+        <p class="lead">Meta se congela bajo el velo rojo de HELIOS. Llevas a ADA, la única que puede firmar
+        su apagado, y HELIOS quiere recuperarla. Aguanta <b>10 minutos</b> hasta la ventana de lanzamiento.</p>
         <div class="title-stats">
           <div><b>${save.runs}</b><small>partidas</small></div>
           <div><b>${formatTime(save.bestTime)}</b><small>mejor tiempo</small></div>
@@ -435,8 +442,13 @@ export function showResults(r: Results, again: () => void, menu: () => void) {
           <div class="avatar">${ASTRONAUT_ICON}<span>Nv. ${r.level}</span></div>
           <div class="banner-text">
             <small>SECTOR DELTA · ZONA 1 · NORMAL</small>
-            <h1>${r.victory ? '¡Ventana de lanzamiento!' : '¡Señal perdida!'}</h1>
-            <p>${r.victory ? 'Has aguantado hasta que se abrió la ventana.' : 'Los Recolectores han alcanzado a ADA.'}</p>
+            <h1>${r.victory ? '¡Velo abierto!' : '¡Señal perdida!'}</h1>
+            <p>${r.victory
+              ? 'El cohete ha subido la orden de apagado: el sol vuelve al Sector Delta.'
+              : 'Los Recolectores han alcanzado a ADA. El velo sigue cerrado.'}</p>
+            ${r.codexSize >= RELICS.length
+              ? '<p><b>Auditoría completa:</b> HELIOS recibe la orden de apagado y Meta vuelve a ver el sol.</p>'
+              : `<p>Auditoría de HELIOS: <b>${r.codexSize}/${RELICS.length}</b> pruebas para apagar el velo de todo Meta.</p>`}
           </div>
           <div class="tiles">
             <div><b>${formatTime(r.time)}</b><small>TIEMPO</small></div>
@@ -458,7 +470,7 @@ export function showResults(r: Results, again: () => void, menu: () => void) {
             <div class="kv"><span>Más bajas</span><b>${compact(r.best.kills)}</b></div>
             <div class="note">
               <b>+${compact(r.scrap)} de chatarra</b> al banco de trabajo.
-              Llevas <b>${compact(r.bank)}</b> para montar la nave.
+              Llevas <b>${compact(r.bank)}</b> para la misión de rescate.
             </div>
           </section>
 

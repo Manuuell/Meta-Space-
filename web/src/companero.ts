@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Sound } from './audio';
 import { esPerro, estiloBruno, perfilDe, type FormaAda, type PerfilCompanero } from './companeros';
 import type { Dron } from './dron';
-import { expresar, ponerGafas, type ExpresionPerro } from './modelos/perro';
+import { expresar, ponerGafas, sacarLengua, type ExpresionPerro } from './modelos/perro';
 import type { Enemies } from './enemies';
 import type { Pickups } from './pickups';
 import type { PuntoInteres, World } from './world';
@@ -156,6 +156,10 @@ export class Companero {
   private caraT = 0;
   private sonrisaT = 0;
   private cdSonrisa = 3;
+  // Lengua: casi siempre fuera, pero a ratos la guarda y al sacarla se relame.
+  private lengua = 1;
+  private lenguaDentro = false;
+  private cdLengua = 4;
 
   constructor(
     scene: THREE.Scene,
@@ -184,6 +188,8 @@ export class Companero {
     this.dron.cancelarAccion();
     this.caraActual = '';
     this.caraForzada = null;
+    this.lengua = 1;
+    this.lenguaDentro = false;
   }
 
   /** Una cara durante un rato (suceso: subir de nivel, que te hieran…). */
@@ -225,6 +231,35 @@ export class Companero {
       expresar(raiz, e);
       this.caraActual = e;
     }
+    this.lenguaDe(dt, clip, raiz);
+  }
+
+  /**
+   * La lengua: fuera al correr, jugar, morder o ladrar; dentro al olfatear,
+   * dormir o escarbar; y estando tranquilo, la guarda un rato y la vuelve a
+   * sacar, a veces relamiéndose.
+   */
+  private lenguaDe(dt: number, clip: string, raiz: THREE.Object3D) {
+    this.cdLengua -= dt;
+    const fuera = ['Moverse', 'Patinar', 'Truco', 'Celebrar', 'Revolcarse', 'Pedir', 'Atacar', 'Habilidad', 'Ladrar', 'Aullar', 'Bostezar', 'Relamerse', 'Rascarse', 'PerseguirCola'];
+    const dentro = ['Olfatear', 'Escanear', 'Dormir', 'Escarbar'];
+    let quiere: boolean;
+    if (fuera.includes(clip) || this.presa) quiere = true;
+    else if (dentro.includes(clip)) quiere = false;
+    else {
+      // Tranquilo: alterna solo.
+      if (this.cdLengua <= 0) {
+        this.lenguaDentro = !this.lenguaDentro;
+        this.cdLengua = this.lenguaDentro ? 2 + Math.random() * 4 : 4 + Math.random() * 6;
+        // Al volver a sacarla, a veces se relame.
+        if (!this.lenguaDentro && Math.random() < 0.45 && !this.dron.ocupado) this.dron.accion('Relamerse');
+      }
+      quiere = !this.lenguaDentro;
+    }
+    const objetivo = quiere ? 1 : 0;
+    if (this.lengua === objetivo) return;
+    this.lengua += Math.sign(objetivo - this.lengua) * Math.min(Math.abs(objetivo - this.lengua), dt / 0.22);
+    sacarLengua(raiz, this.lengua);
   }
 
   /** Te han herido: se enfada con quien fue o, si vas muy mal, se preocupa. */

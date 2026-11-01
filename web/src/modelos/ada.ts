@@ -22,6 +22,7 @@ export const ALTURA_ADA: Record<string, number> = {
   'ada-noa': 1.5,
   'ada-medusa': 2.3,
   'ada-orbe': 2.0,
+  'ada-dron': 2.1,
   bruno: 0,
 };
 
@@ -499,4 +500,127 @@ export function crearAdaOrbe(): Modelo {
   ];
 
   return { id: 'ada-orbe', nombre: 'ADA · Orbe con anillos', rol: 'Compañera · núcleo flotante', raiz, animaciones };
+}
+
+// ================================================================= Dron
+
+/**
+ * Dron de ADA: el inspector de turbina reprogramado, rehecho con el mismo
+ * lenguaje que el traje del astronauta: casco blanco con franja naranja, visor
+ * azul noche con dos ojos de luz, tres brazos con rotores protegidos por aros
+ * de plasma y el núcleo de ADA latiendo debajo.
+ */
+export function crearAdaDron(): Modelo {
+  const raiz = new THREE.Group();
+  raiz.name = 'ada-dron';
+  const cuerpo = nodo('cuerpo', raiz);
+
+  // Casco: blanco, con la franja naranja de la nuca a la frente como el traje.
+  const casco = nodo('casco', cuerpo);
+  pieza(casco, esfera(0.34, 1, 0.9, 1), toon(PALETA.traje));
+  pieza(casco, new THREE.TorusGeometry(0.34, 0.035, 8, 32, Math.PI * 0.75).rotateY(Math.PI / 2).rotateX(-Math.PI * 0.1), toon(PALETA.naranja), 0, 0, 0);
+  pieza(casco, toro(0.3, 0.05), toon(PALETA.metalOscuro), 0, -0.16, 0);
+  // Orejeras naranjas, como el casco del astronauta.
+  for (const s of [1, -1]) pieza(casco, esfera(0.1, 0.5, 1, 1), toon(PALETA.naranja), 0.33 * s, 0, 0);
+
+  // Visor: franja azul noche con dos ojos de luz y un reflejo.
+  pieza(casco, esfera(0.27, 1.05, 0.7, 0.6), toon('#1d2b4f'), 0, 0.01, 0.2);
+  const reflejo = pieza(casco, caja(0.1, 0.03, 0.02, 0.012), brillo(PALETA.blanco), 0.14, 0.1, 0.33, { contorno: false });
+  reflejo.rotation.z = 0.4;
+  for (const [lado, x] of [['i', 0.08], ['d', -0.08]] as const) {
+    const o = nodo(`ojo_${lado}`, casco, x, 0.01, 0.355);
+    pieza(o, capsula(0.035, 0.06), brillo('#9ff8ff'), 0, 0, 0, { contorno: false });
+  }
+
+  // Antena con baliza de plasma.
+  const antena = nodo('antena', casco, -0.12, 0.27, -0.05);
+  antena.rotation.z = 0.3;
+  pieza(antena, capsula(0.018, 0.18), toon(PALETA.metalOscuro), 0, 0.1, 0);
+  const baliza = nodo('baliza', antena, 0, 0.23, 0);
+  pieza(baliza, esfera(0.045), brillo(PALETA.plasma), 0, 0, 0, { contorno: false });
+
+  // Tres brazos con rotor: góndola de metal, aspas y un aro de plasma.
+  for (let k = 0; k < 3; k++) {
+    const a = (k / 3) * Math.PI * 2 + Math.PI;
+    const brazo = nodo(`brazo_${k}`, cuerpo, 0, 0.02, 0);
+    brazo.rotation.y = a;
+    const viga = pieza(brazo, capsula(0.035, 0.32), toon(PALETA.metalOscuro), 0, 0.06, 0.4);
+    viga.rotation.x = Math.PI / 2 - 0.35;
+    const gondola = nodo(`gondola_${k}`, brazo, 0, 0.13, 0.6);
+    pieza(gondola, barril(0.07, 0.08, 0.1, 0.03), toon(PALETA.metal));
+    pieza(gondola, toro(0.2, 0.022), brillo(PALETA.ada), 0, 0.03, 0, { contorno: false });
+    const rotor = nodo(`rotor_${k}`, gondola, 0, 0.07, 0);
+    pieza(rotor, esfera(0.035), toon(PALETA.naranja));
+    pieza(rotor, caja(0.34, 0.015, 0.06, 0.008), toon(PALETA.traje), 0, 0.01, 0);
+    pieza(rotor, caja(0.06, 0.015, 0.34, 0.008), toon(PALETA.traje), 0, 0.01, 0);
+  }
+
+  // Debajo: el núcleo de ADA en su anillo, la luz que lo hace inconfundible.
+  pieza(cuerpo, toro(0.13, 0.03), toon(PALETA.metalOscuro), 0, -0.3, 0);
+  nucleo(cuerpo, 0.09, 0, -0.3, 0);
+  const halo = nodo('halo', cuerpo, 0, -0.36, 0);
+  pieza(halo, new THREE.CircleGeometry(0.22, 24).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({
+    color: PALETA.ada, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide,
+  }), 0, 0, 0, { contorno: false, sombra: false });
+
+  const rotores = (d: number, vueltas: number) => [0, 1, 2].map((k) =>
+    rot(`rotor_${k}`, ciclo(d, (f) => [0, f * 360 * vueltas * (k % 2 ? -1 : 1), 0])));
+  const D = 2.0;
+  const animaciones = [
+    animacion('Reposo', D, [
+      ...rotores(D, 8),
+      mov(raiz, 'cuerpo', ciclo(D, (f) => [0, sen(f) * 0.06, 0])),
+      rot('casco', ciclo(D, (f) => [sen(f) * 4, sen(f) * 22, sen(f, 2) * 3])),
+      rot('cuerpo', ciclo(D, (f) => [0, 0, sen(f) * 4])),
+      rot('antena', ciclo(D, (f) => [sen(f, 2) * 6, 0, 17 + sen(f) * 5])),
+      esc('baliza', ciclo(D, (f) => { const k = sen(f, 2) > 0 ? 1.25 : 0.7; return [k, k, k]; })),
+      esc('nucleo', latido(D, 2, 0.15)),
+      esc('ojo_i', parpadeo(D, 1.4)),
+      esc('ojo_d', parpadeo(D, 1.4)),
+    ], 'movimiento', 'Flota mirando alrededor, con los rotores girando y ADA latiendo debajo.'),
+
+    animacion('Moverse', 0.8, [
+      ...rotores(0.8, 6),
+      rot('cuerpo', ciclo(0.8, (f) => [16, 0, sen(f) * 3])),
+      rot('casco', ciclo(0.8, () => [-10, 0, 0])),
+      rot('antena', ciclo(0.8, (f) => [-25 + sen(f, 2) * 5, 0, 17])),
+      esc('halo', ciclo(0.8, () => [1.25, 1, 1.25])),
+    ], 'movimiento', 'Se inclina hacia donde va, con los rotores a tope y la antena echada atrás.'),
+
+    animacion('Escanear', 1.4, [
+      ...rotores(1.4, 10),
+      rot('casco', poses([[0, 0, 0, 0], [0.2, -12, 0, 0], [1.1, -12, 360, 0], [1.4, 0, 360, 0]])),
+      esc('ojo_i', poses([[0, 1, 1, 1], [0.2, 1.4, 0.5, 1], [1.2, 1.4, 0.5, 1], [1.4, 1, 1, 1]])),
+      esc('ojo_d', poses([[0, 1, 1, 1], [0.2, 1.4, 0.5, 1], [1.2, 1.4, 0.5, 1], [1.4, 1, 1, 1]])),
+      esc('nucleo', poses([[0, 1, 1, 1], [0.2, 1.8, 1.8, 1.8], [1.2, 1.5, 1.5, 1.5], [1.4, 1, 1, 1]])),
+      esc('halo', poses([[0, 1, 1, 1], [0.2, 2.2, 1, 2.2], [1.2, 1.8, 1, 1.8], [1.4, 1, 1, 1]])),
+    ], 'ataque', 'Gira el casco barriendo la zona con los ojos entornados y el núcleo encendido.', false),
+
+    animacion('Hablar', 0.8, [
+      ...rotores(0.8, 4),
+      rot('casco', ciclo(0.8, (f) => [sen(f, 2) * 6, sen(f) * 8, sen(f) * 6])),
+      esc('ojo_i', ciclo(0.8, (f) => [1, 1 - Math.abs(sen(f, 3)) * 0.4, 1])),
+      esc('ojo_d', ciclo(0.8, (f) => [1, 1 - Math.abs(sen(f, 3)) * 0.4, 1])),
+      esc('nucleo', latido(0.8, 3, 0.25)),
+      rot('antena', ciclo(0.8, (f) => [sen(f, 4) * 10, 0, 17])),
+    ], 'reaccion', 'Asiente mientras habla; los ojos y el núcleo laten con la voz.'),
+
+    animacion('Atacar', 0.4, [
+      ...rotores(0.4, 2),
+      mov(raiz, 'cuerpo', poses([[0, 0, 0, 0], [0.06, 0, 0.02, -0.12], [0.4, 0, 0, 0]])),
+      rot('casco', poses([[0, 0, 0, 0], [0.06, -14, 0, 0], [0.4, 0, 0, 0]])),
+      esc('ojo_i', poses([[0, 1, 1, 1], [0.06, 1.5, 1.3, 1], [0.4, 1, 1, 1]])),
+      esc('ojo_d', poses([[0, 1, 1, 1], [0.06, 1.5, 1.3, 1], [0.4, 1, 1, 1]])),
+    ], 'ataque', 'Retrocede con el disparo del láser y los ojos destellan.', false),
+
+    animacion('Habilidad', 1.0, [
+      ...rotores(1.0, 12),
+      rot('cuerpo', poses([[0, 0, 0, 0], [0.7, 0, 720, 0], [1.0, 0, 720, 0]])),
+      mov(raiz, 'cuerpo', poses([[0, 0, 0, 0], [0.3, 0, 0.25, 0], [1.0, 0, 0, 0]])),
+      esc('nucleo', poses([[0, 1, 1, 1], [0.3, 2.2, 2.2, 2.2], [1.0, 1, 1, 1]])),
+      esc('halo', poses([[0, 1, 1, 1], [0.3, 2.6, 1, 2.6], [1.0, 1, 1, 1]])),
+    ], 'ataque', 'Sube girando sobre sí mismo y dispara la ráfaga con el núcleo a tope.', false),
+  ];
+
+  return { id: 'ada-dron', nombre: 'ADA · Dron', rol: 'Compañera · vuela a tu lado', raiz, animaciones };
 }

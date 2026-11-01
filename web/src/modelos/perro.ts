@@ -70,6 +70,21 @@ export function ponerGafas(raiz: THREE.Object3D, t: number) {
   g.rotation.x = -(1 - suave) * 0.7;
 }
 
+/**
+ * Lengua: 1 fuera (jadeando), 0 dentro con la boquita cerrada. La lengua
+ * se recoge hacia la boca y la sonrisa aparece cuando ya casi no se ve.
+ */
+export function sacarLengua(raiz: THREE.Object3D, t: number) {
+  const sacar = raiz.getObjectByName('sacar_lengua');
+  const boca = raiz.getObjectByName('boca');
+  if (!sacar || !boca) return;
+  const k = Math.max(0, Math.min(1, t));
+  const suave = k * k * (3 - 2 * k);
+  sacar.scale.set(Math.max(0.001, suave), Math.max(0.001, suave), Math.max(0.001, suave));
+  sacar.position.z = 0.03 - (1 - suave) * 0.04;
+  boca.scale.setScalar(Math.max(0.001, 1 - suave * 1.4));
+}
+
 /** Pone una cara: qué ojos se ven, su tamaño y la inclinación de las cejas. */
 export function expresar(raiz: THREE.Object3D, e: ExpresionPerro) {
   for (const [lado, s] of [['i', 1], ['d', -1]] as const) {
@@ -182,9 +197,20 @@ export function crearPerro(opciones: OpcionesPerro = { pajarita: 'cuadros', gorr
   // Boca: mandíbula que se abre y la lengua rosa, casi siempre fuera.
   const mandibula = nodo('mandibula', cabeza, 0, -0.12, 0.24);
   pieza(mandibula, esfera(0.06, 1.2, 0.6, 1), toon(CREMA), 0, -0.02, 0);
-  const lengua = nodo('lengua', mandibula, 0, -0.03, 0.03);
+  // `sacar` mete o saca la lengua entera (lo decide el juego, ver
+  // `sacarLengua`); `lengua` es lo que mueven las animaciones (jadeo).
+  const sacar = nodo('sacar_lengua', mandibula, 0, -0.03, 0.03);
+  const lengua = nodo('lengua', sacar);
   lengua.rotation.x = 0.5;
   pieza(lengua, caja(0.085, 0.022, 0.14, 0.011), toon(LENGUA), 0, 0, 0.06);
+  // Con la lengua dentro se ve la boquita: una sonrisa en «w».
+  const boca = nodo('boca', cabeza, 0, -0.105, 0.322);
+  boca.rotation.x = -0.35;
+  for (const s of [1, -1]) {
+    const medio = pieza(boca, new THREE.TorusGeometry(0.024, 0.008, 6, 12, Math.PI), brillo('#3a2620'), 0.023 * s, 0, 0, { contorno: false, sombra: false });
+    medio.rotation.z = Math.PI;
+  }
+  boca.scale.setScalar(0.001);
 
   // Ojos: redondos y oscuros, con su brillo.
   for (const [lado, s] of [['i', 1], ['d', -1]] as const) {
@@ -540,6 +566,16 @@ export function crearPerro(opciones: OpcionesPerro = { pajarita: 'cuadros', gorr
       ...jadeo(0.9, 3, 22),
       cola(0.9, 4, 30, 0),
     ], 'reaccion', 'Salta y hace girar la patineta bajo sus patas antes de caer encima.', false),
+
+    animacion('Relamerse', 0.8, [
+      // Saca la lengua hasta la nariz y se relame.
+      rot('mandibula', poses([[0, 8, 0, 0], [0.15, 22, 0, 0], [0.6, 18, 0, 0], [0.8, 8, 0, 0]])),
+      rot('lengua', poses([[0, 29, 0, 0], [0.18, -70, 0, 0], [0.32, -55, 15, 0], [0.46, -70, -15, 0], [0.62, -40, 0, 0], [0.8, 29, 0, 0]])),
+      esc('lengua', poses([[0, 1, 1, 1], [0.18, 1, 1, 1.25], [0.62, 1, 1, 1.15], [0.8, 1, 1, 1]])),
+      rot('cabeza', poses([[0, 0, 0, 0], [0.2, -8, 0, 0], [0.6, -6, 0, 0], [0.8, 0, 0, 0]])),
+      ...parpados(poses([[0, 1, 1, 1], [0.2, 1, 0.4, 1], [0.6, 1, 0.4, 1], [0.8, 1, 1, 1]])),
+      cola(0.8, 3, 25),
+    ], 'reaccion', 'Saca la lengua hasta la nariz y se relame.', false),
 
     animacion('Gafas', 0.9, [
       // Se lleva la pata a la cara para ponerse (o quitarse) las gafas.

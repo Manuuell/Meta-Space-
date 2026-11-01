@@ -1,4 +1,4 @@
-import { crearAdaMedusa, crearAdaNoa, crearAdaOrbe, crearAdaZorro } from './modelos/ada';
+import { crearAdaDron, crearAdaMedusa, crearAdaNoa, crearAdaOrbe, crearAdaZorro } from './modelos/ada';
 import type { Modelo } from './modelos/kit';
 import { crearPerro, type OpcionesPerro } from './modelos/perro';
 
@@ -49,7 +49,7 @@ export interface PerfilCompanero {
 
 export const COMPANEROS: PerfilCompanero[] = [
   {
-    id: 'dron', nombre: 'Dron de ADA', color: '#ff8a3d',
+    id: 'dron', nombre: 'Dron de ADA', color: '#ff8a3d', crear: crearAdaDron,
     quien: 'El inspector de turbina reprogramado de siempre.',
     ataque: { tipo: 'laser', nombre: 'Láser de inspección', texto: 'Dispara al enemigo más cercano.', alcance: 13, dano: 9, cada: 0.9 },
     habilidad: { tipo: 'rafaga', nombre: 'Ráfaga', texto: 'Cinco láseres a la vez a los cinco más cercanos.', cada: 14, radio: 16, valor: 16 },

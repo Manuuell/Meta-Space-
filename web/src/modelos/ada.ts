@@ -22,8 +22,7 @@ export const ALTURA_ADA: Record<string, number> = {
   'ada-noa': 1.5,
   'ada-medusa': 2.3,
   'ada-orbe': 2.0,
-  perro: 0,
-  'perro-paseo': 0,
+  bruno: 0,
 };
 
 /** Núcleo de ADA: la misma luz cyan que lleva el astronauta en la mochila. */

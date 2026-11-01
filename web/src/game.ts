@@ -28,7 +28,8 @@ import { openProfileMenu } from './profile/profile-menu';
 import { showIntro } from './intro';
 import { Dron } from './dron';
 import { Companero } from './companero';
-import { COMPANEROS, perfilDe, type FormaAda } from './companeros';
+import { COMPANEROS, fijarEstiloBruno, perfilDe, type FormaAda } from './companeros';
+import type { OpcionesPerro } from './modelos/perro';
 import { abrirSelectorCompanero } from './ui-companero';
 import {
   AYUDA_COMANDOS, abrirLineaComando, callar, grabarVoz, hablar,
@@ -205,6 +206,10 @@ export class Game {
     this.enemies.onDeath = (i) => this.onEnemyDeath(i);
     this.pickups = new Pickups(this.scene, this.world);
     this.companero = new Companero(this.scene, this.enemies, this.pickups, this.world, this.dron);
+    // Antes había dos perros: el «de paseo» llevaba gorra, gafas y pajarita verde.
+    if (this.save.companero === 'perro-paseo' && !this.save.estiloBruno) this.save.estiloBruno = { pajarita: 'verde', gorra: true, gafas: true };
+    if (this.save.companero?.startsWith('perro')) this.save.companero = 'bruno';
+    if (this.save.estiloBruno) fijarEstiloBruno(this.save.estiloBruno);
     this.companero.setForma(this.formaInicial());
 
     this.player = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.frames.back[0] }));
@@ -338,7 +343,7 @@ export class Game {
     this.hudEquipo.style.display = jugando ? 'flex' : 'none';
     // Primero el compañero (su habilidad), luego el equipo de movilidad.
     const comp = this.companero.perfil;
-    const fichas: [string, string, string][] = [['companero', `${comp.nombre} · ${comp.habilidad.nombre}`, comp.color === '#f4f4f4' ? '#ffd25a' : comp.color]];
+    const fichas: [string, string, string][] = [['companero', `${comp.nombre} · ${comp.habilidad.nombre}`, comp.color]];
     for (const [id, nv] of this.gear) fichas.push([id, `${GEAR[id].name} · ${nv}`, GEAR[id].color]);
     for (const [id, texto, color] of fichas) {
       const chip = document.createElement('div');
@@ -360,7 +365,7 @@ export class Game {
     if (b) b.style.width = `${Math.round(Math.max(0, Math.min(1, fraccion)) * 100)}%`;
   }
 
-  /** Compañero: `?ada=perro` en la dirección, o el elegido en el menú (se guarda). */
+  /** Compañero: `?ada=bruno` en la dirección, o el elegido en el menú (se guarda). */
   private formaInicial(): FormaAda {
     const ids = COMPANEROS.map((c) => c.id) as string[];
     const url = new URLSearchParams(location.search).get('ada');
@@ -375,6 +380,14 @@ export class Game {
     this.save.companero = id;
     writeSave(this.save);
     this.vestirEquipo();
+  }
+
+  /** Cambia el estilo de Bruno (gorra, gafas, pajarita) y lo recuerda. */
+  estiloDeBruno(e: Partial<OpcionesPerro>) {
+    fijarEstiloBruno(e);
+    this.save.estiloBruno = { ...(this.save.estiloBruno ?? { pajarita: 'cuadros', gorra: false, gafas: false }), ...e };
+    writeSave(this.save);
+    if (this.dron.forma === 'bruno') this.companero.setForma('bruno');
   }
 
   private cambiarFormaAda() {
@@ -434,7 +447,7 @@ export class Game {
       this.startRun();
     }, {
       onCreator: () => void this.openProfile(),
-      onCompanion: () => abrirSelectorCompanero(this.dron.forma, (id) => this.elegirCompanero(id), () => this.toTitle()),
+      onCompanion: () => abrirSelectorCompanero(this.dron.forma, (id) => this.elegirCompanero(id), () => this.toTitle(), (e) => this.estiloDeBruno(e)),
       companionName: perfilDe(this.dron.forma).nombre,
       customHeroName: this.heroName || undefined,
       customHeroSpecial: this.heroSpecial ? SPECIALS[this.heroSpecial].name : undefined,

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { COMPANEROS, type FormaAda, type PerfilCompanero } from './companeros';
+import { COMPANEROS, estiloBruno, type FormaAda, type PerfilCompanero } from './companeros';
+import type { OpcionesPerro } from './modelos/perro';
 import { Dron } from './dron';
 
 // Selector de compañero: una tarjeta por compañero con su retrato en 3D (se
@@ -28,6 +29,13 @@ const CSS = `
 .cp-dato { font-size: 12.5px; line-height: 1.35; color: #e8eaf6; margin: 0; }
 .cp-dato small { display: block; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #8e95bd; font-size: 10.5px; }
 .cp-elegido { align-self: flex-start; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 99px; background: var(--c); color: #141629; }
+.cp-celda { display: flex; flex-direction: column; gap: 6px; }
+.cp-celda .cp-tarjeta { flex: 1; }
+.cp-estilo { display: flex; gap: 6px; flex-wrap: wrap; }
+.cp-estilo button { all: unset; cursor: pointer; font-size: 12px; font-weight: 800; padding: 5px 10px; border-radius: 99px;
+  background: #252a45; border: 2px solid rgba(255,255,255,.12); color: #c9cde4; }
+.cp-estilo button[aria-pressed="true"] { background: #2fb3a3; border-color: #2fb3a3; color: #0f1a24; }
+.cp-estilo button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .cp-pie { display: flex; justify-content: flex-end; margin-top: 16px; }
 .cp-listo { all: unset; cursor: pointer; padding: 10px 22px; border-radius: 99px; font-weight: 900; background: linear-gradient(#5fe3a4, #28ad7a); color: #fff; }
 .cp-listo:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
@@ -37,13 +45,14 @@ const CSS = `
 let estiloPuesto = false;
 const retratos = new Map<FormaAda, string>();
 
-/** Dibuja los retratos una vez, con un renderer temporal fuera de pantalla. */
+/** Dibuja los retratos que falten, con un renderer temporal fuera de pantalla. */
 function pintarRetratos() {
-  if (retratos.size) return;
+  if (retratos.size === COMPANEROS.length) return;
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setSize(300, 300);
   const camara = new THREE.PerspectiveCamera(30, 1, 0.05, 50);
   for (const perfil of COMPANEROS) {
+    if (retratos.has(perfil.id)) continue;
     const escena = new THREE.Scene();
     escena.add(new THREE.HemisphereLight('#e4ecff', '#4b4252', 1.5));
     const sol = new THREE.DirectionalLight('#fff3df', 2.4);
@@ -77,11 +86,21 @@ function pintarRetratos() {
   renderer.forceContextLoss();
 }
 
+/** Botones de estilo de Bruno: gorra, gafas y pajarita (cuadros → verde → sin). */
+function botonesEstilo() {
+  const paj = estiloBruno.pajarita;
+  return `<div class="cp-estilo" role="group" aria-label="Estilo de Bruno">
+    <button type="button" data-estilo="gorra" aria-pressed="${estiloBruno.gorra}">Gorra</button>
+    <button type="button" data-estilo="gafas" aria-pressed="${estiloBruno.gafas}">Gafas</button>
+    <button type="button" data-estilo="pajarita" aria-pressed="${paj !== null}">Pajarita${paj === 'cuadros' ? ': cuadros' : paj === 'verde' ? ': verde' : ''}</button>
+  </div>`;
+}
+
 function tarjeta(p: PerfilCompanero, actual: FormaAda) {
   const elegido = p.id === actual;
-  const color = p.color === '#f4f4f4' ? '#ffd25a' : p.color;
+  const color = p.color;
   const img = retratos.get(p.id);
-  return `<button type="button" class="cp-tarjeta" data-id="${p.id}" aria-pressed="${elegido}" style="--c:${color}">
+  const boton = `<button type="button" class="cp-tarjeta" data-id="${p.id}" aria-pressed="${elegido}" style="--c:${color}">
     <div class="cp-retrato">${img ? `<img src="${img}" alt="" />` : '<span>…</span>'}</div>
     <div class="cp-cuerpo">
       ${elegido ? '<span class="cp-elegido">Contigo</span>' : ''}
@@ -91,13 +110,19 @@ function tarjeta(p: PerfilCompanero, actual: FormaAda) {
       <p class="cp-dato"><small>Habilidad · ${p.habilidad.nombre} · cada ${p.habilidad.cada} s</small>${p.habilidad.texto}</p>
     </div>
   </button>`;
+  return `<div class="cp-celda">${boton}${p.id === 'bruno' ? botonesEstilo() : ''}</div>`;
 }
 
 /**
  * Abre el selector. `elegir` se llama al pulsar una tarjeta (el cambio es
  * inmediato); `alCerrar` cuando se cierra con Listo, Escape o clic fuera.
  */
-export function abrirSelectorCompanero(actual: FormaAda, elegir: (id: FormaAda) => void, alCerrar?: () => void) {
+export function abrirSelectorCompanero(
+  actual: FormaAda,
+  elegir: (id: FormaAda) => void,
+  alCerrar?: () => void,
+  alEstilo?: (e: Partial<OpcionesPerro>) => void,
+) {
   if (!estiloPuesto) {
     const st = document.createElement('style');
     st.textContent = CSS;
@@ -125,6 +150,21 @@ export function abrirSelectorCompanero(actual: FormaAda, elegir: (id: FormaAda) 
         elegir(elegido);
         pintar();
         fondo.querySelector<HTMLButtonElement>(`.cp-tarjeta[data-id="${elegido}"]`)?.focus();
+      });
+    }
+    for (const b of fondo.querySelectorAll<HTMLButtonElement>('.cp-estilo button')) {
+      b.addEventListener('click', () => {
+        const que = b.dataset.estilo!;
+        const cambio: Partial<OpcionesPerro> = que === 'gorra' ? { gorra: !estiloBruno.gorra }
+          : que === 'gafas' ? { gafas: !estiloBruno.gafas }
+          : { pajarita: estiloBruno.pajarita === 'cuadros' ? 'verde' : estiloBruno.pajarita === 'verde' ? null : 'cuadros' };
+        alEstilo?.(cambio);
+        // Si alguien elige estilo, es que quiere a Bruno.
+        if (elegido !== 'bruno') { elegido = 'bruno'; elegir('bruno'); }
+        retratos.delete('bruno');
+        try { pintarRetratos(); } catch { /* sin retrato */ }
+        pintar();
+        fondo.querySelector<HTMLButtonElement>(`.cp-estilo button[data-estilo="${que}"]`)?.focus();
       });
     }
     fondo.querySelector('.cp-listo')!.addEventListener('click', cerrar);

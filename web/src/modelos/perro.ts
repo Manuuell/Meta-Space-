@@ -1,17 +1,18 @@
 import * as THREE from 'three';
 import {
-  animacion, brillo, caja, capsula, ciclo, contorno, esc, esfera, mov, nodo, parpadeo, pieza, poses, rot, toon,
+  animacion, barril, brillo, caja, capsula, ciclo, contorno, esc, esfera, mov, nodo, parpadeo, pieza, poses, rot, toon,
   type Clave, type Modelo,
 } from './kit';
 
-// El perro del operador: un bichón blanco de pelo de nube, nariz negra,
-// lengua siempre fuera y pajarita. Hecho con bolas de pelo solapadas y el
-// contorno de dibujo del resto de personajes. Mira hacia +z y su origen está
-// en el suelo, entre las patas. Mide 1 m con la cabeza (el juego lo escala).
+// Bruno, el perro del operador: un bichón blanco de pelo de nube, cabeza
+// redonda, orejas caídas color albaricoque, nariz negra y la lengua siempre
+// fuera. Hecho con bolas de pelo solapadas y el contorno de dibujo del resto
+// de personajes. Mira hacia +z y su origen está en el suelo, entre las patas.
+// Mide 1 m con la cabeza (el juego lo escala).
 //
-// Dos versiones, como en las fotos:
-//   · con pajarita de cuadros blancos y negros;
-//   · «de paseo»: gorra turquesa del revés, gafas de sol plateadas y pajarita verde.
+// Su estilo se elige: gorra turquesa del revés, gafas de sol plateadas y
+// pajarita (de cuadros, verde o ninguna). Lleva además una patineta voladora
+// (nodo `patineta`) que saca de vez en cuando para seguirte.
 
 const TAU = Math.PI * 2;
 const sen = (fase: number, veces = 1) => Math.sin(fase * TAU * veces);
@@ -22,6 +23,8 @@ const NUBE = '#eee8dd';
 const CREMA = '#ecdcc2';
 const NEGRO = '#1a1514';
 const LENGUA = '#e9849c';
+const ALBARICOQUE = '#f1dcc0';
+const ALBARICOQUE_OSCURO = '#e8c9a4';
 
 export interface OpcionesPerro {
   pajarita: 'cuadros' | 'verde' | null;
@@ -46,10 +49,41 @@ function vichy(): THREE.Texture {
   return t;
 }
 
+/** Gorra de seis paneles: turquesa con costuras oscuras y botón, para que se lea desde arriba. */
+function telaGorra(): THREE.Texture {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 64;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#2fb3a3';
+  ctx.fillRect(0, 0, 128, 64);
+  // Luz arriba y sombra en la base.
+  const g = ctx.createLinearGradient(0, 0, 0, 64);
+  g.addColorStop(0, 'rgba(255,255,255,.18)');
+  g.addColorStop(1, 'rgba(0,40,40,.18)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 64);
+  // Costuras: seis meridianos y una pespunte en la base.
+  ctx.strokeStyle = '#17796e';
+  ctx.lineWidth = 2.5;
+  for (let k = 0; k < 6; k++) {
+    const x = (k / 6) * 128 + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, 64);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#17796e';
+  ctx.fillRect(0, 58, 128, 3);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = THREE.RepeatWrapping;
+  return t;
+}
+
 export function crearPerro(opciones: OpcionesPerro = { pajarita: 'cuadros', gorra: false, gafas: false }): Modelo {
-  const cool = opciones.gorra || opciones.gafas;
   const raiz = new THREE.Group();
-  raiz.name = cool ? 'perro-paseo' : 'perro';
+  raiz.name = 'bruno';
   const cuerpo = nodo('cuerpo', raiz, 0, 0.4, 0);
 
   // Tronco: una nube de bolas de pelo.
@@ -74,14 +108,13 @@ export function crearPerro(opciones: OpcionesPerro = { pajarita: 'cuadros', gorr
   pieza(rabo, esfera(0.12), toon(BLANCO), 0, 0.09, -0.03);
   pieza(rabo, esfera(0.09), toon(NUBE), 0, 0.19, -0.01);
 
-  // Cabeza: grande y redonda, con copete, mejillas y hocico crema.
+  // Cabeza: grande y redonda, apenas un poco de copete, mejillas y hocico crema.
   const cuello = nodo('cuello', cuerpo, 0, 0.12, 0.26);
   const cabeza = nodo('cabeza', cuello, 0, 0.2, 0.06);
   pieza(cabeza, esfera(0.27, 1.05, 1, 1), toon(BLANCO), 0, 0.02, 0);
-  if (!opciones.gorra) {
-    pieza(cabeza, esfera(0.18), toon(BLANCO), 0, 0.2, -0.02);
-    for (const s of [1, -1]) pieza(cabeza, esfera(0.12), toon(NUBE), 0.12 * s, 0.17, 0);
-  }
+  if (!opciones.gorra) pieza(cabeza, esfera(0.2, 1.2, 0.5, 1.1), toon(BLANCO), 0, 0.17, -0.02);
+  // Las manchitas crema bajo los ojos, como en las fotos.
+  for (const s of [1, -1]) pieza(cabeza, esfera(0.045, 1, 1.4, 0.6), toon(ALBARICOQUE), 0.07 * s, -0.01, 0.25, { contorno: false });
   for (const s of [1, -1]) pieza(cabeza, esfera(0.12), toon(BLANCO), 0.14 * s, -0.1, 0.12);
   // Hocico sin contorno: se funde con la cara y la nariz manda.
   pieza(cabeza, esfera(0.12, 1.1, 0.8, 0.9), toon(CREMA), 0, -0.08, 0.21, { contorno: false });
@@ -106,8 +139,8 @@ export function crearPerro(opciones: OpcionesPerro = { pajarita: 'cuadros', gorr
     const oreja = nodo(`oreja_${lado}`, cabeza, 0.25 * s, 0.06, -0.02);
     oreja.rotation.z = 0.15 * s;
     pieza(oreja, esfera(0.11, 0.8, 1, 0.9), toon(BLANCO), 0, -0.06, 0);
-    pieza(oreja, esfera(0.1, 0.8, 1, 0.9), toon(NUBE), 0.02 * s, -0.18, 0.01);
-    pieza(oreja, esfera(0.085), toon(NUBE), 0.03 * s, -0.28, 0.02);
+    pieza(oreja, esfera(0.1, 0.8, 1, 0.9), toon(ALBARICOQUE), 0.02 * s, -0.18, 0.01);
+    pieza(oreja, esfera(0.085), toon(ALBARICOQUE_OSCURO), 0.03 * s, -0.28, 0.02);
   }
 
   // ---------------------------------------------------- Accesorios
@@ -123,17 +156,22 @@ export function crearPerro(opciones: OpcionesPerro = { pajarita: 'cuadros', gorr
     pieza(pajarita, caja(0.05, 0.06, 0.05, 0.02), tela, 0, 0, 0.01);
   }
   if (opciones.gorra) {
-    const gorra = nodo('gorra', cabeza, 0, 0.12, 0);
+    // Bien encajada: la copa abraza el cráneo y baja hasta la frente.
+    const gorra = nodo('gorra', cabeza, 0, 0.06, -0.01);
     const turquesa = toon('#2fb3a3');
-    pieza(gorra, new THREE.SphereGeometry(0.26, 24, 10, 0, TAU, 0, Math.PI / 2).scale(1, 0.62, 1.02), turquesa);
-    // Del revés: la visera mira hacia atrás y la cinta queda en la frente.
-    const visera = pieza(gorra, caja(0.3, 0.03, 0.2, 0.014), turquesa, 0, 0.01, -0.3);
-    visera.rotation.x = -0.15;
-    pieza(gorra, esfera(0.025), turquesa, 0, 0.16, 0);
-    pieza(gorra, caja(0.14, 0.035, 0.02, 0.01), toon('#1d8579'), 0, 0.02, 0.255);
-    pieza(gorra, caja(0.03, 0.03, 0.02, 0.01), toon('#c9ccd4'), 0.05, 0.02, 0.262, { contorno: false });
-    // Pelo que asoma por debajo de la gorra.
-    for (const s of [1, -1]) pieza(cabeza, esfera(0.1), toon(NUBE), 0.2 * s, 0.11, 0.02);
+    const copa = new THREE.MeshToonMaterial({ map: telaGorra() });
+    pieza(gorra, new THREE.SphereGeometry(0.28, 32, 12, 0, TAU, 0, Math.PI / 2).scale(1.07, 0.86, 1.05), copa);
+    pieza(gorra, esfera(0.03), turquesa, 0, 0.245, 0);
+    // Del revés: la visera asoma por detrás, ancha y algo levantada, y se ve
+    // desde la cámara de juego.
+    const visera = pieza(gorra, new THREE.CylinderGeometry(0.2, 0.2, 0.03, 24, 1, false, Math.PI / 2, Math.PI).scale(1.15, 1, 1.25), turquesa, 0, 0.03, -0.2);
+    visera.rotation.x = 0.18;
+    // Por delante, la abertura del cierre con el pelo asomando y la cinta.
+    pieza(gorra, esfera(0.075, 1.3, 0.8, 0.5), toon(BLANCO), 0, 0.07, 0.255, { contorno: false });
+    pieza(gorra, caja(0.18, 0.035, 0.03, 0.012), toon('#1d8579'), 0, 0.015, 0.262);
+    pieza(gorra, caja(0.035, 0.03, 0.02, 0.01), toon('#c9ccd4'), 0.05, 0.015, 0.28, { contorno: false });
+    // Pelo que asoma por debajo de la gorra, sobre las orejas.
+    for (const s of [1, -1]) pieza(cabeza, esfera(0.09), toon(BLANCO), 0.23 * s, 0.07, 0.02);
   }
   if (opciones.gafas) {
     const gafas = nodo('gafas', cabeza, 0, 0.065, 0.292);
@@ -147,6 +185,25 @@ export function crearPerro(opciones: OpcionesPerro = { pajarita: 'cuadros', gorr
       pieza(gafas, caja(0.015, 0.02, 0.24, 0.006), plata, 0.175 * s, 0.01, -0.12);
     }
     pieza(gafas, caja(0.05, 0.02, 0.02, 0.008), plata, 0, 0.02, 0.01);
+  }
+
+  // ---------------------------------------------------- Patineta voladora
+  // Guardada (escala casi cero): solo las animaciones Patinar y Truco la
+  // sacan; al acabar, el mezclador la devuelve a su sitio sola.
+  const patineta = nodo('patineta', raiz, 0, 0.16, 0);
+  patineta.scale.setScalar(0.001);
+  const tabla = toon('#ff8a3d');
+  pieza(patineta, caja(0.3, 0.04, 0.6, 0.02), tabla);
+  for (const z of [0.36, -0.36]) {
+    const punta = pieza(patineta, caja(0.28, 0.04, 0.16, 0.02), tabla, 0, 0.025, z);
+    punta.rotation.x = z > 0 ? -0.35 : 0.35;
+  }
+  pieza(patineta, caja(0.25, 0.012, 0.56, 0.006), toon('#2a2f45'), 0, 0.025, 0, { contorno: false });
+  pieza(patineta, caja(0.26, 0.014, 0.06, 0.006), toon('#f8f6f1'), 0, 0.027, 0.14, { contorno: false });
+  for (const z of [0.2, -0.2]) {
+    pieza(patineta, barril(0.07, 0.06, 0.05, 0.02), toon('#5b6075'), 0, -0.04, z);
+    const luz = nodo(`luz_patin_${z > 0 ? 'd' : 't'}`, patineta, 0, -0.07, z);
+    pieza(luz, esfera(0.07, 1, 0.25, 1), brillo('#5ee0ff'), 0, 0, 0, { contorno: false, sombra: false });
   }
 
   // Línea más fina: con la del astronauta, un perro de 1 m quedaba todo borde.
@@ -385,6 +442,38 @@ export function crearPerro(opciones: OpcionesPerro = { pajarita: 'cuadros', gorr
       cola(1.4, 2, 10, -50),
     ], 'ataque', 'Olfatea el aire con el hocico en alto, barriendo de lado a lado.', false),
 
+    animacion('Patinar', 1.0, [
+      // De pie en la patineta, de lado como un patinador, orejas al viento.
+      mov(raiz, 'cuerpo', ciclo(1, (f) => [0, 0.2 + sen(f) * 0.02, 0])),
+      rot('cuerpo', ciclo(1, (f) => [0, 22, sen(f) * 6])),
+      fijo('pata_di', 1, -8, 0, 6), fijo('pata_dd', 1, -8, 0, -6),
+      fijo('pata_ti', 1, 8, 0, 6), fijo('pata_td', 1, 8, 0, -6),
+      rot('cuello', ciclo(1, () => [-6, -20, 0])),
+      ...orejas(1, (f) => [-50 + sen(f, 4) * 8, 20]),
+      rot('mandibula', ciclo(1, () => [16, 0, 0])),
+      rot('lengua', ciclo(1, (f) => [5 + sen(f, 4) * 12, sen(f, 2) * 8, 0])),
+      cola(1, 3, 15, 10),
+      esc('patineta', ciclo(1, () => [1, 1, 1])),
+      mov(raiz, 'patineta', ciclo(1, (f) => [0, sen(f) * 0.02, 0])),
+      rot('patineta', ciclo(1, (f) => [0, 0, sen(f) * 6])),
+      esc('luz_patin_d', ciclo(1, (f) => { const k = 1 + 0.2 * sen(f, 4); return [k, k, k]; })),
+      esc('luz_patin_t', ciclo(1, (f) => { const k = 1 + 0.2 * sen(f, 4); return [k, k, k]; })),
+    ], 'movimiento', 'Sobre la patineta voladora, de lado, con las orejas al viento.'),
+
+    animacion('Truco', 0.9, [
+      // Kickflip: salta, la tabla gira bajo sus patas y aterriza encima.
+      mov(raiz, 'cuerpo', poses([[0, 0, 0.2, 0], [0.1, 0, 0.14, 0], [0.4, 0, 0.75, 0], [0.75, 0, 0.2, 0], [0.9, 0, 0.2, 0]])),
+      rot('cuerpo', poses([[0, 0, 22, 0], [0.4, -10, 22, 0], [0.75, 0, 22, 0], [0.9, 0, 22, 0]])),
+      esc('patineta', ciclo(0.9, () => [1, 1, 1])),
+      mov(raiz, 'patineta', poses([[0, 0, 0, 0], [0.12, 0, 0.05, 0], [0.4, 0, 0.42, 0], [0.75, 0, 0, 0], [0.9, 0, 0, 0]])),
+      rot('patineta', poses([[0, 0, 0, 0], [0.12, 0, 0, 0], [0.62, 0, 0, 360], [0.9, 0, 0, 360]])),
+      ...(['pata_di', 'pata_dd', 'pata_ti', 'pata_td'] as const).map((p, k) =>
+        rot(p, poses([[0, 0, 0, 0], [0.4, k < 2 ? -50 : 50, 0, 0], [0.75, 0, 0, 0], [0.9, 0, 0, 0]]))),
+      ...orejas(0.9, (f) => [-30 * sen(f / 2), 45 * sen(f / 2)]),
+      ...jadeo(0.9, 3, 22),
+      cola(0.9, 4, 30, 0),
+    ], 'reaccion', 'Salta y hace girar la patineta bajo sus patas antes de caer encima.', false),
+
     animacion('Atacar', 0.5, [
       mov(raiz, 'cuerpo', poses([[0, 0, 0, 0], [0.1, 0, -0.04, -0.08], [0.22, 0, 0.06, 0.22], [0.5, 0, 0, 0]])),
       rot('cuerpo', poses([[0, 0, 0, 0], [0.1, 10, 0, 0], [0.22, -8, 0, 0], [0.5, 0, 0, 0]])),
@@ -407,14 +496,8 @@ export function crearPerro(opciones: OpcionesPerro = { pajarita: 'cuadros', gorr
     ], 'ataque', 'Se agacha, coge aire y suelta un ladrido que empuja a la horda.', false),
   ];
 
-  return {
-    id: cool ? 'perro-paseo' : 'perro',
-    nombre: cool ? 'Perro · de paseo' : 'Perro · con pajarita',
-    rol: 'Compañero · camina, juega y muerde',
-    raiz,
-    animaciones,
-  };
+  return { id: 'bruno', nombre: 'Bruno', rol: 'Compañero · camina, juega, patina y muerde', raiz, animaciones };
 }
 
-export const crearPerroPajarita = () => crearPerro({ pajarita: 'cuadros', gorra: false, gafas: false });
-export const crearPerroPaseo = () => crearPerro({ pajarita: 'verde', gorra: true, gafas: true });
+export const crearBrunoPajarita = () => crearPerro({ pajarita: 'cuadros', gorra: false, gafas: false });
+export const crearBrunoPaseo = () => crearPerro({ pajarita: 'verde', gorra: true, gafas: true });

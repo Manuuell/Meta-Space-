@@ -219,6 +219,21 @@ export class Dron {
     return this.forzadoT > 0 || (a.loop === THREE.LoopOnce && a.isRunning());
   }
 
+  /** Mantiene una animación en bucle mientras se siga llamando (sin reiniciarla). */
+  mantener(nombre: string, segundos = 0.25) {
+    if (this.forzado === nombre && this.forzadoT > 0) {
+      this.forzadoT = Math.max(this.forzadoT, segundos);
+      return true;
+    }
+    if (this.ocupado) return false;
+    return this.accion(nombre, segundos);
+  }
+
+  /** La animación pedida desde fuera que se está viendo ('' si ninguna). */
+  get accionActual() {
+    return this.ocupado ? this.forzado : '';
+  }
+
   cancelarAccion() {
     this.forzado = '';
     this.forzadoT = 0;

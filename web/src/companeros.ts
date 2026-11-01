@@ -1,12 +1,19 @@
 import { crearAdaMedusa, crearAdaNoa, crearAdaOrbe, crearAdaZorro } from './modelos/ada';
 import type { Modelo } from './modelos/kit';
-import { crearPerroPajarita, crearPerroPaseo } from './modelos/perro';
+import { crearPerro, type OpcionesPerro } from './modelos/perro';
 
 // Los compañeros que puede llevar el jugador. Todos son ADA (o la acompañan,
-// en el caso del perro): siguen, escanean, obedecen la voz, atacan solos y
+// en el caso de Bruno): siguen, escanean, obedecen la voz, atacan solos y
 // tienen una habilidad con recarga. Equilibrar es tocar números aquí.
 
-export type FormaAda = 'dron' | 'zorro' | 'noa' | 'medusa' | 'orbe' | 'perro' | 'perro-paseo';
+export type FormaAda = 'dron' | 'zorro' | 'noa' | 'medusa' | 'orbe' | 'bruno';
+
+/** Estilo de Bruno: lo elige el jugador en el selector y se guarda. */
+export const estiloBruno: OpcionesPerro = { pajarita: 'cuadros', gorra: false, gafas: false };
+
+export function fijarEstiloBruno(e: Partial<OpcionesPerro>) {
+  Object.assign(estiloBruno, e);
+}
 
 export type TipoAtaque = 'laser' | 'mordisco' | 'rayo' | 'cadena' | 'aura';
 export type TipoHabilidad = 'rafaga' | 'aullido' | 'parche' | 'marea' | 'sobrecarga' | 'ladrido';
@@ -72,14 +79,8 @@ export const COMPANEROS: PerfilCompanero[] = [
     habilidad: { tipo: 'sobrecarga', nombre: 'Sobrecarga', texto: 'Una explosión alrededor de ti que empuja a la horda.', cada: 16, radio: 7, valor: 32 },
   },
   {
-    id: 'perro', nombre: 'Perro con pajarita', color: '#f4f4f4', crear: crearPerroPajarita,
-    quien: 'El mejor amigo del operador. Juega, escarba y no se separa de ti.',
-    ataque: { tipo: 'mordisco', nombre: 'Mordisco', texto: 'Corre hasta el enemigo más cercano y le muerde.', alcance: 10, dano: 18, cada: 1.0 },
-    habilidad: { tipo: 'ladrido', nombre: '¡Guau!', texto: 'Un ladrido que daña, empuja y asusta a la horda. Además busca chatarra y escarba.', cada: 11, radio: 7, valor: 10 },
-  },
-  {
-    id: 'perro-paseo', nombre: 'Perro de paseo', color: '#2fb3a3', crear: crearPerroPaseo,
-    quien: 'El mismo perro, con gorra del revés y gafas de sol.',
+    id: 'bruno', nombre: 'Bruno', color: '#ffd25a', crear: () => crearPerro({ ...estiloBruno }),
+    quien: 'El perro del operador. Juega, escarba, patina y no se separa de ti.',
     ataque: { tipo: 'mordisco', nombre: 'Mordisco', texto: 'Corre hasta el enemigo más cercano y le muerde.', alcance: 10, dano: 18, cada: 1.0 },
     habilidad: { tipo: 'ladrido', nombre: '¡Guau!', texto: 'Un ladrido que daña, empuja y asusta a la horda. Además busca chatarra y escarba.', cada: 11, radio: 7, valor: 10 },
   },
@@ -89,4 +90,4 @@ export function perfilDe(id: string): PerfilCompanero {
   return COMPANEROS.find((c) => c.id === id) ?? COMPANEROS[0];
 }
 
-export const esPerro = (id: FormaAda) => id === 'perro' || id === 'perro-paseo';
+export const esPerro = (id: FormaAda) => id === 'bruno';

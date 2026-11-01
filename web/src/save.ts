@@ -18,6 +18,8 @@ export interface Save {
   profileBackdrop: string;
   /** Compañero elegido (id de `companeros.ts`). */
   companero?: string;
+  /** Estilo de Bruno: gorra, gafas y pajarita. */
+  estiloBruno?: { pajarita: 'cuadros' | 'verde' | null; gorra: boolean; gafas: boolean };
 }
 
 const KEY = 'meta-space.save.v1';

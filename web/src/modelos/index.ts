@@ -1,7 +1,7 @@
 import { crearAstronauta } from './astronauta';
 import { crearAdaMedusa, crearAdaNoa, crearAdaOrbe, crearAdaZorro } from './ada';
 import { crearBaliza } from './baliza';
-import { crearPerroPajarita, crearPerroPaseo } from './perro';
+import { crearBrunoPajarita, crearBrunoPaseo } from './perro';
 import { crearAerotabla, crearAstronautaEquipado, crearBotasImpulso, crearMochilaCohete } from './equipo';
 import { crearRecolector } from './recolector';
 import type { Modelo } from './kit';
@@ -16,8 +16,8 @@ export const CATALOGO: { id: string; nombre: string; crear: () => Modelo }[] = [
   { id: 'mochila-cohete', nombre: 'Mochila cohete', crear: crearMochilaCohete },
   { id: 'botas-impulso', nombre: 'Botas de impulso', crear: crearBotasImpulso },
   { id: 'aerotabla', nombre: 'Aerotabla', crear: crearAerotabla },
-  { id: 'perro', nombre: 'Perro · con pajarita', crear: crearPerroPajarita },
-  { id: 'perro-paseo', nombre: 'Perro · de paseo', crear: crearPerroPaseo },
+  { id: 'bruno', nombre: 'Bruno · con pajarita', crear: crearBrunoPajarita },
+  { id: 'bruno-paseo', nombre: 'Bruno · gorra y gafas', crear: crearBrunoPaseo },
   { id: 'ada-zorro', nombre: 'ADA · Zorro de escarcha', crear: crearAdaZorro },
   { id: 'ada-noa', nombre: 'ADA · Holograma de Noa', crear: crearAdaNoa },
   { id: 'ada-medusa', nombre: 'ADA · Medusa de plasma', crear: crearAdaMedusa },

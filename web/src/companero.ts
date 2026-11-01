@@ -403,6 +403,11 @@ class VidaPerro {
   private quieto = 0;
   private cdResbalar = 0;
   private cdNieve = 0;
+  // Patineta voladora: la saca para alcanzarte y de vez en cuando hace un truco.
+  private patinT = 0;
+  private patinYa = 0;
+  private cdPatin = 6;
+  private cdTruco = 2;
 
   constructor(private dron: Dron, private pickups: Pickups, private world: World, private efectos: Efectos) {}
 
@@ -410,6 +415,14 @@ class VidaPerro {
     this.plan = [];
     this.espera = 2.5;
     this.quieto = 0;
+    this.patinT = 0;
+    this.cdPatin = 6;
+  }
+
+  private guardarPatineta() {
+    this.patinT = 0;
+    this.cdPatin = 7 + Math.random() * 6;
+    if (this.dron.accionActual === 'Patinar' || this.dron.accionActual === 'Truco') this.dron.cancelarAccion();
   }
 
   interrumpir() {
@@ -444,9 +457,41 @@ class VidaPerro {
     this.cdResbalar -= dt;
     if (cazando || this.dron.modo !== 'seguir') {
       if (this.plan.length) this.interrumpir();
+      if (this.patinT > 0) this.guardarPatineta();
       return;
     }
     const lejos = Math.hypot(p.x - ctx.px, p.z - ctx.pz);
+
+    // Patineta: si se queda atrás o vas muy deprisa, la saca y te alcanza.
+    this.cdPatin -= dt;
+    if (this.patinT <= 0 && this.cdPatin <= 0 && (lejos > 7 || ctx.velocidadJugador > 6.5 || this.dron.rapidez > 6) && Math.random() < dt * 1.5) {
+      if (this.plan.length) this.interrumpir();
+      this.patinT = 4 + Math.random() * 4;
+      this.patinYa = 0;
+      this.cdTruco = 1.2 + Math.random() * 2;
+      this.dron.accion('Patinar', 0.3);
+      this.efectos.nieve(p.x, p.y + 0.2, p.z, 8, 2);
+      ctx.sonido('zap');
+    }
+    if (this.patinT > 0) {
+      this.patinT -= dt;
+      this.patinYa += dt;
+      const alcanzado = this.patinYa > 2 && lejos < 2.5 && this.dron.rapidez < 1;
+      if (this.patinT <= 0 || alcanzado) {
+        this.guardarPatineta();
+        this.efectos.nieve(p.x, p.y + 0.2, p.z, 6, 1.8);
+      } else {
+        this.cdTruco -= dt;
+        if (this.cdTruco <= 0 && this.dron.accionActual === 'Patinar') {
+          this.dron.accion('Truco');
+          this.cdTruco = 2.5 + Math.random() * 3;
+          ctx.sonido('jump');
+        } else {
+          this.dron.mantener('Patinar');
+        }
+        return;
+      }
+    }
 
     // Si te alejas, deja lo que esté haciendo y te sigue.
     if (this.plan.length && lejos > 11) this.interrumpir();
@@ -462,7 +507,7 @@ class VidaPerro {
         this.lanzar([{ tipo: 'anim', clip: 'Bostezar' }, { tipo: 'anim', clip: 'Dormir', hastaQueTeMuevas: true }]);
       } else {
         this.espera -= dt;
-        if (this.espera <= 0 && lejos < 7 && !this.dron.ocupado) this.lanzar(this.elegir(ctx));
+        if (this.espera <= 0 && lejos < 7 && ctx.velocidadJugador < 2 && !this.dron.ocupado) this.lanzar(this.elegir(ctx));
       }
       if (!this.plan.length) return;
     }

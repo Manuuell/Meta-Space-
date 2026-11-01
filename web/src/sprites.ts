@@ -66,6 +66,24 @@ const LEGS_B = [
   '....KKK.KBBK....',
   '.........KK.....',
 ];
+// Reposo: piernas juntas, firmes.
+const LEGS_IDLE = [
+  '.....KWwKWwK....',
+  '.....KWwKWwK....',
+  '.....KWwKWwK....',
+  '.....KBBKBBK....',
+  '.....KBBKBBK....',
+  '.....KK...KK....',
+];
+// Salto: rodillas encogidas.
+const LEGS_JUMP = [
+  '.....KWwKWwK....',
+  '....KBBKKBBK....',
+  '....KBBKKBBK....',
+  '.....KKKKK......',
+  '................',
+  '................',
+];
 
 function paint(rows: string[], scale: number): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
@@ -91,11 +109,26 @@ function pixelTexture(canvas: HTMLCanvasElement): THREE.Texture {
   return texture;
 }
 
-/** Dos fotogramas de frente y dos de espaldas. */
+/** Dos fotogramas de frente y dos de espaldas (legado: lo usa el creador). */
 export function astronautFrames(): { front: THREE.Texture[]; back: THREE.Texture[] } {
   const frames = (body: string[]) =>
     [body.concat(LEGS_A), body.concat(LEGS_B)].map((rows) => pixelTexture(paint(rows, 4)));
   return { front: frames(BODY), back: frames(BACK) };
+}
+
+export type AstronautClip = 'idle' | 'walk' | 'hurt' | 'salto';
+
+/** Hoja del astronauta por clip y vista, generada por código (arte propio). */
+export function astronautAnims(): Record<'back' | 'front', Record<AstronautClip, THREE.Texture[]>> {
+  const fila = (body: string[], legs: string[][]) =>
+    legs.map((l) => pixelTexture(paint(body.concat(l), 4))) as THREE.Texture[];
+  const clips = (body: string[]): Record<AstronautClip, THREE.Texture[]> => ({
+    idle: fila(body, [LEGS_IDLE]),
+    walk: fila(body, [LEGS_A, LEGS_B]),
+    hurt: fila(body, [LEGS_A]),
+    salto: fila(body, [LEGS_JUMP]),
+  });
+  return { front: clips(BODY), back: clips(BACK) };
 }
 
 // ------------------------------------------------------------- Decorado

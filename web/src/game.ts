@@ -1,25 +1,47 @@
 import * as THREE from 'three';
-import { ENEMIES, EnemyId, PASSIVES, PassiveId, RELICS, RUN, WEAPONS, WeaponId } from './data';
+import { ENEMIES, EnemyId, MOVE, PassiveId, RELICS, RUN, WEAPONS, WeaponId } from './data';
 import { World } from './world';
 import { Enemies } from './enemies';
 import { Weapons, Modifiers } from './weapons';
 import { Pickups, RelicDrop } from './pickups';
-import { astronautFrames, blobShadowTexture } from './sprites';
+import { astronautAnims, astronautFrames, blobShadowTexture } from './sprites';
+import { AnimPlayer } from './anim';
 import { consumeLook, endFrame, isLocked, lockPointer, moveVector, unlockPointer, wasPressed } from './input';
 import { sfx, unlockAudio } from './audio';
 import { loadSave, writeSave } from './save';
 import * as ui from './ui';
+import {
+  claveDe, directorParams, dpsBuild, rollChoices as tirarCartas,
+  type DepsTirada, type EstadoBuild, type TablaArmas,
+} from './progression';
+
+const TABLA_ARMAS: TablaArmas = Object.fromEntries(
+  (Object.keys(WEAPONS) as WeaponId[]).map((id) => [id, WEAPONS[id].levels.map((s) => ({
+    damage: s.damage, cooldown: s.cooldown, count: s.count, area: s.area,
+  }))]),
+) as TablaArmas;
 import { showTitle } from './ui-title';
 import { openCharacterCreator } from './creator/character-creator';
 import { applyCustomHero, toCustomHero } from './creator/player-contract';
 import type { HeroTuning } from './creator/player-contract';
 import { SPECIALS } from './creator/stats';
 import { openProfileMenu } from './profile/profile-menu';
+import { showIntro } from './intro';
+import { Dron } from './dron';
+import {
+  AYUDA_COMANDOS, abrirLineaComando, callar, grabarVoz, hablar,
+  parsearComando, reconocimientoLocal, transcribirServidor, webmAWav16k,
+} from './voz';
+import { Radio, type EventoNpc, type Hablante, type RunBrief } from './npcs';
+import { Camara } from './camara';
+import {
+  CUPO, NubeEsporas, angulosDePatron, criasAlMorir, oleadaEspecial, quiereDisparar, tasaEspecial,
+} from './enemies-nuevos';
+import { multChatarraElite, type EliteMod } from './enemies';
 
 type State = 'title' | 'playing' | 'levelup' | 'paused' | 'results';
 
 // Cámara en tercera persona, detrás y algo por encima, como en PokéBonk.
-const CAMERA_DISTANCE = 10;
 const PITCH_MIN = 0.12;
 const PITCH_MAX = 1.05;
 const LOOK_SPEED = 0.0024;
@@ -39,15 +61,14 @@ export class Game {
   private player: THREE.Sprite;
   private shadow: THREE.Mesh;
   private frames = astronautFrames();
-  private walkTime = 0;
+  private anims = astronautAnims();
+  private anim = new AnimPlayer();
   private hurtFlash = 0;
   // Hacia dónde mira la cámara: yaw 0 es el norte (−z), donde está el cohete.
   private yaw = 0;
   private pitch = 0.36;
   // Soltar el puntero a propósito (subida de nivel, final) no debe pausar.
   private expectUnlock = false;
-  private forward = new THREE.Vector3();
-  private lookTarget = new THREE.Vector3();
 
   private state: State = 'title';
   private clock = new THREE.Clock();
@@ -63,7 +84,13 @@ export class Game {
   private xp = 0;
   private scrap = 0;
   private kills = 0;
-  private killsByType: Record<EnemyId, number> = { recolector: 0, baliza: 0, segador: 0 };
+  private killsByType: Record<EnemyId, number> = { recolector: 0, baliza: 0, segador: 0, saltador: 0, avispa: 0, caparazon: 0, sembrador: 0 };
+  // Enemigos nuevos (FOCO 4): esporas, goteo especial y oleadas con intención.
+  private esporas!: NubeEsporas;
+  private deudaEsp: Record<string, number> = { saltador: 0, avispa: 0, caparazon: 0, sembrador: 0 };
+  private oleadaEspecialHecha = new Set<number>();
+  private lastHpScale = 1;
+  private elitesVivas = 0;
   private passives = new Map<PassiveId, number>();
   private relicsFound: string[] = [];
   // Héroe personalizado del creador de personaje (Meta Space).
@@ -74,11 +101,48 @@ export class Game {
   private heroDamageMul = 1;
   private heroCooldownMul = 1;
   private heroSpecial: HeroTuning['special'] | null = null;
+  private heroSpecialLevel = 0;
+  private novaCooldown = 0;
+  private shieldReady = false;
+  private shieldCooldown = 0;
+  private swarmHealTimer = 0;
+  private ecoCooldown = 0;
+  private noDamageTime = 0;
   private spawnDebt = 0;
   private nextSegador = 120;
   private nextSwarm = 60;
   private pendingLevels = 0;
   private destroyTitle: (() => void) | null = null;
+  private introVista = false;
+  // NPCs con IA (Muse Spark vía creator-server, respaldo local por semilla).
+  private radio = new Radio('http://localhost:8787');
+  // Dron compañero ADA: sigue, explora y escanea; obedece voz o texto.
+  private dron!: Dron;
+  private micBtn: HTMLButtonElement | null = null;
+  private grabando: (() => void) | null = null;
+  private vozApagada = false;
+  private explorando = false;
+  private brief: RunBrief | null = null;
+  private heridoAvisado = false;
+  private eliteAvisada = false;
+  // Progresión (FOCO 2): memoria de tiradas para anti-repetición y piedad.
+  private ultimaOferta: string[] = [];
+  private ultimaArma: WeaponId | null = null;
+  private rechazos = new Map<string, number>();
+  // Físicas del astronauta: velocidad con inercia, salto y cámara suavizada.
+  private velX = 0;
+  private velZ = 0;
+  private velY = 0;
+  private grounded = true;
+  private coyote = 0;
+  private jumpBuffer = 0;
+  private squash = 0;
+  private facing = 1;
+  private camara!: Camara;
+  private lastPulsoDmg = 0;
+  private baseFov = 60;
+  private jumpBtn: HTMLButtonElement | null = null;
+  private touchJump = false;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -87,6 +151,20 @@ export class Game {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.world = new World(this.scene);
+    this.dron = new Dron(this.scene, (x, z) => this.world.heightAt(x, z));
+    const mic = document.createElement('button');
+    mic.textContent = '🎙';
+    mic.setAttribute('aria-label', 'Hablar con el dron (o tecla T para escribir)');
+    mic.style.cssText = 'position:fixed;left:18px;bottom:120px;width:64px;height:64px;border-radius:50%;'
+      + 'border:2px solid rgba(94,224,255,.7);background:rgba(20,26,44,.72);color:#fff;font-size:26px;'
+      + 'z-index:30;display:none;touch-action:none;';
+    mic.addEventListener('pointerdown', (e) => { e.preventDefault(); this.hablarAlDron(); });
+    document.body.appendChild(mic);
+    this.micBtn = mic;
+    this.camara = new Camara(this.camera, {
+      alturaEn: (x, z) => this.world.heightAt(x, z),
+      resolver: (x, z, r, out) => this.world.resolve(x, z, r, out),
+    });
     this.enemies = new Enemies(this.scene, this.world);
     this.enemies.onDeath = (i) => this.onEnemyDeath(i);
     this.pickups = new Pickups(this.scene, this.world);
@@ -105,6 +183,23 @@ export class Game {
 
     window.addEventListener('resize', () => this.resize());
     this.resize();
+
+    // Botón de salto en táctil: el joystick no tiene salto.
+    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+      const b = document.createElement('button');
+      b.textContent = '⤒';
+      b.setAttribute('aria-label', 'Saltar');
+      b.style.cssText = 'position:fixed;right:18px;bottom:120px;width:64px;height:64px;border-radius:50%;'
+        + 'border:2px solid rgba(94,224,255,.7);background:rgba(20,26,44,.72);color:#5ee0ff;font-size:26px;'
+        + 'z-index:30;display:none;touch-action:none;';
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        unlockAudio();
+        this.touchJump = true;
+      });
+      document.body.appendChild(b);
+      this.jumpBtn = b;
+    }
 
     // Cualquier gesto desbloquea el audio (los navegadores lo exigen).
     const unlock = () => unlockAudio();
@@ -131,7 +226,8 @@ export class Game {
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
     // En vertical (móvil) se abre el campo para ver lo mismo a los lados.
-    this.camera.fov = w < h ? 72 : 60;
+    this.baseFov = w < h ? 72 : 60;
+    this.camera.fov = this.baseFov;
     this.camera.updateProjectionMatrix();
   }
 
@@ -140,8 +236,17 @@ export class Game {
   private toTitle() {
     this.destroyTitle?.();
     this.destroyTitle = null;
+    // Cinemática de entrada: la nave llega al planeta antes del primer título.
+    if (!this.introVista && !(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)) {
+      this.introVista = true;
+      showIntro(document.body, () => this.toTitle());
+      return;
+    }
     this.state = 'title';
     ui.hideHud();
+    this.camara?.iniciarTransicion('titulo');
+    if (this.jumpBtn) this.jumpBtn.style.display = 'none';
+    if (this.micBtn) this.micBtn.style.display = 'none';
     this.resetRun();
     let started = false;
     this.destroyTitle = showTitle(this.save, () => {
@@ -151,6 +256,8 @@ export class Game {
       this.startRun();
     }, {
       onCreator: () => void this.openProfile(),
+      customHeroName: this.heroName || undefined,
+      customHeroSpecial: this.heroSpecial ? SPECIALS[this.heroSpecial].name : undefined,
     });
   }
 
@@ -177,6 +284,248 @@ export class Game {
     ui.toast('ADA', `Héroe listo${who}. Pulsa JUGAR para despegar.`, 'info', 5);
   }
 
+  /** Hablar con el dron: micrófono → Meta/local → comando. */
+  private async hablarAlDron() {
+    if (this.state !== 'playing') return;
+    if (this.grabando) {
+      this.grabando();
+      return;
+    }
+    unlockAudio();
+    try {
+      const g = grabarVoz(6000);
+      this.grabando = g.parar;
+      ui.toast('ADA', 'Te escucho… habla ahora (toca de nuevo para terminar).', 'info', 3);
+      const blob = await g.promesa;
+      this.grabando = null;
+      const wav = await webmAWav16k(blob).catch(() => null);
+      if (wav) {
+        const texto = await transcribirServidor('http://localhost:8787', wav);
+        if (texto) {
+          this.ejecutarComando(texto);
+          return;
+        }
+      }
+    } catch {
+      this.grabando = null;
+    }
+    // Sin servidor o sin clave: reconocimiento local del navegador.
+    const local = reconocimientoLocal();
+    if (local) {
+      ui.toast('ADA', 'Te escucho… habla ahora.', 'info', 3);
+      const texto = await local.reconocer();
+      if (texto) {
+        this.ejecutarComando(texto);
+        return;
+      }
+    }
+    // Último recurso: escribir la orden.
+    this.abrirLineaVoz();
+  }
+
+  /** Línea de comando escrita (tecla T): respaldo cuando no hay micro. */
+  private abrirLineaVoz() {
+    if (this.state !== 'playing') return;
+    abrirLineaComando((texto) => this.ejecutarComando(texto));
+  }
+
+  /** Ejecuta un comando de voz o texto sobre el dron. */
+  private ejecutarComando(texto: string) {
+    const t = texto.toLowerCase();
+    if (/(silencio|calla|mudo)/.test(t)) {
+      this.vozApagada = true;
+      callar();
+      ui.toast('ADA', 'Entendido: solo texto.', 'info', 3);
+      return;
+    }
+    if (/(habla|con voz|sonido)/.test(t)) {
+      this.vozApagada = false;
+      this.decible('ADA', 'De vuelta en línea.');
+      return;
+    }
+    const cmd = parsearComando(texto);
+    if (cmd === 'seguir') {
+      this.dron.setModo('seguir');
+      this.explorando = false;
+      this.decible('ADA', 'Vuelvo a tu lado.');
+    } else if (cmd === 'quieto') {
+      this.dron.setModo('quieto');
+      this.explorando = false;
+      this.decible('ADA', 'Mantengo posición.');
+    } else if (cmd === 'luz') {
+      const on = !this.dron.luz;
+      this.dron.setLuz(on);
+      this.decible('ADA', on ? 'Luz encendida: veo mejor la chatarra.' : 'Luz apagada.');
+    } else if (cmd === 'explorar') {
+      this.ordenarExploracion();
+    } else if (cmd === 'ayuda') {
+      ui.toast('ADA', AYUDA_COMANDOS, 'info', 6);
+    } else {
+      this.decible('ADA', `No te entendí. ${AYUDA_COMANDOS}`);
+    }
+  }
+
+  /** El dron informa por voz y texto (respeta "silencio"). */
+  private decible(quien: string, texto: string) {
+    ui.toast(quien, texto, 'info', 4);
+    if (!this.vozApagada) hablar(texto);
+  }
+
+  /** Aplica daño al traje y resuelve los especiales que reaccionan al golpe. */
+  private receiveDamage(amount: number) {
+    if (amount <= 0) return;
+    if (this.heroSpecial === 'caparazon' && this.shieldReady) {
+      this.shieldReady = false;
+      this.shieldCooldown = Math.max(18, 30 - (this.heroSpecialLevel - 1) * 6);
+      this.camara.sacudidaDano();
+      sfx('relic');
+      ui.toast('ADA', 'Caparazón activo: impacto bloqueado.', 'info', 3);
+      return;
+    }
+
+    this.hp -= amount;
+    this.hpLost += amount;
+    this.noDamageTime = 0;
+    this.hurtFlash = 0.15;
+    this.camara.sacudidaDano();
+    sfx('hurt');
+
+    if (this.heroSpecial === 'nova-plasma' && this.novaCooldown <= 0) {
+      this.novaCooldown = Math.max(1.5, 3 - (this.heroSpecialLevel - 1) * 0.6);
+      this.activatePlasmaNova();
+    }
+  }
+
+  /** Mantiene los especiales pasivos del héroe personalizado. */
+  private updateHeroSpecial(dt: number, px: number, pz: number) {
+    this.novaCooldown = Math.max(0, this.novaCooldown - dt);
+
+    if (this.heroSpecial === 'enjambre') {
+      this.swarmHealTimer += dt;
+      while (this.swarmHealTimer >= 5) {
+        this.swarmHealTimer -= 5;
+        this.hp = Math.min(this.maxHp, this.hp + Math.max(1, this.heroSpecialLevel));
+      }
+    }
+
+    if (this.heroSpecial === 'caparazon' && !this.shieldReady) {
+      this.shieldCooldown = Math.max(0, this.shieldCooldown - dt);
+      if (this.shieldCooldown <= 0) {
+        this.shieldReady = true;
+        ui.toast('ADA', 'Caparazón recargado.', 'info', 2);
+      }
+    }
+
+    if (this.heroSpecial === 'eco-helios') {
+      this.ecoCooldown -= dt;
+      if (this.ecoCooldown <= 0) {
+        const radius = 12 + this.heroSpecialLevel * 2;
+        const duration = 1.5 + this.heroSpecialLevel * 0.5;
+        let confused = 0;
+        for (let i = 0; i < this.enemies.count; i++) {
+          if (this.enemies.tipoDe(i) !== 'recolector') continue;
+          const dx = this.enemies.x[i] - px, dz = this.enemies.z[i] - pz;
+          if (dx * dx + dz * dz > radius * radius) continue;
+          this.enemies.slow[i] = Math.max(this.enemies.slow[i], duration);
+          this.enemies.slowFactor[i] = 0;
+          confused++;
+        }
+        // Si todavía no hay objetivos, vuelve a buscar pronto; con objetivos,
+        // deja una ventana clara antes de emitir otro eco.
+        this.ecoCooldown = confused > 0 ? 8 : 1;
+      }
+    }
+  }
+
+  private activatePlasmaNova() {
+    const px = this.player.position.x, pz = this.player.position.z;
+    const radius = 3.5 + this.heroSpecialLevel * 0.9;
+    const damage = (12 + this.heroSpecialLevel * 8) * this.heroDamageMul;
+    for (let i = 0; i < this.enemies.count; i++) {
+      const dx = this.enemies.x[i] - px, dz = this.enemies.z[i] - pz;
+      if (dx * dx + dz * dz <= radius * radius) this.enemies.hit(i, damage, px, pz, 1.1);
+    }
+    sfx('hit');
+  }
+
+  private activateAdaPulse() {
+    const px = this.player.position.x, pz = this.player.position.z;
+    const radius = 9 + this.heroSpecialLevel * 2;
+    const knockback = 1.2 + this.heroSpecialLevel * 0.35;
+    for (let i = 0; i < this.enemies.count; i++) {
+      const dx = this.enemies.x[i] - px, dz = this.enemies.z[i] - pz;
+      if (dx * dx + dz * dz <= radius * radius) this.enemies.hit(i, 0, px, pz, knockback);
+    }
+    this.camara.sacudidaPulso();
+    sfx('relic');
+  }
+
+  /** Manda al dron a la reliquia, amenaza o zona más interesante. */
+  private ordenarExploracion() {
+    let objetivo: { x: number; z: number; etiqueta: string } | null = null;
+    let mejor = Infinity;
+    for (const r of this.relicDrops) {
+      const d = Math.hypot(r.group.position.x - this.player.position.x, r.group.position.z - this.player.position.z);
+      if (d < mejor) {
+        mejor = d;
+        objetivo = { x: r.group.position.x, z: r.group.position.z, etiqueta: 'reliquia' };
+      }
+    }
+    if (!objetivo) {
+      const i = this.enemies.nearest(this.player.position.x, this.player.position.z, 35);
+      if (i >= 0) objetivo = { x: this.enemies.x[i], z: this.enemies.z[i], etiqueta: 'amenaza' };
+    }
+    if (!objetivo) {
+      const a = this.yaw + (Math.random() - 0.5);
+      objetivo = {
+        x: this.player.position.x - Math.sin(a) * 20,
+        z: this.player.position.z - Math.cos(a) * 20,
+        etiqueta: 'zona',
+      };
+    }
+    this.dron.escanear(objetivo.x, this.player.position.y, objetivo.z);
+    this.dron.setModo('explorar', objetivo);
+    this.explorando = true;
+    this.decible('ADA', `Explorando: ${objetivo.etiqueta}. Te aviso lo que vea.`);
+  }
+
+  /** Al llegar el dron, informa lo que ve a su alrededor. */
+  private informarEscaneo() {
+    const d = this.dron.group.position;
+    let reliquias = 0;
+    for (const r of this.relicDrops) {
+      if (Math.hypot(r.group.position.x - d.x, r.group.position.z - d.z) < 40) reliquias++;
+    }
+    let contactos = 0;
+    let cx = 0, cz = 0;
+    for (let i = 0; i < this.enemies.count; i++) {
+      const dx = this.enemies.x[i] - d.x, dz = this.enemies.z[i] - d.z;
+      if (dx * dx + dz * dz < 30 * 30) {
+        contactos++;
+        cx += dx;
+        cz += dz;
+      }
+    }
+    const rumbo = contactos > 0 ? this.rumboA(cx / contactos, cz / contactos) : '';
+    const partes: string[] = [];
+    if (reliquias > 0) partes.push(`${reliquias} ${reliquias === 1 ? 'reliquia' : 'reliquias'}`);
+    if (contactos > 0) partes.push(`${contactos} contactos${rumbo ? ` al ${rumbo}` : ''}`);
+    this.decible('ADA', partes.length ? `Escáner: ${partes.join(', ')}.` : 'Escáner: zona limpia. Ni rastro de HELIOS.');
+  }
+
+  /** Rumbo en palabras desde un vector (norte = -z, hacia el cohete). */
+  private rumboA(dx: number, dz: number): string {
+    const a = (Math.atan2(dx, -dz) * 180) / Math.PI;
+    if (a > -22.5 && a <= 22.5) return 'norte';
+    if (a > 22.5 && a <= 67.5) return 'noreste';
+    if (a > 67.5 && a <= 112.5) return 'este';
+    if (a > 112.5 && a <= 157.5) return 'sureste';
+    if (a > 157.5 || a <= -157.5) return 'sur';
+    if (a > -157.5 && a <= -112.5) return 'suroeste';
+    if (a > -112.5 && a <= -67.5) return 'oeste';
+    return 'noroeste';
+  }
+
   /** Hooks del contrato del creador (`player-contract.ts`). */
   setHeroSprite(tex: THREE.Texture) {
     this.customSprite = tex;
@@ -191,6 +540,7 @@ export class Game {
     this.heroDamageMul = t.damageMul;
     this.heroCooldownMul = t.cooldownMul;
     this.heroSpecial = t.special;
+    this.heroSpecialLevel = 1;
     this.hp = this.maxHp = t.maxHp;
   }
 
@@ -204,6 +554,11 @@ export class Game {
     this.weapons.damageMul = this.heroDamageMul;
     this.enemies.clear();
     this.pickups.clear();
+    this.esporas?.dispose();
+    this.esporas = new NubeEsporas(this.scene, this.world);
+    this.deudaEsp = { saltador: 0, avispa: 0, caparazon: 0, sembrador: 0 };
+    this.oleadaEspecialHecha.clear();
+    this.elitesVivas = 0;
     for (const r of this.relicDrops) this.scene.remove(r.group);
     this.relicDrops = [];
 
@@ -214,9 +569,26 @@ export class Game {
     this.xp = 0;
     this.scrap = 0;
     this.kills = 0;
-    this.killsByType = { recolector: 0, baliza: 0, segador: 0 };
+    this.killsByType = { recolector: 0, baliza: 0, segador: 0, saltador: 0, avispa: 0, caparazon: 0, sembrador: 0 };
     this.passives.clear();
     this.relicsFound = [];
+    this.ultimaOferta = [];
+    this.ultimaArma = null;
+    this.rechazos = new Map();
+    this.radio = new Radio('http://localhost:8787');
+    this.dron.setModo('seguir');
+    this.dron.setLuz(false);
+    this.explorando = false;
+    this.brief = null;
+    this.heridoAvisado = false;
+    this.eliteAvisada = false;
+    this.heroSpecialLevel = this.heroSpecial ? 1 : 0;
+    this.novaCooldown = 0;
+    this.shieldReady = this.heroSpecial === 'caparazon';
+    this.shieldCooldown = 0;
+    this.swarmHealTimer = 0;
+    this.ecoCooldown = 0;
+    this.noDamageTime = 0;
     this.spawnDebt = 0;
     this.nextSegador = 120;
     this.nextSwarm = 60;
@@ -224,6 +596,17 @@ export class Game {
     this.player.position.set(0, this.world.heightAt(0, 0), 0);
     this.yaw = 0;
     this.pitch = 0.36;
+    // Físicas y cámara: todo arranca en reposo sobre el suelo.
+    this.velX = 0;
+    this.velZ = 0;
+    this.velY = 0;
+    this.grounded = true;
+    this.coyote = 0;
+    this.jumpBuffer = 0;
+    this.squash = 0;
+    this.facing = 1;
+    this.camara.fijar(0, this.pitch, this.player.position);
+    this.lastPulsoDmg = this.weapons.damageDealt.pulso;
   }
 
   private startRun() {
@@ -231,13 +614,43 @@ export class Game {
     this.weapons.upgrade('cortador');
     this.state = 'playing';
     ui.showHud();
+    if (this.jumpBtn) this.jumpBtn.style.display = 'block';
+    if (this.micBtn) this.micBtn.style.display = 'block';
     lockPointer(this.canvas);
     ui.toast('ADA', 'Señal de HELIOS detectada. Vienen a por mí. Mantente en movimiento.', 'info', 5);
     if (this.heroSpecial) {
       const sp = SPECIALS[this.heroSpecial];
       ui.toast('ADA', `Especial listo: ${sp.name}. ${sp.blurb}`, 'info', 6);
     }
+    void this.abrirBrief();
     this.clock.getDelta();
+  }
+
+  /** Pide el brief único de la partida (misión + NPCs) sin bloquear el juego. */
+  private async abrirBrief() {
+    const { brief } = await this.radio.brief(this.heroName, this.save.profileName);
+    if (this.state !== 'playing') return;
+    this.brief = brief;
+    const operador = brief.npcs.find((n) => n.id === 'operador');
+    ui.setMision(brief.mision, operador?.nombre ?? '');
+    ui.toast('ADA', `${brief.mision}: ${brief.bioma}. ${brief.giro}`, 'info', 7);
+    const heli = brief.npcs.find((n) => n.id === 'helios');
+    const op = brief.npcs.find((n) => n.id === 'operador');
+    if (heli && this.state === 'playing') {
+      setTimeout(() => { if (this.state === 'playing') ui.toast('HELIOS', heli.linea, 'info', 5); }, 4500);
+    }
+    if (op && this.state === 'playing') {
+      setTimeout(() => { if (this.state === 'playing') ui.toast(op.nombre.toUpperCase(), op.linea, 'info', 5); }, 9000);
+    }
+  }
+
+  /** Pide una línea de un NPC ante un evento (con cooldown y respaldo local). */
+  private decir(hablante: Hablante, evento: EventoNpc, contexto: string) {
+    void this.radio.linea(hablante, evento, contexto).then((r) => {
+      if (!r || this.state !== 'playing') return;
+      const quien = hablante === 'operador' ? this.radio.nombreOperador(this.brief).toUpperCase() : r.quien;
+      ui.toast(quien, r.texto, 'info', 5);
+    });
   }
 
   private get mods(): Modifiers {
@@ -279,12 +692,17 @@ export class Game {
     this.state = 'paused';
     this.expectUnlock = isLocked();
     unlockPointer();
+    this.camara?.iniciarTransicion('pausa');
+    if (this.jumpBtn) this.jumpBtn.style.display = 'none';
+    if (this.micBtn) this.micBtn.style.display = 'none';
     // Al reanudar se vacían las pulsaciones: el Esc que cierra la pausa
     // no debe volver a abrirla en el fotograma siguiente.
     ui.showPause(() => {
       endFrame();
       this.state = 'playing';
       this.clock.getDelta();
+      if (this.jumpBtn) this.jumpBtn.style.display = 'block';
+      if (this.micBtn) this.micBtn.style.display = 'block';
       lockPointer(this.canvas);
     }, () => this.toTitle());
   }
@@ -302,6 +720,9 @@ export class Game {
 
   private update(dt: number) {
     this.time += dt;
+    if (wasPressed('KeyT') && !(document.activeElement instanceof HTMLInputElement)) {
+      this.abrirLineaVoz();
+    }
 
     const look = consumeLook(dt);
     this.yaw -= look.x * LOOK_SPEED;
@@ -309,22 +730,40 @@ export class Game {
 
     this.movePlayer(dt);
     this.direct(dt);
+    this.dron.update(dt, this.player.position.x, this.player.position.y, this.player.position.z, this.yaw);
+    if (this.explorando && this.dron.modo === 'seguir') {
+      this.explorando = false;
+      this.informarEscaneo();
+    }
 
     const px = this.player.position.x, pz = this.player.position.z;
+    this.noDamageTime += dt;
+    this.updateHeroSpecial(dt, px, pz);
     const contact = this.enemies.update(dt, px, pz, PLAYER_RADIUS);
-    if (contact > 0) {
-      this.hp -= contact;
-      this.hpLost += contact;
-      this.hurtFlash = 0.15;
-      sfx('hurt');
+    this.receiveDamage(contact);
+    this.hp = Math.min(this.maxHp, this.hp + this.passive('reparacion') * 0.7 * dt);
+    if (!this.heridoAvisado && this.hp < this.maxHp * 0.7) {
+      this.heridoAvisado = true;
+      this.decir('ada', 'herido', `integridad al ${Math.round((this.hp / this.maxHp) * 100)} por ciento`);
     }
-    this.hp = Math.min(this.maxHp, this.hp + this.passive('reparacion') * 0.4 * dt);
+
+    // Sembradores: abren fuego con esporas lentas y esquivables.
+    for (let i = 0; i < this.enemies.count; i++) {
+      if (this.enemies.tipoDe(i) !== 'sembrador') continue;
+      const dx = this.enemies.x[i] - px, dz = this.enemies.z[i] - pz;
+      if (Math.hypot(dx, dz) < 20 && quiereDisparar(i, this.enemies, this.time, dt)) {
+        this.esporas.disparar(this.enemies.x[i], this.enemies.z[i], px, pz);
+        sfx('hit');
+      }
+    }
+    const danoEsporas = this.esporas.update(dt, px, pz, PLAYER_RADIUS);
+    this.receiveDamage(danoEsporas);
 
     this.weapons.update(dt, px, pz, this.mods);
     this.enemies.sweep();
     this.enemies.render();
 
-    const radius = RUN.pickupRadius * (1 + 0.3 * this.passive('iman'));
+    const radius = RUN.pickupRadius * (1 + 0.35 * this.passive('iman')) * (this.dron.luz ? 1.25 : 1);
     const got = this.pickups.update(dt, px, pz, radius);
     if (got > 0) {
       this.scrap += got;
@@ -361,58 +800,124 @@ export class Game {
 
   private movePlayer(dt: number) {
     const move = moveVector();
-    const speed = this.heroSpeed * (1 + 0.1 * this.passive('velocidad'));
+    const overdriveDelay = Math.max(3, 5 - (this.heroSpecialLevel - 1) * 0.75);
+    const overdrive = this.heroSpecial === 'sobremarcha' && this.noDamageTime >= overdriveDelay
+      ? 1.15 + (this.heroSpecialLevel - 1) * 0.05
+      : 1;
+    const maxSpeed = this.heroSpeed * (1 + 0.1 * this.passive('velocidad')) * overdrive;
     // W avanza hacia donde mira la cámara; A y D van de lado.
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
-    const wx = rx * move.x - fx * move.y;
-    const wz = rz * move.x - fz * move.y;
+    const wishX = rx * move.x - fx * move.y;
+    const wishZ = rz * move.x - fz * move.y;
+
+    // Velocidad con inercia: converge a la deseada (rápido en suelo,
+    // flotante en el aire) en vez de cambiar de golpe.
+    const rate = this.grounded ? MOVE.groundRate : MOVE.airRate;
+    const k = 1 - Math.exp(-dt * rate);
+    this.velX += (wishX * maxSpeed - this.velX) * k;
+    this.velZ += (wishZ * maxSpeed - this.velZ) * k;
+
     const p = this.player.position;
-    const r = this.world.resolve(p.x + wx * speed * dt, p.z + wz * speed * dt, PLAYER_RADIUS, this.tmp);
+    const r = this.world.resolve(p.x + this.velX * dt, p.z + this.velZ * dt, PLAYER_RADIUS, this.tmp);
     p.x = r.x;
     p.z = r.z;
-    p.y = this.world.heightAt(p.x, p.z);
+    const ground = this.world.heightAt(p.x, p.z);
 
-    const moving = move.x !== 0 || move.y !== 0;
-    if (moving) this.walkTime += dt;
+    // Salto con buffer y coyote: vale anticipado y justo al borde.
+    if (wasPressed('Space') || this.touchJump) {
+      this.jumpBuffer = MOVE.buffer;
+      this.touchJump = false;
+    } else {
+      this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
+    }
+    if (this.grounded) this.coyote = MOVE.coyote;
+    else this.coyote = Math.max(0, this.coyote - dt);
+    if (this.jumpBuffer > 0 && (this.grounded || this.coyote > 0)) {
+      this.velY = MOVE.jumpSpeed;
+      this.grounded = false;
+      this.coyote = 0;
+      this.jumpBuffer = 0;
+      sfx('jump');
+    }
+    this.velY = Math.max(-MOVE.maxFall, this.velY - MOVE.gravity * dt);
+    p.y += this.velY * dt;
+    if (p.y <= ground) {
+      if (!this.grounded && this.velY < -8) this.squash = 0.18;
+      p.y = ground;
+      this.velY = 0;
+      this.grounded = true;
+    } else if (p.y > ground + 0.02) {
+      this.grounded = false;
+    }
+
+    // Animación por catálogo: el juego elige clip (reposo/andar/daño/salto)
+    // y vista (espalda/frente); el reproductor elige el frame por duración.
+    const hSpeed = Math.hypot(this.velX, this.velZ);
     const material = this.player.material;
     if (this.customSprite) {
       // Héroe personalizado: sprite fijo del creador en vez de la animación.
       if (material.map !== this.customSprite) material.map = this.customSprite;
     } else {
-      const step = moving ? Math.floor(this.walkTime * 8) % 2 : 0;
       // De espaldas salvo cuando viene hacia la cámara: así se ve a ADA.
-      const frames = move.y > 0.3 ? this.frames.front : this.frames.back;
-      if (material.map !== frames[step]) material.map = frames[step];
+      const vista = move.y > 0.3 ? 'front' : 'back';
+      const clip = this.hurtFlash > 0 ? 'hurt' : !this.grounded ? 'salto' : hSpeed > 0.4 ? 'walk' : 'idle';
+      this.anim.play(clip, vista === 'front' ? 1 : 0);
+      const [frame] = this.anim.update(this.hurtFlash > 0 ? dt * 2 : dt);
+      const tex = this.anims[vista][clip][frame];
+      if (material.map !== tex) material.map = tex;
     }
     if (Math.abs(move.x) > 0.1) {
       // Con héroe personalizado no hay vista frontal: solo espeja el avance.
       const deFrente = !this.customSprite && move.y > 0.3;
-      const flip = deFrente ? move.x < 0 : move.x > 0;
-      this.player.scale.x = (flip ? -1 : 1) * PLAYER_HEIGHT * 0.8;
+      this.facing = (deFrente ? move.x < 0 : move.x > 0) ? -1 : 1;
     }
+    // Aplastamiento al aterrizar + inclinación lateral con la velocidad.
+    this.squash = Math.max(0, this.squash - dt);
+    const sq = this.squash / 0.18;
+    const lean = Math.max(-0.12, Math.min(0.12, -(rx * this.velX + rz * this.velZ) * 0.012));
+    this.player.scale.set(
+      this.facing * PLAYER_HEIGHT * 0.8 * (1 + 0.18 * sq),
+      PLAYER_HEIGHT * (1 - 0.22 * sq),
+      1,
+    );
+    material.rotation = lean;
 
     this.hurtFlash -= dt;
     material.color.set(this.hurtFlash > 0 ? '#ff6a5a' : '#ffffff');
-    this.shadow.position.set(p.x, p.y + 0.06, p.z);
+    // La sombra queda en el suelo y se encoge con la altura del salto.
+    const alt = Math.max(0, p.y - ground);
+    const shScale = Math.max(0.4, 1 - alt * 0.12);
+    this.shadow.position.set(p.x, ground + 0.06, p.z);
+    this.shadow.scale.set(shScale, shScale, shScale);
   }
 
   private updateCamera(dt: number) {
     const p = this.player.position;
-    this.forward.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
-    const horizontal = CAMERA_DISTANCE * Math.cos(this.pitch);
-    const want = new THREE.Vector3(
-      p.x - this.forward.x * horizontal,
-      p.y + 1.6 + CAMERA_DISTANCE * Math.sin(this.pitch),
-      p.z - this.forward.z * horizontal,
-    );
-    // Que la cámara no se meta bajo una loma.
-    want.y = Math.max(want.y, this.world.heightAt(want.x, want.z) + 0.8);
-    this.camera.position.lerp(want, 1 - Math.exp(-dt * 14));
-    // Mira un poco por delante del astronauta: queda abajo y se ve lo que viene.
-    this.lookTarget.set(p.x + this.forward.x * 3, p.y + 1.8, p.z + this.forward.z * 3);
-    this.camera.lookAt(this.lookTarget);
-    this.world.faceCamera(this.yaw);
+    const amenazas: { x: number; z: number; peso: number }[] = [];
+    for (let i = 0; i < this.enemies.count; i++) {
+      const dx = this.enemies.x[i] - p.x, dz = this.enemies.z[i] - p.z;
+      if (dx * dx + dz * dz > 45 * 45) continue;
+      const t = this.enemies.tipoDe(i);
+      amenazas.push({ x: this.enemies.x[i], z: this.enemies.z[i], peso: t === 'segador' ? 3 : t === 'caparazon' ? 2 : 1 });
+    }
+    const escalaSacudida = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : 1;
+    this.camara.actualizar(dt, {
+      pos: p,
+      velX: this.velX,
+      velZ: this.velZ,
+      alturaPies: p.y,
+      enSuelo: this.grounded,
+      yaw: this.yaw,
+      pitch: this.pitch,
+      amenazas,
+      fovBase: this.baseFov,
+      escalaSacudida,
+    });
+    // Disparo del pulso: trauma menor al del daño.
+    const dmgPulso = this.weapons.damageDealt.pulso;
+    if (dmgPulso > this.lastPulsoDmg) this.camara.sacudidaPulso();
+    this.lastPulsoDmg = dmgPulso;
   }
 
   // ------------------------------------------------------- Director
@@ -421,8 +926,12 @@ export class Game {
   private direct(dt: number) {
     const minutes = this.time / 60;
     const balizas = this.enemies.countOf('baliza');
-    const rate = (0.6 + minutes * 0.5 + minutes * minutes * 0.12) * (1 + 0.15 * balizas);
-    const hpScale = 1 + minutes * 0.25;
+    // Director elástico (FOCO 2): alivia si vas por detrás, aprieta si vas
+    // por delante, siempre dentro de la banda [0,8–1,2].
+    const dp = directorParams(this.time, this.level, this.dpsActual(), balizas);
+    const rate = dp.ritmo;
+    const hpScale = dp.escalaVida;
+    this.lastHpScale = hpScale;
 
     this.spawnDebt += rate * dt;
     while (this.spawnDebt >= 1) {
@@ -431,20 +940,44 @@ export class Game {
       this.spawnAround(type, 28 + Math.random() * 4, hpScale);
     }
 
+    // Goteo especial con presupuesto fijo: cada tipo nuevo tiene cadencia.
+    for (const id of ['saltador', 'avispa', 'caparazon', 'sembrador'] as const) {
+      this.deudaEsp[id] += tasaEspecial(id, minutes) * dt;
+      if (this.deudaEsp[id] >= 1) {
+        this.deudaEsp[id] -= 1;
+        if (this.enemies.countOf(id) < CUPO[id]) this.spawnAround(id, 28 + Math.random() * 4, hpScale);
+      }
+    }
+
     this.recycleStragglers();
 
     // Oleada en anillo cada minuto: cierra el paso por todos lados a la vez.
     if (this.time >= this.nextSwarm) {
       this.nextSwarm += 60;
-      const n = 18 + Math.floor(minutes * 4);
+      const n = dp.anillo;
       for (let i = 0; i < n; i++) this.spawnAround('recolector', 22, hpScale, (i / n) * Math.PI * 2);
       ui.toast('ADA', 'Muchas señales a la vez. Nos están rodeando.', 'info', 3);
     }
 
+    // Oleadas con intención: anillos de saltadores, pinzas, escoltas.
+    const minuto = Math.floor(this.time / 60);
+    const especial = oleadaEspecial(minuto);
+    if (especial && !this.oleadaEspecialHecha.has(minuto)) {
+      this.oleadaEspecialHecha.add(minuto);
+      const base = Math.random() * Math.PI * 2;
+      for (const compo of especial) {
+        for (const a of angulosDePatron(compo.patron, compo.n, base)) {
+          this.spawnAround(compo.tipo as EnemyId, compo.patron === 'anillo' ? 22 : 24, hpScale, a);
+        }
+      }
+      ui.toast('ADA', 'HELIOS cambia de táctica. Mira los flancos.', 'info', 4);
+    }
+
     if (this.time >= this.nextSegador) {
-      this.nextSegador += minutes < 5 ? 90 : 60;
+      this.nextSegador += dp.cadaSegador;
       this.spawnAround('segador', 26, hpScale);
       ui.toast('ADA', 'Algo grande se acerca. Una cosechadora. Lleva algo dentro.', 'info', 4);
+      this.decir('helios', 'elite', 'un segador se acerca a tu posición');
     }
   }
 
@@ -477,22 +1010,46 @@ export class Game {
     const x = Math.max(-a, Math.min(a, p.x + Math.cos(angle) * distance));
     const z = Math.max(-a, Math.min(a, p.z + Math.sin(angle) * distance));
     const r = this.world.resolve(x, z, ENEMIES[type].radius, this.tmp);
-    this.enemies.spawn(type, r.x, r.z, hpScale);
+    const elite = this.tirarElite(type);
+    if (this.enemies.spawn(type, r.x, r.z, hpScale, elite) && elite) this.elitesVivas++;
+  }
+
+  /** Élite aleatoria (6 %) para enemigos normales desde el min 2, tope 6 vivas. */
+  private tirarElite(type: EnemyId): EliteMod | null {
+    if (type === 'baliza' || type === 'segador') return null;
+    if (this.time < 120 || this.elitesVivas >= 6 || Math.random() > 0.06) return null;
+    const r = Math.random();
+    return r < 0.5 ? 'rapido' : r < 0.75 ? 'blindado' : 'simbionte';
   }
 
   private onEnemyDeath(i: number) {
     const def = this.enemies.defOf(i);
+    const elite = this.enemies.eliteDe(i);
+    if (elite) this.elitesVivas = Math.max(0, this.elitesVivas - 1);
     const x = this.enemies.x[i], z = this.enemies.z[i];
     this.kills++;
     this.killsByType[def.id]++;
     sfx('kill');
+    if (elite && !this.eliteAvisada) {
+      this.eliteAvisada = true;
+      this.decir('operador', 'elite', `élite derribada: ${def.name}`);
+    }
 
     // Lo que sueltan vale más con el tiempo, al ritmo de la curva de nivel.
-    const value = def.scrap * (1 + (this.time / 60) * 0.15);
+    // Las élites pagan extra (×3/×5/×4).
+    const value = def.scrap * (1 + (this.time / 60) * 0.15) * multChatarraElite(elite);
     if (def.scrap >= 5) {
       for (let n = 0; n < 5; n++) this.pickups.drop(x, z, value / 5);
     } else {
       this.pickups.drop(x, z, value);
+    }
+
+    // El Caparazón se divide al morir: suelta 3 Recolectores.
+    for (const cria of criasAlMorir(def.id)) {
+      for (let k = 0; k < cria.n; k++) {
+        const a = Math.random() * Math.PI * 2;
+        this.enemies.spawn(cria.tipo as EnemyId, x + Math.cos(a) * 1.5, z + Math.sin(a) * 1.5, this.lastHpScale);
+      }
     }
 
     if (def.id === 'segador') {
@@ -515,6 +1072,7 @@ export class Game {
       const relic = RELICS.find((r) => r.id === drop.relicId)!;
       sfx('relic');
       ui.toast(`Reliquia: ${relic.name}`, `“${relic.lore}” ${relic.fact}`, 'relic', 9);
+      this.decir('ada', 'reliquia', `${relic.name}: ${relic.fact}`);
     }
   }
 
@@ -523,11 +1081,13 @@ export class Game {
   private levelUp() {
     this.pendingLevels--;
     this.level++;
+    if (this.heroSpecial === 'pulso-ada') this.activateAdaPulse();
     this.state = 'levelup';
     this.expectUnlock = isLocked();
     unlockPointer();
     sfx('level');
     ui.showLevelUp(this.level, this.rollChoices(), (choice) => {
+      this.registrarEleccion(choice);
       if (choice.kind === 'weapon') this.weapons.upgrade(choice.id);
       else if (choice.kind === 'passive') {
         this.passives.set(choice.id, choice.level);
@@ -535,6 +1095,13 @@ export class Game {
           this.maxHp += 20;
           this.hp = this.maxHp;
         }
+      } else if (choice.kind === 'special') {
+        this.heroSpecialLevel = choice.level;
+        if (choice.id === 'caparazon') {
+          this.shieldReady = true;
+          this.shieldCooldown = 0;
+        }
+        ui.toast('ADA', `${SPECIALS[choice.id].name} mejorado a nivel ${choice.level}.`, 'info', 4);
       } else {
         this.hp = Math.min(this.maxHp, this.hp + 40);
       }
@@ -544,26 +1111,48 @@ export class Game {
     });
   }
 
-  private rollChoices(): ui.Choice[] {
-    const pool: ui.Choice[] = [];
-    for (const id of Object.keys(WEAPONS) as WeaponId[]) {
-      const lvl = this.weapons.level(id);
-      if (lvl < WEAPONS[id].levels.length) pool.push({ kind: 'weapon', id, level: lvl + 1 });
-    }
-    for (const id of Object.keys(PASSIVES) as PassiveId[]) {
-      const lvl = this.passive(id);
-      if (lvl < PASSIVES[id].max) pool.push({ kind: 'passive', id, level: lvl + 1 });
-    }
-    // Barajar y quedarse con tres; las armas nuevas pesan un poco más al principio.
-    pool.sort(() => Math.random() - 0.5);
-    pool.sort((a, b) => weight(b) - weight(a) + (Math.random() - 0.5) * 1.6);
-    const picks = pool.slice(0, 3);
-    if (!picks.length) picks.push({ kind: 'heal' });
-    return picks;
+  /** DPS que la presión actual exige: vida total en pie entre 30 s. */
+  private presionEstimada(): number {
+    let vida = 0;
+    for (let i = 0; i < this.enemies.count; i++) vida += Math.max(0, this.enemies.hp[i]);
+    return Math.max(4, vida / 30);
+  }
 
-    function weight(c: ui.Choice) {
-      return c.kind === 'weapon' && c.level === 1 ? 0.8 : 0;
+  /** DPS real de la build actual (para el director elástico). */
+  private dpsActual(): number {
+    return dpsBuild(new Map(this.weapons.levels), new Map(this.passives), TABLA_ARMAS, this.enemies.count)
+      * this.heroDamageMul;
+  }
+
+  /** Memoria de tiradas: rechazos, última oferta y última arma elegida. */
+  private registrarEleccion(elegida: ui.Choice) {
+    const clave = elegida.kind === 'heal' ? 'heal' : `${elegida.kind}:${elegida.id}:${elegida.level}`;
+    for (const k of this.ultimaOferta) {
+      if (k !== clave) this.rechazos.set(k, (this.rechazos.get(k) ?? 0) + 1);
     }
+    this.ultimaArma = elegida.kind === 'weapon' ? elegida.id : this.ultimaArma;
+  }
+
+  private rollChoices(): ui.Choice[] {
+    const estado: EstadoBuild = {
+      armas: new Map(this.weapons.levels),
+      pasivas: new Map(this.passives),
+      nivel: this.level,
+      tiempo: this.time,
+      vida: this.maxHp > 0 ? this.hp / this.maxHp : 1,
+      amenaza: this.enemies.count,
+      presionDps: this.presionEstimada(),
+      especialHeroe: this.heroSpecial,
+      nivelEspecial: this.heroSpecialLevel,
+      ultimaTirada: [...this.ultimaOferta],
+      ultimaArma: this.ultimaArma,
+      rechazos: new Map(this.rechazos),
+    };
+    const deps: DepsTirada = { tabla: TABLA_ARMAS };
+    const picks = tirarCartas(estado, deps);
+    this.ultimaOferta = picks.map((c) => claveDe(c));
+    if (!picks.length) return [{ kind: 'heal' }];
+    return picks;
   }
 
   // --------------------------------------------------- Final
@@ -573,7 +1162,20 @@ export class Game {
     this.expectUnlock = isLocked();
     unlockPointer();
     ui.hideHud();
+    this.camara?.iniciarTransicion('resultado');
+    if (this.jumpBtn) this.jumpBtn.style.display = 'none';
+    if (this.micBtn) this.micBtn.style.display = 'none';
     sfx(victory ? 'relic' : 'death');
+    // Cierre de la misión con la voz que corresponda (llega tras el informe).
+    if (victory) {
+      void this.radio.linea('ada', 'victoria', `misión cumplida en ${Math.round(this.time)} segundos`).then((r) => {
+        if (r) ui.toast(r.quien, r.texto, 'info', 6);
+      });
+    } else {
+      void this.radio.linea('operador', 'derrota', `señal perdida en el minuto ${Math.floor(this.time / 60) + 1}`).then((r) => {
+        if (r) ui.toast(r.quien, r.texto, 'info', 6);
+      });
+    }
 
     // Lo que quede en el suelo se recoge: la chatarra ganada no se pierde.
     this.scrap += this.pickups.update(0, this.player.position.x, this.player.position.z, 0, true);

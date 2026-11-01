@@ -34,6 +34,8 @@ function element(html: string): HTMLElement {
 
 export function openProfileMenu(options: ProfileMenuOptions = {}): Promise<ProfileSelection | null> {
   return new Promise((resolve) => {
+    const previousFocus = document.activeElement as HTMLElement | null;
+    let closed = false;
     let tab: Tab = 'operators';
     let selection: ProfileSelection = {
       profileId: options.profileId ?? DEFAULT_PROFILE.profileId,
@@ -142,12 +144,37 @@ export function openProfileMenu(options: ProfileMenuOptions = {}): Promise<Profi
     };
 
     const close = (result: ProfileSelection | null) => {
-      window.removeEventListener('keydown', onKey);
+      if (closed) return;
+      closed = true;
+      window.removeEventListener('keydown', onKey, true);
       overlay.remove();
+      if (previousFocus?.isConnected) previousFocus.focus();
       resolve(result);
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') close(null);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        close(null);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(overlay.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+      )).filter((item) => item.offsetParent !== null || item === document.activeElement);
+      if (!focusable.length) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
 
     overlay.querySelectorAll<HTMLButtonElement>('.pm-tabs button').forEach((button) => {
@@ -171,7 +198,7 @@ export function openProfileMenu(options: ProfileMenuOptions = {}): Promise<Profi
     overlay.addEventListener('mousedown', (event) => {
       if (event.target === overlay) close(null);
     });
-    window.addEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
 
     render();
     updatePreview();

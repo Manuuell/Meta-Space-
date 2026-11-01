@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && node --check creator-server.ts && vite build",
+    "test": "node --test creator-server.test.ts src/voz.test.ts",
     "preview": "vite preview",
     "serve": "node creator-server.ts"
   },

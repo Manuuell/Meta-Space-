@@ -151,7 +151,8 @@ export class Weapons {
         const radius = s.area * mods.area;
         this.enemies.forEachInRadius(px, pz, radius, (i) => {
           this.deal('interferencia', i, s.damage, px, pz, 0);
-          this.enemies.slow[i] = 0.6;
+          this.enemies.slow[i] = s.slowTime ?? 0.6;
+          this.enemies.slowFactor[i] = s.slowFactor ?? 0.5;
         });
         break;
       }

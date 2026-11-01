@@ -2,8 +2,12 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ENEMIES, EnemyId, RUN } from './data';
 import { World } from './world';
+import {
+  NUEVA_BASE_COLOR, NUEVA_ESCALA, NUEVO_EYE_COLOR, NUEVO_EYE_OFFSET,
+  esNuevo, inmuneAlEmpuje, liftDe, moverNuevo, nuevoBodyGeometry,
+} from './enemies-nuevos';
 
-const TYPES: EnemyId[] = ['recolector', 'baliza', 'segador'];
+const TYPES: EnemyId[] = ['recolector', 'baliza', 'segador', 'saltador', 'avispa', 'caparazon', 'sembrador'];
 const CAPACITY = 700;
 
 // Cuadrícula espacial: lista enlazada por celda, reconstruida cada fotograma.
@@ -40,6 +44,8 @@ function bodyGeometry(type: EnemyId): THREE.BufferGeometry {
         blade.translate(0, -0.35, 1.25),
       ]);
     }
+    default:
+      return nuevoBodyGeometry(type as 'saltador' | 'avispa' | 'caparazon' | 'sembrador');
   }
 }
 
@@ -48,19 +54,37 @@ const BASE_COLOR: Record<EnemyId, THREE.Color> = {
   recolector: new THREE.Color('#a8a4ac'),
   baliza: new THREE.Color('#d8cf8a'),
   segador: new THREE.Color('#c07a3a'),
+  ...NUEVA_BASE_COLOR,
 };
 const EYE_COLOR: Record<EnemyId, string> = {
   recolector: '#ff3b1f',
   baliza: '#ffd23a',
   segador: '#ff3b1f',
+  ...NUEVO_EYE_COLOR,
 };
 const EYE_OFFSET: Record<EnemyId, THREE.Vector3> = {
   recolector: new THREE.Vector3(0, -0.05, 0.45),
   baliza: new THREE.Vector3(0, 1.25, 0),
   segador: new THREE.Vector3(0, 0.15, 1.02),
+  ...NUEVO_EYE_OFFSET,
 };
 const WHITE = new THREE.Color('#ffffff');
-const SCALE: Record<EnemyId, number> = { recolector: 1.3, baliza: 1.25, segador: 1.35 };
+
+/** Modificadores de élite (FOCO 5): adorno sobre el tipo base. */
+export type EliteMod = 'rapido' | 'blindado' | 'simbionte';
+/** Multiplicador de chatarra según élite (null = normal). */
+export function multChatarraElite(mod: EliteMod | null): number {
+  return mod === 'rapido' ? 3 : mod === 'blindado' ? 5 : mod === 'simbionte' ? 4 : 1;
+}
+const ELITE_IDX: Record<EliteMod, number> = { rapido: 0, blindado: 1, simbionte: 2 };
+const ELITE_HP = [1.6, 2.5, 1.8];
+const ELITE_VEL = [1.45, 0.8, 1.0];
+const ELITE_DANO = [1.15, 1.3, 1.0];
+const ELITE_TINTE = ['#ff5a3c', '#b98cff', '#7dff6a'];
+const ELITE_ESCALA = [1.12, 1.25, 1.12];
+const SCALE: Record<EnemyId, number> = {
+  recolector: 1.3, baliza: 1.25, segador: 1.35, ...NUEVA_ESCALA,
+};
 
 export class Enemies {
   count = 0;
@@ -71,10 +95,14 @@ export class Enemies {
   readonly maxHp = new Float32Array(CAPACITY);
   readonly heading = new Float32Array(CAPACITY);
   readonly flash = new Float32Array(CAPACITY);
+  readonly squash = new Float32Array(CAPACITY);
   readonly slow = new Float32Array(CAPACITY);
+  readonly slowFactor = new Float32Array(CAPACITY).fill(0.5);
   readonly pushX = new Float32Array(CAPACITY);
   readonly pushZ = new Float32Array(CAPACITY);
   readonly seed = new Float32Array(CAPACITY);
+  /** Élite por índice: -1 ninguna, 0 rápido, 1 blindado, 2 simbionte. */
+  readonly elite = new Int8Array(CAPACITY).fill(-1);
 
   private head = new Int32Array(SPAN * SPAN);
   private next = new Int32Array(CAPACITY);
@@ -87,6 +115,7 @@ export class Enemies {
   private offset = new THREE.Vector3();
   private scale = new THREE.Vector3(1, 1, 1);
   private color = new THREE.Color();
+  private tint = new THREE.Color();
   private tmp = { x: 0, z: 0 };
   private time = 0;
 
@@ -116,23 +145,39 @@ export class Enemies {
     return TYPES;
   }
 
-  spawn(type: EnemyId, x: number, z: number, hpScale: number) {
-    if (this.count >= CAPACITY) return;
+  spawn(type: EnemyId, x: number, z: number, hpScale: number, elite: EliteMod | null = null): boolean {
+    if (this.count >= CAPACITY) return false;
     const i = this.count++;
     const def = ENEMIES[type];
+    const em = elite === null ? -1 : ELITE_IDX[elite];
     this.type[i] = TYPES.indexOf(type);
     this.x[i] = x;
     this.z[i] = z;
-    this.hp[i] = this.maxHp[i] = def.hp * hpScale;
+    this.hp[i] = this.maxHp[i] = def.hp * hpScale * (em < 0 ? 1 : ELITE_HP[em]);
+    this.elite[i] = em;
     this.heading[i] = 0;
     this.flash[i] = 0;
+    this.squash[i] = 0;
     this.slow[i] = 0;
+    this.slowFactor[i] = 0.5;
     this.pushX[i] = this.pushZ[i] = 0;
     this.seed[i] = Math.random() * 100;
+    return true;
   }
 
   defOf(i: number) {
     return ENEMIES[TYPES[this.type[i]]];
+  }
+
+  /** Tipo del enemigo i (los nuevos llegan por aquí desde fuera). */
+  tipoDe(i: number): EnemyId {
+    return TYPES[this.type[i]];
+  }
+
+  /** Modificador de élite del enemigo i (null = normal). */
+  eliteDe(i: number): EliteMod | null {
+    const e = this.elite[i];
+    return e === 0 ? 'rapido' : e === 1 ? 'blindado' : e === 2 ? 'simbionte' : null;
   }
 
   /** Aplica daño. La muerte se procesa al final del fotograma, en `sweep`. */
@@ -140,7 +185,8 @@ export class Enemies {
     if (this.hp[i] <= 0) return false;
     this.hp[i] -= amount;
     this.flash[i] = 0.12;
-    if (knockback > 0 && TYPES[this.type[i]] !== 'segador') {
+    this.squash[i] = 0.14;
+    if (knockback > 0 && !inmuneAlEmpuje(TYPES[this.type[i]])) {
       const dx = this.x[i] - fromX, dz = this.z[i] - fromZ;
       const d = Math.hypot(dx, dz) || 1;
       this.pushX[i] += (dx / d) * knockback * 8;
@@ -175,6 +221,8 @@ export class Enemies {
         const len = Math.hypot(vx, vz) || 1;
         vx = (vx / len) * def.speed;
         vz = (vz / len) * def.speed;
+      } else if (esNuevo(type)) {
+        ({ vx, vz } = moverNuevo(type, i, this, { dt, time: this.time, px, pz }));
       } else {
         vx = (dx / dist) * def.speed;
         vz = (dz / dist) * def.speed;
@@ -182,8 +230,12 @@ export class Enemies {
 
       if (this.slow[i] > 0) {
         this.slow[i] -= dt;
-        vx *= 0.5;
-        vz *= 0.5;
+        vx *= this.slowFactor[i];
+        vz *= this.slowFactor[i];
+      }
+      if (this.elite[i] >= 0) {
+        vx *= ELITE_VEL[this.elite[i]];
+        vz *= ELITE_VEL[this.elite[i]];
       }
 
       // Separación: que no se apilen todos en el mismo punto.
@@ -209,10 +261,12 @@ export class Enemies {
       }
 
       if (this.flash[i] > 0) this.flash[i] -= dt;
+    if (this.squash[i] > 0) this.squash[i] -= dt;
 
       dx = px - this.x[i];
       dz = pz - this.z[i];
-      if (def.damage > 0 && dx * dx + dz * dz < (def.radius + playerRadius) ** 2) contact += def.damage * dt;
+      const multDano = this.elite[i] >= 0 ? ELITE_DANO[this.elite[i]] : 1;
+      if (def.damage > 0 && dx * dx + dz * dz < (def.radius + playerRadius) ** 2) contact += def.damage * multDano * dt;
     }
     return contact;
   }
@@ -302,10 +356,13 @@ export class Enemies {
     this.maxHp[to] = this.maxHp[from];
     this.heading[to] = this.heading[from];
     this.flash[to] = this.flash[from];
+    this.squash[to] = this.squash[from];
     this.slow[to] = this.slow[from];
+    this.slowFactor[to] = this.slowFactor[from];
     this.pushX[to] = this.pushX[from];
     this.pushZ[to] = this.pushZ[from];
     this.seed[to] = this.seed[from];
+    this.elite[to] = this.elite[from];
   }
 
   countOf(type: EnemyId) {
@@ -323,15 +380,27 @@ export class Enemies {
       const n = counters.get(type)!;
       counters.set(type, n + 1);
 
+      const em = this.elite[i];
       const bob = Math.sin(this.time * 3 + this.seed[i]) * (type === 'segador' ? 0.05 : 0.18);
+      const lift = esNuevo(type) ? liftDe(type, i, this, this.time) : 0;
       this.quat.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, this.heading[i]);
-      this.pos.set(this.x[i], this.world.heightAt(this.x[i], this.z[i]) + def.height + bob, this.z[i]);
-      this.scale.setScalar(SCALE[type]);
+      this.pos.set(this.x[i], this.world.heightAt(this.x[i], this.z[i]) + def.height + bob + lift, this.z[i]);
+      // Hurt: aplastamiento rápido (como el clip `hurt` del catálogo).
+      const sq = Math.max(0, this.squash[i]) / 0.14;
+      // Sembrador: se hincha un instante antes de soltar la salva (telegrafía).
+      let hinchar = 0;
+      if (type === 'sembrador') {
+        const f = (this.time + this.seed[i]) % 4.0;
+        if (f > 3.4) hinchar = (f - 3.4) / 0.6;
+      }
+      const base = SCALE[type] * (em >= 0 ? ELITE_ESCALA[em] : 1);
+      this.scale.set(base * (1 + 0.18 * sq + 0.12 * hinchar), base * (1 - 0.22 * sq), base * (1 + 0.18 * sq + 0.12 * hinchar));
       this.matrix.compose(this.pos, this.quat, this.scale);
 
       const body = this.bodies.get(type)!;
       body.setMatrixAt(n, this.matrix);
       this.color.copy(BASE_COLOR[type]);
+      if (em >= 0) this.color.lerp(this.tint.set(ELITE_TINTE[em]), 0.55);
       if (this.flash[i] > 0) this.color.lerp(WHITE, 0.85);
       body.setColorAt(n, this.color);
 

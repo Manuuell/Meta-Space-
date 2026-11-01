@@ -2,7 +2,7 @@
 // El navegador no deja sonar nada hasta el primer gesto del usuario, así que el
 // contexto se crea perezosamente.
 
-type Sound = 'shot' | 'hit' | 'pulse' | 'pickup' | 'level' | 'hurt' | 'relic' | 'death' | 'kill';
+type Sound = 'shot' | 'hit' | 'pulse' | 'pickup' | 'level' | 'hurt' | 'relic' | 'death' | 'kill' | 'jump';
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -11,7 +11,7 @@ const last = new Map<Sound, number>();
 // Cuánto tiempo mínimo entre dos sonidos iguales: una horda de 300 muertes en
 // un segundo no puede sonar 300 veces.
 const THROTTLE: Record<Sound, number> = {
-  shot: 0.06, hit: 0.05, pulse: 0.1, pickup: 0.035, level: 0, hurt: 0.25, relic: 0, death: 0, kill: 0.04,
+  shot: 0.06, hit: 0.05, pulse: 0.1, pickup: 0.035, level: 0, hurt: 0.25, relic: 0, death: 0, kill: 0.04, jump: 0.15,
 };
 
 export function unlockAudio() {
@@ -60,5 +60,6 @@ export function sfx(sound: Sound) {
       [392, 523, 659, 784, 1046].forEach((f, i) => tone('sine', f, f * 1.01, 0.4, 0.1, i * 0.09));
       break;
     case 'death': tone('sawtooth', 300, 30, 1.2, 0.25); break;
+    case 'jump': tone('square', 280, 620, 0.12, 0.08); break;
   }
 }

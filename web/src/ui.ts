@@ -1,4 +1,7 @@
 import { ENEMIES, EnemyId, PASSIVES, PassiveId, RELICS, RelicDef, WEAPONS, WeaponId } from './data';
+import { NUEVO_ENEMY_ICON } from './enemies-nuevos';
+import { SPECIALS, type SpecialId } from './creator/stats';
+import { describirEspecial } from './progression';
 
 // Interfaz en HTML sobre el canvas. Nada de framework: unas pocas pantallas
 // que se reconstruyen enteras cuando cambian.
@@ -27,6 +30,7 @@ const ENEMY_ICON: Record<EnemyId, string> = {
   recolector: `<svg viewBox="0 0 40 40"><ellipse cx="20" cy="19" rx="15" ry="4" fill="none" stroke="#8a8284" stroke-width="2.5"/><polygon points="20,8 29,19 20,30 11,19" fill="#4a4446" stroke="#1b1214" stroke-width="1.5"/><circle cx="20" cy="20" r="3.2" fill="#ff3b1f"/><path d="M15 27 l-2 7 M25 27 l2 7" stroke="#4a4446" stroke-width="2.5"/></svg>`,
   baliza: `<svg viewBox="0 0 40 40"><ellipse cx="20" cy="7" rx="9" ry="2.5" fill="#6b6a5a"/><line x1="20" y1="8" x2="20" y2="15" stroke="#6b6a5a" stroke-width="2"/><polygon points="20,13 28,24 20,36 12,24" fill="#6b6a5a" stroke="#1b1214" stroke-width="1.5"/><circle cx="20" cy="7" r="2.6" fill="#ffd23a"/></svg>`,
   segador: `<svg viewBox="0 0 40 40"><rect x="8" y="12" width="22" height="17" rx="2" fill="#7a4a2a" stroke="#1b1214" stroke-width="1.5"/><rect x="12" y="6" width="13" height="8" fill="#7a4a2a" stroke="#1b1214" stroke-width="1.5"/><rect x="4" y="29" width="32" height="6" rx="3" fill="#5a3a22" stroke="#1b1214" stroke-width="1.5"/><circle cx="30" cy="20" r="2.8" fill="#ff3b1f"/></svg>`,
+  ...NUEVO_ENEMY_ICON,
 };
 
 const ASTRONAUT_ICON = `<svg viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="4" y="1" width="8" height="1" fill="#1b1214"/><rect x="3" y="2" width="10" height="6" fill="#ece6dc"/><rect x="4" y="3" width="8" height="4" fill="#ff9a3c"/><rect x="9" y="4" width="2" height="2" fill="#ffd9a8"/><rect x="2" y="8" width="12" height="7" fill="#ece6dc"/><rect x="6" y="9" width="4" height="1" fill="#e8632b"/><rect x="12" y="9" width="2" height="3" fill="#5ee0ff"/></svg>`;
@@ -70,6 +74,7 @@ export function showHud() {
           <span class="chip kills"><b class="hud-kills"></b> bajas</span>
           <span class="chip scrap"><b class="hud-scrap"></b> chatarra</span>
         </div>
+        <div class="hud-mission"><b class="hud-mision">Operación en curso…</b><span class="hud-operador"></span></div>
       </div>
 
       <canvas class="hud-minimap" width="200" height="200"></canvas>
@@ -91,6 +96,15 @@ export function hideHud() {
 }
 
 let lastWeapons = '';
+
+/** Muestra la misión y el operador del brief en el HUD (NPCs de la partida). */
+export function setMision(mision: string, operador: string) {
+  if (!hud) return;
+  const m = hud.querySelector('.hud-mision') as HTMLElement | null;
+  const o = hud.querySelector('.hud-operador') as HTMLElement | null;
+  if (m) m.textContent = mision;
+  if (o) o.textContent = operador ? `📻 ${operador}` : '';
+}
 
 export function updateHud(s: HudState) {
   if (!hud) return;
@@ -164,8 +178,10 @@ export function drawMinimap(s: MinimapState) {
   ctx.strokeStyle = 'rgba(255,255,255,0.08)';
   for (const r of [15, 30]) { ctx.beginPath(); ctx.arc(0, 0, r * scale, 0, Math.PI * 2); ctx.stroke(); }
 
-  const colors = ['#ff5a4a', '#ffd23a', '#ff9a3c'];
-  const radii = [2.2, 3.2, 5.5];
+  // Orden = TYPES de enemies.ts: recolector, baliza, segador, saltador,
+  // avispa, caparazón, sembrador.
+  const colors = ['#ff5a4a', '#ffd23a', '#ff9a3c', '#a8e04a', '#b07bff', '#e0c8a8', '#7fe08a'];
+  const radii = [2.2, 3.2, 5.5, 2.6, 2.4, 4.2, 2.8];
   for (let i = 0; i < s.enemies.count; i++) {
     const [mx, mz] = toMap(s.enemies.x[i], s.enemies.z[i]);
     if (mx * mx + mz * mz > (c - 6) ** 2) continue;
@@ -229,6 +245,7 @@ export function toast(title: string, body: string, kind: 'relic' | 'info' = 'inf
 export type Choice =
   | { kind: 'weapon'; id: WeaponId; level: number }
   | { kind: 'passive'; id: PassiveId; level: number }
+  | { kind: 'special'; id: SpecialId; level: number }
   | { kind: 'heal' };
 
 export function showLevelUp(level: number, choices: Choice[], pick: (c: Choice) => void) {
@@ -246,6 +263,12 @@ export function showLevelUp(level: number, choices: Choice[], pick: (c: Choice) 
       tag = `Nv. ${c.level}`;
       blurb = p.blurb;
       color = '#9fb4ff';
+    } else if (c.kind === 'special') {
+      const special = SPECIALS[c.id];
+      title = special.name;
+      tag = `ESPECIAL · Nv. ${c.level}`;
+      blurb = describirEspecial(c.id, c.level);
+      color = '#56e5ee';
     } else {
       title = 'Parche de emergencia';
       tag = 'REPARAR';
@@ -288,6 +311,7 @@ export function showLevelUp(level: number, choices: Choice[], pick: (c: Choice) 
 function describeWeaponStep(id: WeaponId, level: number) {
   const a = WEAPONS[id].levels[level - 2];
   const b = WEAPONS[id].levels[level - 1];
+  if (b.mejora) return b.mejora;
   const parts: string[] = [];
   if (b.damage !== a.damage) parts.push(`daño ${a.damage} → ${b.damage}`);
   if (b.count !== a.count) parts.push(`${id === 'dron' ? 'drones' : 'disparos'} ${a.count} → ${b.count}`);

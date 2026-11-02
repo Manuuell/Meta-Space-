@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CATALOGO } from '../src/modelos/index.ts';
 import {
-  ALTARES_JEFE, CAJAS, CLIPS_ALTAR_JEFE, CLIPS_ARA, CLIPS_CAJA, CLIPS_NPC, DESAFIOS, ESTRUCTURAS, NPCS, aQuienHabla,
+  ALTARES_JEFE, CAJAS, CLIPS_ALTAR_JEFE, CLIPS_ARA, CLIPS_CAJA, CLIPS_NPC, CLIPS_PILON, DESAFIOS, ESTRUCTURAS, NPCS, aQuienHabla,
   contextoVoz, detectarIntencion, frase, normalizar, tirarBotin, type EventoNpc,
 } from '../src/contenido/mapa.ts';
 
@@ -40,6 +40,8 @@ test('contenido: el ara, las cajas y las estructuras tienen los clips que se cit
     for (const c of nombres(CLIPS_CAJA)) assert.ok(clips.has(c), `${caja.id}: falta el clip ${c}`);
     assert.ok(caja.botin.every((b) => b.peso > 0 && b.da.length > 0), `${caja.id}: botín vacío`);
   }
+  const pilon = clipsDe('pilon-carga');
+  for (const c of nombres(CLIPS_PILON)) assert.ok(pilon.has(c), `pilon-carga: falta el clip ${c}`);
   for (const e of ESTRUCTURAS) {
     const clips = clipsDe(e.id);
     for (const c of Object.values(e.clips)) assert.ok(clips.has(c), `${e.id}: falta el clip ${c}`);

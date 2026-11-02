@@ -17,6 +17,7 @@
 // Todo el texto visible del juego va en español.
 
 import { RELICS } from './data';
+import { iconoMenu } from './iconos';
 import { getOperator, getProfileTitle } from './profile/profile-data';
 
 // ---------------------------------------------------------------- Tipos
@@ -205,9 +206,9 @@ const SR_ONLY =
 
 function heroChipHtml(vm: TitleViewModel): string {
   if (vm.heroName) {
-    return `<p class="ms-hero-chip is-custom"><span aria-hidden="true">✦</span> ${esc(vm.heroLabel)}</p>`;
+    return `<p class="ms-hero-chip is-custom"><span aria-hidden="true">${iconoMenu('partidas')}</span> ${esc(vm.heroLabel)}</p>`;
   }
-  return `<p class="ms-hero-chip"><span aria-hidden="true">◇</span> ${esc(vm.heroLabel)}</p>`;
+  return `<p class="ms-hero-chip"><span aria-hidden="true">${iconoMenu('operador')}</span> ${esc(vm.heroLabel)}</p>`;
 }
 
 function emptyRecordsHtml(vm: TitleViewModel): string {
@@ -238,18 +239,18 @@ export function renderTitleHtml(save: TitleSave, opts?: TitleOptions): string {
       <header class="ms-topbar">
         <div class="ms-shortcuts" aria-label="Estado de la misión">
           <span class="ms-pill ms-pill--lang">ES</span>
-          <span class="ms-pill ms-pill--icon" aria-hidden="true">⌁</span>
-          <span class="ms-pill ms-pill--coral"><i>✦</i> Misión</span>
+          <span class="ms-pill ms-pill--icon" aria-hidden="true">${iconoMenu('senal')}</span>
+          <span class="ms-pill ms-pill--coral"><i>${iconoMenu('partidas')}</i> Misión</span>
           <button type="button" class="ms-pill ms-pill--green ms-companion" data-action="companion"
-            aria-keyshortcuts="a" title="Elegir compañero (A)"><i>⌁</i> ${esc(opts?.companionName ?? 'Compañero')}</button>
-          <span class="ms-pill ms-pill--violet"><i>▣</i> Archivo</span>
+            aria-keyshortcuts="a" title="Elegir compañero (A)"><i>${iconoMenu('companero')}</i> ${esc(opts?.companionName ?? 'Compañero')}</button>
+          <span class="ms-pill ms-pill--violet"><i>${iconoMenu('codice')}</i> Archivo</span>
         </div>
         <button type="button" class="ms-topbar__profile ms-profile-open" data-action="profile"
           aria-label="${esc(profileHint)}" aria-keyshortcuts="p">
           <span class="ms-avatar pm-frame--${esc(frame)} pm-bg--${esc(backdrop)}"><img src="${operator.image}" alt="" /></span>
           <span class="ms-operator"><small>${esc(vm.profileTitleName)}</small><b>${esc(vm.operatorName)}</b></span>
-          <span class="ms-resource"><small>CHATARRA</small><b>◆ ${compactNumber(save.scrapBank)}</b></span>
-          <span class="ms-resource"><small>RELIQUIAS</small><b>◈ ${vm.relicCount}/${vm.relicTotal}</b></span>
+          <span class="ms-resource"><small>CHATARRA</small><b>${iconoMenu('chatarra')} ${compactNumber(save.scrapBank)}</b></span>
+          <span class="ms-resource"><small>RELIQUIAS</small><b>${iconoMenu('reliquia')} ${vm.relicCount}/${vm.relicTotal}</b></span>
           <span class="ms-topbar__status"><i></i> ADA</span>
         </button>
       </header>
@@ -269,53 +270,53 @@ export function renderTitleHtml(save: TitleSave, opts?: TitleOptions): string {
           <nav class="ms-actions" aria-label="Menú principal">
             <button type="button" class="ms-tile ms-tile--play ms-play" data-action="play"
               aria-keyshortcuts="Enter" aria-describedby="ms-play-hint">
-              <span class="ms-tile__icon" aria-hidden="true">▶</span>
+              <span class="ms-tile__icon" aria-hidden="true">${iconoMenu('jugar')}</span>
               <span><b>Jugar</b><em id="ms-play-hint">Sector Delta · ${vm.minutes} min</em></span>
             </button>
             <button type="button" class="ms-tile ms-tile--creator ms-creator" data-action="creator"
               aria-keyshortcuts="c">
-              <span class="ms-tile__icon" aria-hidden="true">◇</span>
+              <span class="ms-tile__icon" aria-hidden="true">${iconoMenu('operador')}</span>
               <span><b>Operador</b><em>${creatorSub}</em></span>
             </button>
             <button type="button" class="ms-tile ms-tile--help ms-howto" data-action="help"
               aria-keyshortcuts="h">
-              <span class="ms-tile__icon" aria-hidden="true">?</span>
+              <span class="ms-tile__icon" aria-hidden="true">${iconoMenu('ayuda')}</span>
               <span><b>Cómo jugar</b><em>Controles y reglas</em></span>
             </button>
             <button type="button" class="ms-tile ms-tile--codex ms-codex" data-action="codex"
               aria-keyshortcuts="x">
-              <span class="ms-tile__icon" aria-hidden="true">▤</span>
+              <span class="ms-tile__icon" aria-hidden="true">${iconoMenu('codice')}</span>
               <span><b>Códice</b><em>${vm.relicCount}/${vm.relicTotal} reliquias</em></span>
             </button>
           </nav>
 
           <div class="ms-event-row">
             <div class="ms-event-card">
-              <span class="ms-event-card__icon" aria-hidden="true">◉</span>
+              <span class="ms-event-card__icon" aria-hidden="true">${iconoMenu('operacion')}</span>
               <span><small>¡OPERACIÓN ACTIVA!</small><b>Apagar el velo</b><em>HELIOS rastrea a ADA</em></span>
             </div>
             <div class="ms-contract-card">
-              <span aria-hidden="true">⌁</span>
+              <span aria-hidden="true">${iconoMenu('banco')}</span>
               <span><small>BANCO DE CAMPO</small><b>${compactNumber(save.scrapBank)} chatarra</b><em>${save.runs} ${save.runs === 1 ? 'expedición' : 'expediciones'}</em></span>
             </div>
           </div>
 
           <div class="ms-dock" aria-label="Resumen del progreso">
-            <div><i aria-hidden="true">◈</i><b>Reliquias</b><small>${vm.relicCount}/${vm.relicTotal}</small></div>
-            <div><i aria-hidden="true">⌁</i><b>Chatarra</b><small>${compactNumber(save.scrapBank)}</small></div>
-            <div><i aria-hidden="true">✦</i><b>Partidas</b><small>${save.runs}</small></div>
-            <div><i aria-hidden="true">◉</i><b>Récord</b><small>${vm.bestTime}</small></div>
-            <div><i aria-hidden="true">◎</i><b>Señal</b><small>Activa</small></div>
+            <div><i aria-hidden="true">${iconoMenu('reliquia')}</i><b>Reliquias</b><small>${vm.relicCount}/${vm.relicTotal}</small></div>
+            <div><i aria-hidden="true">${iconoMenu('chatarra')}</i><b>Chatarra</b><small>${compactNumber(save.scrapBank)}</small></div>
+            <div><i aria-hidden="true">${iconoMenu('partidas')}</i><b>Partidas</b><small>${save.runs}</small></div>
+            <div><i aria-hidden="true">${iconoMenu('record')}</i><b>Récord</b><small>${vm.bestTime}</small></div>
+            <div><i aria-hidden="true">${iconoMenu('senal')}</i><b>Señal</b><small>Activa</small></div>
           </div>
         </div>
 
         <aside class="ms-mission-panel" aria-label="Registro de misión">
           <div class="ms-panel-banner stripes">
-            <span aria-hidden="true">✦</span>
+            <span aria-hidden="true">${iconoMenu('partidas')}</span>
             <div><small>OPERACIÓN 07</small><b>Apagar el velo</b><em>Ventana en ${vm.minutes}:00</em></div>
           </div>
-          <div class="ms-panel-tabs" aria-hidden="true"><b>◉ Récords</b><span>◈</span><span>⌁</span><span>◎</span></div>
-          <div class="ms-panel-region"><span aria-hidden="true">◎</span><div><b>Sector Delta</b><small>Registro global de expediciones</small></div><i aria-hidden="true">⌄</i></div>
+          <div class="ms-panel-tabs" aria-hidden="true"><b>${iconoMenu('operacion')} Récords</b><span>${iconoMenu('reliquia')}</span><span>${iconoMenu('chatarra')}</span><span>${iconoMenu('senal')}</span></div>
+          <div class="ms-panel-region"><span aria-hidden="true">${iconoMenu('senal')}</span><div><b>Sector Delta</b><small>Registro global de expediciones</small></div><i aria-hidden="true">⌄</i></div>
 
           <div class="ms-primary-record">
             <span class="ms-primary-record__badge" aria-hidden="true">A9</span>
@@ -325,10 +326,10 @@ export function renderTitleHtml(save: TitleSave, opts?: TitleOptions): string {
           ${emptyRecordsHtml(vm)}
 
           <ol class="ms-ranking-list" aria-label="Marcas del Sector Delta">
-            <li><i aria-hidden="true">1</i><span class="ms-rank-icon coral" aria-hidden="true">✦</span><div><b>Mejor tiempo</b><small>Supervivencia</small></div><strong>${vm.bestTime}</strong></li>
-            <li><i aria-hidden="true">2</i><span class="ms-rank-icon cyan" aria-hidden="true">⌁</span><div><b>Unidades neutralizadas</b><small>HELIOS</small></div><strong>${vm.bestKills}</strong></li>
-            <li><i aria-hidden="true">3</i><span class="ms-rank-icon violet" aria-hidden="true">◈</span><div><b>Reliquias</b><small>Pruebas contra el velo</small></div><strong>${vm.relicCount}/${vm.relicTotal}</strong></li>
-            <li><i aria-hidden="true">4</i><span class="ms-rank-icon gold" aria-hidden="true">◆</span><div><b>Banco</b><small>Chatarra disponible</small></div><strong>${compactNumber(save.scrapBank)}</strong></li>
+            <li><i aria-hidden="true">1</i><span class="ms-rank-icon coral" aria-hidden="true">${iconoMenu('partidas')}</span><div><b>Mejor tiempo</b><small>Supervivencia</small></div><strong>${vm.bestTime}</strong></li>
+            <li><i aria-hidden="true">2</i><span class="ms-rank-icon cyan" aria-hidden="true">${iconoMenu('chatarra')}</span><div><b>Unidades neutralizadas</b><small>HELIOS</small></div><strong>${vm.bestKills}</strong></li>
+            <li><i aria-hidden="true">3</i><span class="ms-rank-icon violet" aria-hidden="true">${iconoMenu('reliquia')}</span><div><b>Reliquias</b><small>Pruebas contra el velo</small></div><strong>${vm.relicCount}/${vm.relicTotal}</strong></li>
+            <li><i aria-hidden="true">4</i><span class="ms-rank-icon gold" aria-hidden="true">${iconoMenu('banco')}</span><div><b>Banco</b><small>Chatarra disponible</small></div><strong>${compactNumber(save.scrapBank)}</strong></li>
           </ol>
 
           <div class="ms-relic-progress">
@@ -357,13 +358,21 @@ const HOW_TO_HTML = `
     <li><b>WASD / flechas</b><span>Mover al astronauta</span></li>
     <li><b>Espacio</b><span>Saltar (vale anticipado y justo al borde)</span></li>
     <li><b>Mantener Espacio</b><span>En el aire, vuela con la mochila cohete (si la tienes)</span></li>
-    <li><b>Shift</b><span>Acelerón con las botas de impulso (si las tienes)</span></li>
+    <li><b>Mantener Shift</b><span>Sprint mientras dure el aguante (la barrita azul bajo la vida)</span></li>
+    <li><b>Pulsar Shift</b><span>Acelerón con las botas de impulso (si las tienes)</span></li>
     <li><b>A (en el menú)</b><span>Elegir compañero: dron, zorro, holograma de Noa, medusa, orbe o el perro</span></li>
     <li><b>K</b><span>En partida, pasar al siguiente compañero</span></li>
     <li><b>Ratón · Q / E</b><span>Girar la cámara</span></li>
     <li><b>Herramientas</b><span>Se activan automáticamente</span></li>
-    <li><b>Chatarra</b><span>Recógela para subir de nivel</span></li>
+    <li><b>Chatarra</b><span>Recógela para subir de nivel y para pagar cofres</span></li>
+    <li><b>F</b><span>Abrir un cofre de HELIOS (cuesta chatarra, y cada uno más)</span></li>
+    <li><b>Pilones</b><span>Quédate dentro del círculo hasta el 100 % y elige una bendición</span></li>
+    <li><b>M</b><span>Mapa del sector: lo descubierto y hasta tres marcas tuyas</span></li>
+    <li><b>Duelos</b><span>F en un altar de duelo: vence a sus campeones en 90 s. El primero te da el Cañón solar; el segundo despierta al Dragón del Velo</span></li>
+    <li><b>Clic derecho · Z</b><span>Apuntar el Cañón solar (por encima del hombro, también al cielo)</span></li>
+    <li><b>Clic izquierdo · X</b><span>Disparar el Cañón. Al dragón en el aire solo le llega esto; su cabeza es el punto débil</span></li>
     <li><b>Balizas</b><span>Destrúyelas antes de que atraigan más unidades</span></li>
+    <li><b>Jefes</b><span>Salen de los altares a los minutos 3, 5, 7 y 9 (tres gólems y el Cancerbero). Cuando pinten un círculo, una franja o un cono rojo, sal antes del golpe: te tiran lejos</span></li>
     <li><b>Reliquias</b><span>Las llevan los Segadores: reúne las 7 pruebas para apagar el velo de todo Meta</span></li>
     <li><b>Esc</b><span>Pausar la misión</span></li>
   </ul>

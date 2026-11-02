@@ -48,27 +48,72 @@ function avanzar(contenido: ContenidoJuego, desde: number, segundos: number) {
   return t;
 }
 
-test('contenido jugable: encadena Cosecha, Heraldo y Ojo desde sus altares', () => {
+test('contenido jugable: encadena los cuatro jefes desde sus altares', () => {
   const contenido = new ContenidoJuego(new THREE.Scene(), mundoPlano(), {
     toast: () => {},
     aplicar: () => {},
     curar: () => {},
   });
 
-  let t = avanzar(contenido, 180, 7);
-  let objetivo = contenido.objetivoJefe.find((o) => o.id === 'segador-jefe');
-  assert.ok(objetivo, 'no apareció el Jefe de Cosecha');
+  avanzar(contenido, 180, 7);
+  let objetivo = contenido.objetivoJefe.find((o) => o.id === 'golem-escoria');
+  assert.ok(objetivo, 'no apareció el Gólem de Escoria');
   objetivo.golpear(1e9);
 
-  t = avanzar(contenido, 300, 7);
-  objetivo = contenido.objetivoJefe.find((o) => o.id === 'heraldo');
-  assert.ok(objetivo, 'no apareció el Heraldo tras derrotar al primer jefe');
+  avanzar(contenido, 300, 8);
+  objetivo = contenido.objetivoJefe.find((o) => o.id === 'sabueso-helios');
+  assert.ok(objetivo, 'no apareció el Cancerbero tras derrotar al primero');
   objetivo.golpear(1e9);
 
-  t = avanzar(contenido, 540, 8);
-  objetivo = contenido.objetivoJefe.find((o) => o.id === 'ojo-helios');
-  assert.ok(objetivo, 'no apareció el Ojo tras derrotar al Heraldo');
+  avanzar(contenido, 420, 8);
+  objetivo = contenido.objetivoJefe.find((o) => o.id === 'golem-escarcha');
+  assert.ok(objetivo, 'no apareció el Coloso de Escarcha tras derrotar al Cancerbero');
+  objetivo.golpear(1e9);
+
+  const t = avanzar(contenido, 540, 8);
+  objetivo = contenido.objetivoJefe.find((o) => o.id === 'golem-titan');
+  assert.ok(objetivo, 'no apareció el Titán tras derrotar al Coloso');
   assert.ok(t > 540);
+});
+
+test('contenido jugable: el gólem avisa antes de golpear, y el golpe empuja', () => {
+  const avisos: number[] = [];
+  const empujes: number[] = [];
+  let t = 180;
+  const contenido = new ContenidoJuego(new THREE.Scene(), mundoPlano(), {
+    toast: () => {},
+    aplicar: () => {},
+    curar: () => {},
+    aviso: () => { avisos.push(t); },
+    empujar: (fx, fz) => { if (Math.hypot(fx, fz) > 3) empujes.push(t); },
+  });
+  // Espera a que salga y quédate quieto pegado a él.
+  let primerGolpe = -1;
+  for (let i = 0; i < 400 && primerGolpe < 0; i++) {
+    t += 0.05;
+    const g = contenido.objetivoJefe.find((o) => o.id === 'golem-escoria');
+    const px = g ? g.x + 4 : 0, pz = g ? g.z : 0;
+    const dano = contenido.update({ ...contexto(t, 0.05), px, pz });
+    if (g && dano > 5) primerGolpe = t;
+  }
+  assert.ok(primerGolpe > 0, 'el gólem no golpeó a un jugador quieto a su lado');
+  const avisoPrevio = avisos.filter((a) => a < primerGolpe).pop();
+  assert.ok(avisoPrevio !== undefined && primerGolpe - avisoPrevio >= 0.8, `aviso con poco margen: ${avisoPrevio} → ${primerGolpe}`);
+  assert.ok(empujes.some((e) => Math.abs(e - primerGolpe) < 0.2), 'el golpe no empujó al jugador');
+});
+
+test('contenido jugable: los jefes de antes salen solos como minijefes y sueltan botín', () => {
+  const efectos: unknown[] = [];
+  const contenido = new ContenidoJuego(new THREE.Scene(), mundoPlano(), {
+    toast: () => {},
+    aplicar: (e) => { efectos.push(...e); },
+    curar: () => {},
+  });
+  avanzar(contenido, 99, 5);
+  const mini = contenido.objetivoJefe.find((o) => o.id.startsWith('segador-jefe'));
+  assert.ok(mini, 'no salió el primer minijefe');
+  mini.golpear(1e9);
+  assert.ok(efectos.some((e) => (e as { tipo: string }).tipo === 'chatarra'), 'el minijefe no soltó chatarra');
 });
 
 test('contenido jugable: no coloca al chatarrero sin nombre nuevo y limpia suministros al reiniciar', () => {
@@ -83,4 +128,111 @@ test('contenido jugable: no coloca al chatarrero sin nombre nuevo y limpia sumin
   assert.equal(contenido.marcas.filter((m) => m.tipo === 'caja').length, cajasIniciales + 1);
   contenido.reset();
   assert.equal(contenido.marcas.filter((m) => m.tipo === 'caja').length, cajasIniciales);
+});
+
+test('contenido jugable: el pilón se carga estando dentro, se descarga fuera y da a elegir una bendición', () => {
+  const efectos: unknown[] = [];
+  const contenido = new ContenidoJuego(new THREE.Scene(), mundoPlano(), {
+    toast: () => {},
+    aplicar: (e) => { efectos.push(...e); },
+    curar: () => {},
+  });
+  const pilon = contenido.marcas.find((m) => m.tipo === 'pilon')!;
+  assert.ok(pilon, 'no hay pilones en el mapa');
+  const en = (t: number, x: number, z: number) => contenido.update({ ...contexto(t), px: x, pz: z });
+
+  // Dos segundos dentro: a medio cargar.
+  for (let i = 0; i < 20; i++) en(1 + i * 0.1, pilon.x, pilon.z);
+  const media = contenido.cargaPilon!;
+  assert.ok(media > 0.4 && media < 0.6, `carga a medias: ${media}`);
+  // Fuera se descarga despacio, sin perderlo todo.
+  for (let i = 0; i < 10; i++) en(3 + i * 0.1, pilon.x + 30, pilon.z);
+  assert.equal(contenido.cargaPilon, null);
+  for (let i = 0; i < 40; i++) en(4 + i * 0.1, pilon.x, pilon.z);
+  assert.deepEqual(efectos, [{ tipo: 'bendicion', elegir: 3, suerte: 0 }]);
+  assert.ok(contenido.marcas.find((m) => m.id === pilon.id)?.hecho, 'el pilón no queda gastado');
+});
+
+test('contenido jugable: los cofres de HELIOS se pagan con F y cada uno cuesta más', () => {
+  const contenido = new ContenidoJuego(new THREE.Scene(), mundoPlano(), {
+    toast: () => {},
+    aplicar: () => {},
+    curar: () => {},
+  });
+  const cofres = contenido.marcas.filter((m) => m.tipo === 'caja' && m.coste !== undefined);
+  assert.ok(cofres.length >= 2);
+  const [a, b] = cofres;
+  // Acercarse no basta: sin pagar no se abre.
+  for (let i = 0; i < 40; i++) contenido.update({ ...contexto(1 + i * 0.1), px: a.x, pz: a.z });
+  assert.equal(contenido.marcas.find((m) => m.id === a.id)?.hecho, false);
+  assert.equal(contenido.interaccionCofre(a.x, a.z, 0)?.bloqueado, true);
+  assert.equal(contenido.abrirCofre(a.x, a.z, a.coste! - 1), -2);
+  assert.equal(contenido.abrirCofre(a.x, a.z, 999), a.coste);
+  assert.equal(contenido.marcas.find((m) => m.id === a.id)?.hecho, true);
+  const siguiente = contenido.marcas.find((m) => m.id === b.id)!.coste!;
+  assert.ok(siguiente > a.coste!, `el segundo cofre no sube de precio (${siguiente})`);
+  assert.equal(contenido.abrirCofre(500, 500, 999), -1);
+});
+
+test('contenido jugable: el aliento del Cancerbero quema dentro del cono y no fuera', () => {
+  const contenido = new ContenidoJuego(new THREE.Scene(), mundoPlano(), { toast: () => {}, aplicar: () => {}, curar: () => {} });
+  avanzar(contenido, 300, 7);
+  const golem = (contenido as unknown as { golem: { def: { id: string }; x: number; z: number; giro: number; empezar: (t: string, j: unknown) => void; estado: string; descanso: number } }).golem;
+  assert.equal(golem.def.id, 'sabueso-helios');
+  const quemado = (lado: number) => {
+    // Jugador a 6 m: delante (lado 0) o a 90° (lado 1).
+    const a = golem.giro + lado * Math.PI / 2;
+    const px = golem.x + Math.sin(a) * 6, pz = golem.z + Math.cos(a) * 6;
+    golem.estado = 'perseguir';
+    golem.descanso = 99;
+    golem.empezar('aliento', { x: golem.x + Math.sin(golem.giro) * 6, z: golem.z + Math.cos(golem.giro) * 6, vx: 0, vz: 0, dt: 0 });
+    let dano = 0;
+    for (let i = 0; i < 26; i++) dano += contenido.update({ ...contexto(306 + i * 0.1), px, pz });
+    return dano;
+  };
+  assert.ok(quemado(0) > 20, 'el aliento no quema delante');
+  assert.ok(quemado(1) < 5, 'el aliento quema fuera del cono');
+});
+
+test('contenido jugable: los duelos dan el Cañón y el segundo despierta al dragón, que solo baja posado', () => {
+  const efectos: { tipo: string }[] = [];
+  const contenido = new ContenidoJuego(new THREE.Scene(), mundoPlano(), {
+    toast: () => {},
+    aplicar: (e) => { efectos.push(...(e as { tipo: string }[])); },
+    curar: () => {},
+  });
+  const duelos = contenido.marcas.filter((m) => m.tipo === 'duelo');
+  assert.equal(duelos.length, 3);
+  let t = 30;
+  const ganar = (duelo: { x: number; z: number }) => {
+    assert.ok(contenido.empezarDuelo(duelo.x, duelo.z), 'no empezó el duelo');
+    for (let i = 0; i < 40; i++) contenido.update({ ...contexto((t += 0.1)), px: duelo.x, pz: duelo.z });
+    for (const o of contenido.objetivoJefe.filter((x) => x.id.startsWith('altar-duelo'))) o.golpear(1e9);
+    contenido.update({ ...contexto((t += 0.1)), px: duelo.x, pz: duelo.z });
+  };
+  ganar(duelos[0]);
+  assert.ok(efectos.some((e) => e.tipo === 'canon'), 'el primer duelo no dio el Cañón');
+  ganar(duelos[1]);
+  assert.ok(contenido.marcas.some((m) => m.tipo === 'dragon'), 'el segundo duelo no despertó al dragón');
+
+  // En el aire: las herramientas no le llegan, el rayo sí.
+  for (let i = 0; i < 80; i++) contenido.update({ ...contexto((t += 0.1)), px: 0, pz: 0 });
+  assert.equal(contenido.objetivoJefe.some((o) => o.id === 'dragon'), false, 'el dragón en el aire recibe las herramientas');
+  const dragon = (contenido as unknown as { dragon: { x: number; z: number; vida: number; esferas: () => { x: number; y: number; z: number }[] } }).dragon;
+  const e = dragon.esferas()[1];
+  const o = { x: e.x, y: e.y - 20, z: e.z };
+  const acierto = contenido.rayo(o, { x: 0, y: 1, z: 0 }, 90);
+  assert.ok(acierto, 'el rayo no acierta al dragón');
+  const antes = dragon.vida;
+  acierto.golpear(100);
+  assert.ok(dragon.vida < antes);
+
+  // Tras perder un cuarto de vida acaba posándose, y entonces le llega todo.
+  acierto.golpear(dragon.vida * 0.3);
+  let posado = false;
+  for (let i = 0; i < 400 && !posado; i++) {
+    contenido.update({ ...contexto((t += 0.1)), px: 0, pz: 0 });
+    posado = contenido.objetivoJefe.some((x) => x.id === 'dragon');
+  }
+  assert.ok(posado, 'el dragón no se posó');
 });

@@ -27,17 +27,24 @@ export type Efecto =
   | { tipo: 'nivel'; herramienta: Herramienta | 'cualquiera' }
   | { tipo: 'temporal'; cual: 'iman' | 'velocidad' | 'escudo' | 'recarga'; segundos: number; factor: number }
   /** Marca en el minimapa lo más cercano de ese tipo. */
-  | { tipo: 'marcar'; que: 'altar' | 'caja' | 'torre' | 'ara' | 'refugio' }
+  | { tipo: 'marcar'; que: 'altar' | 'caja' | 'torre' | 'ara' | 'refugio' | 'pilon' }
+  /**
+   * Bendición (ver bendiciones.ts): con `elegir` 1 sale una al azar; con más,
+   * se elige entre esas. `suerte` sube la probabilidad de rarezas altas.
+   */
+  | { tipo: 'bendicion'; elegir: number; suerte: number }
+  /** Da el Cañón solar (el arma que se apunta) o le sube un nivel. */
+  | { tipo: 'canon' }
   /** El NPC cuenta algo de la partida (la oleada que viene, la última reliquia). */
   | { tipo: 'informar'; que: 'oleada' | 'reliquia' };
 
 // ------------------------------------------------------------ altares de jefe
 
 export interface AltarJefe {
-  id: 'altar-cosecha' | 'altar-heraldo' | 'altar-ojo';
+  id: 'altar-cosecha' | 'altar-sabueso' | 'altar-heraldo' | 'altar-ojo';
   nombre: string;
-  /** Id del modelo del jefe que sale de él. */
-  jefe: 'segador-jefe' | 'heraldo' | 'ojo-helios';
+  /** Id del modelo del gólem que sale de él. */
+  jefe: JefeAltarId;
   /** Minuto en que despierta solo. */
   minuto: number;
   descripcion: string;
@@ -59,24 +66,204 @@ export const CLIPS_ALTAR_JEFE = {
 
 export const ALTARES_JEFE: AltarJefe[] = [
   {
-    id: 'altar-cosecha', nombre: 'Altar de la Cosecha', jefe: 'segador-jefe', minuto: 3,
-    descripcion: 'De aquí sale el Segador, Jefe de Cosecha. Lleva dentro cuatro reliquias; al vencerlo, el altar se purifica y entrega una.',
+    id: 'altar-cosecha', nombre: 'Altar de la Escoria', jefe: 'golem-escoria', minuto: 3,
+    descripcion: 'De aquí sale el Gólem de Escoria, hecho con los escombros de la ciudad. Al vencerlo, el altar se purifica y entrega una reliquia.',
     recompensa: [{ tipo: 'reliquia' }, { tipo: 'chatarra', cantidad: 25 }, { tipo: 'mejora', opciones: 3 }],
     extraPorAdelantar: [{ tipo: 'nivel', herramienta: 'cualquiera' }],
   },
   {
-    id: 'altar-heraldo', nombre: 'Altar del Velo', jefe: 'heraldo', minuto: 5,
-    descripcion: 'De aquí sale el Heraldo del Velo. Al vencerlo, el velo se abre sobre el altar: el jugador se cura entero y la exposición se vacía.',
+    id: 'altar-sabueso', nombre: 'Altar de la Fragua', jefe: 'sabueso-helios', minuto: 5,
+    descripcion: 'De aquí sale el Cancerbero de HELIOS, el sabueso de tres cabezas que guarda la fragua. Al vencerlo entrega una reliquia y una bendición a elegir.',
+    recompensa: [{ tipo: 'reliquia' }, { tipo: 'chatarra', cantidad: 35 }, { tipo: 'bendicion', elegir: 3, suerte: 0.5 }],
+    extraPorAdelantar: [],
+  },
+  {
+    id: 'altar-heraldo', nombre: 'Altar de la Escarcha', jefe: 'golem-escarcha', minuto: 7,
+    descripcion: 'De aquí sale el Coloso de Escarcha. Al vencerlo, el velo se abre sobre el altar: el jugador se cura entero y la exposición se vacía.',
     recompensa: [{ tipo: 'reliquia' }, { tipo: 'integridad', cantidad: 999 }, { tipo: 'exposicion', cantidad: -100 }],
     extraPorAdelantar: [{ tipo: 'chatarra', cantidad: 40 }],
   },
   {
-    id: 'altar-ojo', nombre: 'Altar del Ojo', jefe: 'ojo-helios', minuto: 9,
-    descripcion: 'De aquí sale el Ojo de HELIOS, el jefe final. Al vencerlo, ADA firma la auditoría de este sector.',
+    id: 'altar-ojo', nombre: 'Altar del Titán', jefe: 'golem-titan', minuto: 9,
+    descripcion: 'De aquí sale el Titán de HELIOS, el jefe final. Al vencerlo, ADA firma la auditoría de este sector.',
     recompensa: [{ tipo: 'reliquia' }, { tipo: 'chatarra', cantidad: 60 }, { tipo: 'mejora', opciones: 4 }],
     extraPorAdelantar: [],
   },
 ];
+
+// ------------------------------------------------------------------ gólems
+
+/** Los jefes de altar; los campeones de duelo son otros dos. */
+export type JefeAltarId = 'golem-escoria' | 'golem-escarcha' | 'golem-titan' | 'sabueso-helios';
+export type GolemId = JefeAltarId | 'golem-menor' | 'sabueso-cachorro';
+export type AtaqueGolem = 'pisoton' | 'roca' | 'embestida' | 'salto' | 'lluvia' | 'aliento';
+
+export interface DefGolem {
+  id: GolemId;
+  /** Modelo: una de las tres variantes del gólem o el sabueso de tres cabezas. */
+  variante: 'escoria' | 'escarcha' | 'titan' | 'sabueso';
+  nombre: string;
+  vida: number;
+  /** Radio del cuerpo (m): para golpearlo y para que empuje al jugador. */
+  radio: number;
+  /** Escala del modelo (golem.ts la lee de aquí): agranda también sus avisos. */
+  talla: number;
+  velocidad: number;
+  ataques: AtaqueGolem[];
+  /** Lo que añade al entrar en furia (por debajo de la mitad de vida). */
+  furia: AtaqueGolem[];
+  /** Segundos entre ataques (×0,7 en furia). */
+  descanso: number;
+  /**
+   * Velocidad de los ataques: multiplica la de sus clips y la de sus avisos
+   * (1,3 = un 30 % más deprisa). En furia, ×1,15 más.
+   */
+  ritmo: number;
+  /** Proyectiles por lanzamiento: normal y en furia. */
+  rocas: number;
+  rocasFuria: number;
+  /** Color de su luz: la que proyecta al suelo, sus ascuas y su charco. */
+  luz: string;
+}
+
+/**
+ * Los jefes grandes. Cada ataque avisa antes en el suelo (círculo o franja
+ * roja) y con un letrero en el HUD; quien se queda dentro recibe el golpe y
+ * sale despedido. Dentro del aviso del pisotón y del salto hay un retraso
+ * traicionero: a veces el golem aguanta arriba un instante más.
+ */
+export const GOLEMS: Record<JefeAltarId, DefGolem> = {
+  'golem-escoria': {
+    id: 'golem-escoria', variante: 'escoria', nombre: 'Gólem de Escoria', vida: 4400, radio: 3.8, talla: 1.35, velocidad: 4.4,
+    ataques: ['pisoton', 'roca', 'embestida'], furia: ['salto'], descanso: 1.0, ritmo: 1.3, rocas: 1, rocasFuria: 3, luz: '#ff7a2a',
+  },
+  'sabueso-helios': {
+    id: 'sabueso-helios', variante: 'sabueso', nombre: 'Cancerbero de HELIOS', vida: 6200, radio: 3.6, talla: 1.45, velocidad: 6.8,
+    ataques: ['aliento', 'roca', 'salto', 'embestida'], furia: ['lluvia', 'pisoton'], descanso: 0.8, ritmo: 1.35, rocas: 3, rocasFuria: 5, luz: '#ff6a2a',
+  },
+  'golem-escarcha': {
+    id: 'golem-escarcha', variante: 'escarcha', nombre: 'Coloso de Escarcha', vida: 8000, radio: 4.3, talla: 1.55, velocidad: 4.6,
+    ataques: ['salto', 'lluvia', 'roca', 'pisoton'], furia: ['embestida'], descanso: 0.95, ritmo: 1.3, rocas: 2, rocasFuria: 4, luz: '#5ee0ff',
+  },
+  'golem-titan': {
+    id: 'golem-titan', variante: 'titan', nombre: 'Titán de HELIOS', vida: 14000, radio: 5.2, talla: 1.9, velocidad: 5,
+    ataques: ['roca', 'embestida', 'salto', 'pisoton', 'lluvia'], furia: [], descanso: 0.7, ritmo: 1.4, rocas: 2, rocasFuria: 4, luz: '#ff3b30',
+  },
+};
+
+/**
+ * Campeones de los altares de duelo: los mismos jefes en pequeño, con menos
+ * vida, menos ataques y más descanso entre uno y otro. Pegan como los
+ * grandes: también avisan y también empujan.
+ */
+export const CAMPEONES: Record<'golem-menor' | 'sabueso-cachorro', DefGolem> = {
+  'golem-menor': {
+    id: 'golem-menor', variante: 'escoria', nombre: 'Gólem menor', vida: 1400, radio: 2.2, talla: 0.8, velocidad: 4.2,
+    ataques: ['pisoton', 'roca'], furia: ['embestida'], descanso: 1.5, ritmo: 1.2, rocas: 1, rocasFuria: 2, luz: '#ff7a2a',
+  },
+  'sabueso-cachorro': {
+    id: 'sabueso-cachorro', variante: 'sabueso', nombre: 'Cachorro de Cancerbero', vida: 1600, radio: 2.2, talla: 0.85, velocidad: 6.2,
+    ataques: ['aliento', 'salto'], furia: ['roca'], descanso: 1.3, ritmo: 1.25, rocas: 3, rocasFuria: 3, luz: '#ff6a2a',
+  },
+};
+
+// ------------------------------------------------------------ altares de duelo
+
+/**
+ * Altar de duelo: con F junto a él salen campeones de HELIOS y hay que
+ * vencerlos antes de que acabe el tiempo. Si no, el altar se calma y se
+ * puede volver a intentar. Cada duelo ganado da su premio por orden: el
+ * primero, el Cañón solar; el segundo, otro nivel del cañón y despierta al
+ * Dragón del Velo; el tercero, otro nivel y una bendición a elegir.
+ */
+export const DUELOS = {
+  radio: 16,
+  segundos: 90,
+  /** Quién sale en cada altar (por orden de colocación). */
+  retadores: [
+    ['golem-menor'],
+    ['sabueso-cachorro', 'golem-menor'],
+    ['golem-menor', 'sabueso-cachorro', 'golem-menor'],
+  ] as const,
+  premios: [
+    [{ tipo: 'canon' }, { tipo: 'chatarra', cantidad: 20 }],
+    [{ tipo: 'canon' }, { tipo: 'bendicion', elegir: 1, suerte: 0.5 }],
+    [{ tipo: 'canon' }, { tipo: 'bendicion', elegir: 3, suerte: 0.8 }],
+  ] as Efecto[][],
+  /** Al ganar este duelo (por cuenta) se despierta el dragón. */
+  dragonAlGanar: 2,
+} as const;
+
+/** Cañón solar: daño por disparo y recarga (s) por nivel. Lo multiplica la potencia. */
+export const CANON = {
+  dano: [40, 55, 72, 95],
+  recarga: [0.34, 0.29, 0.25, 0.21],
+  alcance: 90,
+} as const;
+
+// -------------------------------------------------------- jefe volador
+
+/**
+ * Dragón del Velo: el avión de HELIOS que siembra el velo, con forma de
+ * dragón. Vuela en círculos sobre el jugador y solo el Cañón solar le llega;
+ * cada vez que pierde un cuarto de vida (o tras unos ataques) se posa unos
+ * segundos y entonces le pegan todas las herramientas.
+ */
+export const DRAGON = {
+  nombre: 'Dragón del Velo',
+  vida: 8500,
+  altura: 15,
+  /** Radio de la órbita alrededor del jugador y velocidad en el aire. */
+  orbita: 24,
+  velocidad: 22,
+  /** Segundos entre ataques en el aire (×0,7 en furia). */
+  descanso: 1.9,
+  /** Ataques en el aire antes de posarse, aunque no le hayan dado. */
+  ataquesAntesDePosarse: 5,
+  posado: 5.5,
+  bombas: { dano: 22, radio: 2.8, cuantas: 8, furia: 12, caida: 0.95 },
+  aliento: { dano: 10, largo: 15 },
+  /** El picado: velocidad (m/s) y el aviso en lo alto antes de bajar (s). */
+  picado: { dano: 34, empuje: 18, velocidad: 36, aviso: 0.85 },
+  aterrizaje: { dano: 26, radio: 6, empuje: 16 },
+  recompensa: [{ tipo: 'reliquia' }, { tipo: 'chatarra', cantidad: 80 }, { tipo: 'bendicion', elegir: 4, suerte: 1 }] as Efecto[],
+} as const;
+
+/** Daño, radio del golpe (m, ×talla) y empuje (m/s) de cada ataque. */
+export const ATAQUES_GOLEM: Record<AtaqueGolem, { dano: number; radio: number; empuje: number; aviso: string }> = {
+  pisoton: { dano: 30, radio: 6.5, empuje: 16, aviso: '¡Pisotón! Sal del círculo rojo' },
+  roca: { dano: 32, radio: 3.2, empuje: 12, aviso: '¡Va a lanzar una roca! Muévete' },
+  embestida: { dano: 42, radio: 1.4, empuje: 20, aviso: '¡Embestida! Apártate de la franja' },
+  salto: { dano: 36, radio: 6, empuje: 18, aviso: '¡Salta hacia ti! Corre' },
+  lluvia: { dano: 20, radio: 2.3, empuje: 7, aviso: '¡Lluvia de escombros! Esquiva los círculos' },
+  // Aliento: radio es el largo del cono (×talla); el daño es por cada tic de 0,3 s dentro.
+  aliento: { dano: 11, radio: 11, empuje: 3, aviso: '¡Aliento de plasma! Sal del cono' },
+};
+
+// -------------------------------------------------------------- minijefes
+
+/**
+ * Los jefes de antes ahora son minijefes: salen solos cada cierto tiempo
+ * cerca del jugador (sin altar), con menos vida que un gólem y más cuanto
+ * más avanza la partida. Al caer sueltan chatarra y a veces una bendición.
+ */
+export const MINIJEFES = {
+  /** Segundo del primero, separación entre uno y otro (baja con el tiempo) y mínimo. */
+  primero: 100,
+  cada: 70,
+  bajaPorMinuto: 4,
+  cadaMinimo: 40,
+  maximoVivos: 3,
+  /** Vida base de cada uno; se multiplica por 1 + 0,12 por minuto. */
+  tipos: [
+    { id: 'segador-jefe', nombre: 'Segador, Jefe de Cosecha', vida: 900, desde: 0 },
+    { id: 'heraldo', nombre: 'Heraldo del Velo', vida: 1300, desde: 150 },
+    { id: 'ojo-helios', nombre: 'Ojo de HELIOS', vida: 1900, desde: 240 },
+  ],
+  recompensa: [{ tipo: 'chatarra', cantidad: 18 }] as Efecto[],
+  /** Probabilidad de que además suelte una bendición. */
+  bendicion: 0.35,
+} as const;
 
 // ------------------------------------------------------- altares de desafío
 
@@ -135,13 +322,45 @@ export const DESAFIOS: Desafio[] = [
   },
 ];
 
+// --------------------------------------------------------- pilones de carga
+
+/**
+ * Pilón de carga (modelo `pilon-carga`): si el jugador se queda dentro del
+ * círculo, ADA lo carga. Fuera se descarga despacio, sin perderlo todo. Al
+ * llenarse da a elegir entre tres bendiciones y queda apagado. Cada pilón
+ * gastado alarga un poco la carga del siguiente.
+ */
+export const PILON = {
+  radio: 3.6,
+  segundos: 4,
+  /** Segundos de carga que añade cada pilón ya gastado. */
+  masPorUsado: 0.6,
+  /** Fracción de carga que pierde por segundo fuera del círculo. */
+  descarga: 0.12,
+  recompensa: [{ tipo: 'bendicion', elegir: 3, suerte: 0 }] as Efecto[],
+} as const;
+
+/**
+ * Clips: `Reposo`, `Cargando` en bucle mientras ADA carga, con `Progreso` a
+ * la vez (en pausa, time = carga 0 → 1), `Cargado` al llenarse (el juego da la
+ * bendición en 0,4 s) y `Agotado` después.
+ */
+export const CLIPS_PILON = {
+  espera: 'Reposo', cargando: 'Cargando', progreso: 'Progreso', cargado: 'Cargado', agotado: 'Agotado',
+  premio: 0.4,
+} as const;
+
 // ------------------------------------------------------------ cajas de premio
 
 export interface Caja {
   id: 'caja-suministros' | 'caja-helios' | 'caja-reliquia';
   nombre: string;
-  /** Cómo se abre: acercarse, o que ADA la piratee (cuesta exposición). */
-  apertura: { como: 'acercarse' | 'hackear'; segundos: number; exposicion?: number };
+  /**
+   * Cómo se abre: acercarse, o pagar chatarra con la tecla de usar (y ADA
+   * la piratea, que cuesta exposición). `coste` es el precio del primero;
+   * cada cofre abierto encarece el siguiente en `subida`.
+   */
+  apertura: { como: 'acercarse' | 'pagar'; segundos: number; exposicion?: number; coste?: number; subida?: number };
   /** Botín: se tira una vez por caja, con estos pesos. */
   botin: { peso: number; da: Efecto[] }[];
   aparece: string;
@@ -166,12 +385,11 @@ export const CAJAS: Caja[] = [
   },
   {
     id: 'caja-helios', nombre: 'Cofre de HELIOS',
-    apertura: { como: 'hackear', segundos: 3, exposicion: 15 },
-    aparece: 'Seis repartidos por el mapa, junto a las torres y los altares. ADA tarda 3 s en abrirlo y eso emite señal.',
+    apertura: { como: 'pagar', segundos: 0, exposicion: 8, coste: 12, subida: 8 },
+    aparece: 'Diez repartidos por el mapa. Se abre con F pagando chatarra (cada uno cuesta más que el anterior); ADA lo piratea y eso emite algo de señal.',
     botin: [
-      { peso: 40, da: [{ tipo: 'chatarra', cantidad: 20 }] },
-      { peso: 35, da: [{ tipo: 'mejora', opciones: 3 }] },
-      { peso: 25, da: [{ tipo: 'nivel', herramienta: 'cualquiera' }] },
+      { peso: 70, da: [{ tipo: 'bendicion', elegir: 1, suerte: 0.6 }] },
+      { peso: 30, da: [{ tipo: 'nivel', herramienta: 'cualquiera' }, { tipo: 'chatarra', cantidad: 5 }] },
     ],
   },
   {
@@ -206,7 +424,7 @@ export interface Estructura {
 
 export const ESTRUCTURAS: Estructura[] = [
   {
-    id: 'torre-velo', nombre: 'Torre del Velo', vida: 400,
+    id: 'torre-velo', nombre: 'Torre del Velo', vida: 560,
     descripcion: 'Chimenea de HELIOS que tiende el velo. Mientras está en pie, la exposición sube un 20 % más rápido a 25 m de ella. Se puede derribar con las herramientas: al caer baja el sol sobre ella.',
     alDerribar: [{ tipo: 'exposicion', cantidad: -40 }, { tipo: 'chatarra', cantidad: 20 }],
     clips: { activa: 'Emitir', golpe: 'Golpe recibido', cae: 'Colapso', caida: 'Apagada' },
@@ -323,6 +541,11 @@ export const NPCS: NpcMapa[] = [
         respuestas: ['La torre más cerca escupe velo ahí. Tírala.', 'Esa chimenea te está delatando. Marcada.'],
       },
       {
+        id: 'donde_pilon', claves: ['pilon', 'carga', 'cargar', 'bendicion', 'antena solar'],
+        efecto: [{ tipo: 'marcar', que: 'pilon' }], clip: 'Hablar',
+        respuestas: ['Hay un pilón con el cristal encendido. Quédate dentro y ADA lo carga.', 'Pilón a la vista. Marcado.'],
+      },
+      {
         id: 'donde_ara', claves: ['ara', 'desafio', 'reto', 'sol de cobre'],
         efecto: [{ tipo: 'marcar', que: 'ara' }], clip: 'Hablar',
         respuestas: ['Hay un ara antigua cerca. Si la despiertas, te pone a prueba.', 'El ara del sol está ahí. Marcada.'],
@@ -332,12 +555,12 @@ export const NPCS: NpcMapa[] = [
         efecto: [{ tipo: 'informar', que: 'oleada' }], clip: 'Hablar',
         respuestas: ['Viene una oleada. Muévete de lado, no te dejes cerrar.', 'Muchos y deprisa. No te quedes quieto.'],
       },
-      ...COMUNES(['Te digo dónde está cada altar, cofre, torre o ara. Y lo que viene.']),
+      ...COMUNES(['Te digo dónde está cada altar, cofre, pilón, torre o ara. Y lo que viene.']),
     ],
     lineas: {
       saludo: ['Te vi llegar. Bien hecho.', 'Hola. El viento sopla del este.'],
       despedida: ['Te sigo con el catalejo.', 'Ve. Yo vigilo.'],
-      noEntiendo: ['¿Qué buscas? Altar, cofre, torre o ara.', 'Dime qué buscas y te digo dónde.'],
+      noEntiendo: ['¿Qué buscas? Altar, cofre, pilón, torre o ara.', 'Dime qué buscas y te digo dónde.'],
       asustado: ['¡Contacto encima! ¡Cúbrete!', '¡Muy cerca! ¡Muévete!'],
       sol: ['Se ve el horizonte. Hacía años.', 'Sol al oeste. Qué bonito es.'],
       sinChatarra: ['Mirar es gratis. Lo demás, no es cosa mía.'],
@@ -490,8 +713,10 @@ export function contextoVoz(npc: NpcMapa, intencion: Intencion | null): string {
 export const COLOCACION = {
   refugio: { cuantos: 1, distancia: [16, 22] },
   npcs: { junto: 'refugio', radio: [4, 9] },
-  altaresJefe: { cuantos: 3, distancia: [60, 100], separacionMinima: 60 },
+  altaresJefe: { cuantos: 4, distancia: [55, 105], separacionMinima: 48 },
   aras: { cuantos: 3, distancia: [30, 80], separacionMinima: 40 },
   torres: { cuantos: 4, distancia: [45, 110], separacionMinima: 45 },
-  cofresHelios: { cuantos: 6, distancia: [25, 115], separacionMinima: 20 },
+  cofresHelios: { cuantos: 10, distancia: [18, 115], separacionMinima: 18 },
+  pilones: { cuantos: 8, distancia: [18, 110], separacionMinima: 24 },
+  duelos: { cuantos: 3, distancia: [35, 95], separacionMinima: 40 },
 } as const;

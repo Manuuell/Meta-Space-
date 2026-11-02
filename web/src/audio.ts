@@ -2,7 +2,8 @@
 // El navegador no deja sonar nada hasta el primer gesto del usuario, así que el
 // contexto se crea perezosamente.
 
-export type Sound = 'shot' | 'hit' | 'pulse' | 'pickup' | 'level' | 'hurt' | 'relic' | 'death' | 'kill' | 'jump' | 'guau' | 'zap' | 'aullido' | 'cura';
+export type Sound = 'shot' | 'hit' | 'pulse' | 'pickup' | 'level' | 'hurt' | 'relic' | 'death' | 'kill' | 'jump' | 'guau' | 'zap' | 'aullido' | 'cura'
+  | 'boom' | 'solar' | 'cofre' | 'carga' | 'critico' | 'sinChatarra';
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -13,6 +14,7 @@ const last = new Map<Sound, number>();
 const THROTTLE: Record<Sound, number> = {
   shot: 0.06, hit: 0.05, pulse: 0.1, pickup: 0.035, level: 0, hurt: 0.25, relic: 0, death: 0, kill: 0.04, jump: 0.15,
   guau: 0.25, zap: 0.08, aullido: 0, cura: 0,
+  boom: 0.09, solar: 0.12, cofre: 0, carga: 0, critico: 0.07, sinChatarra: 0.3,
 };
 
 export function unlockAudio() {
@@ -70,5 +72,17 @@ export function sfx(sound: Sound) {
     case 'zap': tone('sawtooth', 1600, 500, 0.06, 0.05); break;
     case 'aullido': tone('triangle', 420, 760, 0.9, 0.09); tone('sine', 840, 1500, 0.9, 0.04); break;
     case 'cura': [660, 880, 1320].forEach((f, i) => tone('sine', f, f, 0.18, 0.08, i * 0.06)); break;
+    // Explosión del mortero: golpe grave y un chasquido de chatarra.
+    case 'boom': tone('sine', 110, 30, 0.4, 0.28); tone('square', 420, 80, 0.12, 0.06); break;
+    // Lanza solar: un barrido agudo que cae como un rayo.
+    case 'solar': tone('sawtooth', 2200, 300, 0.22, 0.06); tone('sine', 180, 50, 0.45, 0.22, 0.05); break;
+    case 'cofre':
+      tone('square', 300, 600, 0.12, 0.07);
+      [660, 880, 1175, 1568].forEach((f, i) => tone('triangle', f, f, 0.2, 0.09, 0.15 + i * 0.07));
+      break;
+    // Pilón cargado: un acorde que sube.
+    case 'carga': [440, 554, 659, 880, 1109].forEach((f, i) => tone('sine', f, f * 1.02, 0.35, 0.09, i * 0.06)); break;
+    case 'critico': tone('square', 1400, 900, 0.05, 0.05); break;
+    case 'sinChatarra': tone('square', 200, 150, 0.12, 0.08); tone('square', 150, 110, 0.14, 0.08, 0.12); break;
   }
 }

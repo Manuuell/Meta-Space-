@@ -346,8 +346,12 @@ export function crearPerro(opciones: OpcionesPerro = { pajarita: 'cuadros', gorr
 
     animacion('Caminar', 0.6, [
       ...trote(0.6, 30),
-      mov(raiz, 'cuerpo', ciclo(0.6, (f) => [0, Math.abs(sen(f)) * 0.03, 0])),
-      rot('cabeza', ciclo(0.6, (f) => [sen(f, 2) * 3, 0, 0])),
+      // Rebota en cada pisada y el lomo se mece de lado a lado.
+      mov(raiz, 'cuerpo', ciclo(0.6, (f) => [sen(f) * 0.012, Math.abs(sen(f)) * 0.035, 0])),
+      rot('cuerpo', ciclo(0.6, (f) => [sen(f, 2) * 2, sen(f) * 5, sen(f) * 4])),
+      esc('cuerpo', ciclo(0.6, (f) => { const k = Math.cos(f * TAU * 2) * 0.025; return [1 + k, 1 - k, 1]; })),
+      rot('cuello', ciclo(0.6, (f) => [-sen(f, 2) * 4, -sen(f) * 4, 0])),
+      rot('cabeza', ciclo(0.6, (f) => [sen(f, 2) * 3, -sen(f) * 3, sen(f) * 4])),
       cola(0.6, 2, 22, -20),
       ...jadeo(0.6, 2),
       ...orejas(0.6, (f) => [sen(f, 2) * 8, 0]),
@@ -361,6 +365,8 @@ export function crearPerro(opciones: OpcionesPerro = { pajarita: 'cuadros', gorr
       rot('pata_td', ciclo(0.36, (f) => [-sen(f + 0.08) * 55, 0, 0])),
       rot('cuerpo', ciclo(0.36, (f) => [cos(f) * 8, 0, 0])),
       mov(raiz, 'cuerpo', ciclo(0.36, (f) => [0, Math.abs(sen(f)) * 0.1, 0])),
+      // Se estira en el vuelo y se encoge al recoger las patas.
+      esc('cuerpo', ciclo(0.36, (f) => { const k = cos(f) * 0.06; return [1 - k * 0.5, 1 - k * 0.5, 1 + k]; })),
       rot('cuello', ciclo(0.36, (f) => [-cos(f) * 6 - 6, 0, 0])),
       ...orejas(0.36, (f) => [-45 + sen(f, 2) * 10, 25]),
       cola(0.36, 2, 12, 10),

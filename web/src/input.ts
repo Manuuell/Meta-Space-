@@ -4,6 +4,12 @@
 const held = new Set<string>();
 const pressed = new Set<string>();
 
+/**
+ * Piloto automático (modo demo): mueve con un stick propio y mantiene teclas
+ * como si las pulsara el jugador. El juego lo enciende con `?demo=jefes`.
+ */
+export const piloto = { activo: false, x: 0, y: 0, teclas: new Set<string>() };
+
 window.addEventListener('keydown', (e) => {
   if (!held.has(e.code)) pressed.add(e.code);
   held.add(e.code);
@@ -19,11 +25,40 @@ export function wasPressed(...codes: string[]) {
 
 /** True mientras la tecla siga pulsada. */
 export function isHeld(...codes: string[]) {
-  return codes.some((c) => held.has(c));
+  return codes.some((c) => held.has(c) || piloto.activo && piloto.teclas.has(c));
 }
 
 export function endFrame() {
   pressed.clear();
+  ratonNuevo.clear();
+}
+
+// ------------------------------------------------------------ Ratón
+//
+// Botones del ratón para el Cañón solar: el derecho apunta y el izquierdo
+// dispara. El menú contextual no sale sobre el juego.
+
+const ratonPulsado = new Set<number>();
+const ratonNuevo = new Set<number>();
+
+window.addEventListener('mousedown', (e) => {
+  ratonPulsado.add(e.button);
+  ratonNuevo.add(e.button);
+});
+window.addEventListener('mouseup', (e) => ratonPulsado.delete(e.button));
+window.addEventListener('blur', () => ratonPulsado.clear());
+window.addEventListener('contextmenu', (e) => {
+  if ((e.target as HTMLElement).id === 'game' || document.pointerLockElement) e.preventDefault();
+});
+
+/** True mientras el botón siga pulsado (0 izquierdo, 2 derecho). */
+export function ratonHeld(boton: number) {
+  return ratonPulsado.has(boton);
+}
+
+/** True una sola vez por clic. */
+export function ratonPressed(boton: number) {
+  return ratonNuevo.has(boton);
 }
 
 // ------------------------------------------------------------ Mirar
@@ -129,6 +164,10 @@ export function moveVector() {
   if (held.has('KeyS') || held.has('ArrowDown')) y += 1;
   x += stick.x;
   y += stick.y;
+  if (piloto.activo) {
+    x += piloto.x;
+    y += piloto.y;
+  }
   const len = Math.hypot(x, y);
   if (len > 1) { x /= len; y /= len; }
   return { x, y };

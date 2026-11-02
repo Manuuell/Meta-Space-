@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { ENEMIES, EnemyId, GEAR, GearId, MOVE, PassiveId, RELICS, RUN, WEAPONS, WeaponId } from './data';
+import { ENEMIES, ESCALADO, EnemyId, GEAR, GearId, MOVE, PassiveId, RELICS, RUN, WEAPONS, WeaponId, factorNivel } from './data';
 import { World } from './world';
 import { Enemies } from './enemies';
 import { Weapons, Modifiers } from './weapons';
 import { Pickups, RelicDrop } from './pickups';
 import { astronautFrames, blobShadowTexture } from './sprites';
-import { consumeLook, endFrame, isHeld, isLocked, lockPointer, moveVector, unlockPointer, wasPressed } from './input';
+import { consumeLook, endFrame, isHeld, isLocked, lockPointer, moveVector, piloto, ratonHeld, unlockPointer, wasPressed } from './input';
 import { sfx, unlockAudio } from './audio';
 import { loadSave, writeSave } from './save';
 import * as ui from './ui';
@@ -15,8 +15,8 @@ import {
 } from './progression';
 
 const TABLA_ARMAS: TablaArmas = Object.fromEntries(
-  (Object.keys(WEAPONS) as WeaponId[]).map((id) => [id, WEAPONS[id].levels.map((s) => ({
-    damage: s.damage, cooldown: s.cooldown, count: s.count, area: s.area,
+  (Object.keys(WEAPONS) as WeaponId[]).map((id) => [id, WEAPONS[id].levels.map((s, k) => ({
+    damage: s.damage * factorNivel(k + 1), cooldown: s.cooldown, count: s.count, area: s.area,
   }))]),
 ) as TablaArmas;
 import { showTitle } from './ui-title';
@@ -46,8 +46,19 @@ import { multChatarraElite, type EliteMod } from './enemies';
 import { ContenidoJuego, type RespuestaNpc } from './contenido-juego';
 import type { Efecto } from './contenido/mapa';
 import { lineaNpcMapa } from './npcs';
+import { NumerosDano } from './numeros';
+import {
+  BENDICIONES, RAREZAS, describir, tirarBendiciones, totalesVacios,
+  type Bendicion, type BendicionId, type Totales,
+} from './bendiciones';
+import { mostrarMejoras } from './mejoras';
+import { abrirMapa } from './ui-mapa';
+import { alerta, marcarAcierto } from './hud';
+import { CANON } from './contenido/mapa';
+import { pilotar } from './demo';
+import { zonasActivas } from './avisos';
 
-type State = 'title' | 'playing' | 'levelup' | 'paused' | 'results';
+type State = 'title' | 'playing' | 'levelup' | 'paused' | 'results' | 'mapa';
 
 // Cámara en tercera persona, detrás y algo por encima, como en PokéBonk.
 const PITCH_MIN = 0.12;
@@ -188,8 +199,40 @@ export class Game {
   private chorrosBotas: THREE.Object3D[] = [];
   private hudEquipo: HTMLDivElement | null = null;
   private barrasEquipo = new Map<string, HTMLElement>();
+  // Números de daño, bendiciones de pilones y cofres, y marcas del mapa (M).
+  private numeros: NumerosDano;
+  private bendiciones: Bendicion[] = [];
+  private totales: Totales = totalesVacios();
+  private bendicionesPendientes: { elegir: number; suerte: number }[] = [];
+  private puntosMapa: { x: number; z: number }[] = [];
+  /** Mejoras elegidas al subir de nivel: cada una suma potencia de daño (ESCALADO). */
+  private mejorasTomadas = 0;
+  // Sprint con Shift: aguante de 0 a 1 y si ahora se corre a tope.
+  private aguante = 1;
+  private esprintando = false;
+  // Cañón solar: nivel (0 = aún no lo tienes), recarga, si se apunta y cuánto
+  // ha entrado ya la cámara de apuntar (0..1). `miraAlta` es hacia dónde
+  // apunta en vertical (rad, + hacia el cielo).
+  private canonNivel = 0;
+  private canonCd = 0;
+  private apuntando = false;
+  private mezclaMira = 0;
+  private miraAlta = 0.15;
+  private trazos: { mesh: THREE.Mesh; t: number }[] = [];
+  private geoTrazo = new THREE.BoxGeometry(1, 1, 1).translate(0, 0, 0.5);
+  private vMira = new THREE.Vector3();
+  private vPos = new THREE.Vector3();
+  private mMira = new THREE.Matrix4();
+  private qMira = new THREE.Quaternion();
+  /** Empuje de los golpes de los jefes (m/s): se suma al movimiento y se apaga solo. */
+  private empujeX = 0;
+  private empujeZ = 0;
+  private descansoAguante = 0;
 
-  constructor(private canvas: HTMLCanvasElement) {
+  /** Modo demo (`?demo=jefes`): el piloto automático pelea contra el Cancerbero y el dragón. */
+  private demo: { fase: 'preparar' | 'cancerbero' | 'pausa' | 'dragon' | 'fin'; t: number } | null = null;
+
+  constructor(private canvas: HTMLCanvasElement, opciones: { demo?: boolean } = {}) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
@@ -217,8 +260,21 @@ export class Game {
       toast: (quien, texto, segundos) => ui.toast(quien, texto, 'info', segundos ?? 4),
       aplicar: (efectos) => this.aplicarEfectos(efectos),
       curar: (cantidad) => { this.hp = Math.min(this.maxHp, this.hp + cantidad); },
+      empujar: (fx, fz, salto) => {
+        if (this.intocable()) return;
+        this.empujeX += fx;
+        this.empujeZ += fz;
+        if (salto > 0) {
+          this.velY = Math.max(this.velY, salto);
+          this.grounded = false;
+        }
+      },
+      aviso: (texto) => alerta(texto),
+      sacudida: () => this.camara.sacudidaPulso(),
+      sonido: (nombre) => sfx(nombre),
     });
     this.pickups = new Pickups(this.scene, this.world);
+    this.numeros = new NumerosDano(canvas);
     this.companero = new Companero(this.scene, this.enemies, this.pickups, this.world, this.dron);
     // Antes había dos perros: el «de paseo» llevaba gorra, gafas y pajarita verde.
     if (this.save.companero === 'perro-paseo' && !this.save.estiloBruno) this.save.estiloBruno = { pajarita: 'verde', gorra: true, gafas: true };
@@ -307,7 +363,8 @@ export class Game {
       if (this.state === 'playing') this.pause();
     });
 
-    this.toTitle();
+    if (opciones.demo) this.empezarDemo();
+    else this.toTitle();
     this.renderer.setAnimationLoop(() => this.frame());
   }
 
@@ -791,8 +848,28 @@ export class Game {
 
   private resetRun() {
     this.weapons?.dispose();
-    this.weapons = new Weapons(this.scene, this.enemies, this.world, () => this.contenido.objetivoJefe);
-    this.weapons.damageMul = this.heroDamageMul;
+    this.weapons = new Weapons(this.scene, this.enemies, this.world, () => this.contenido.objetivoJefe, {
+      dano: (x, z, cantidad, critico) => this.numeros.sumar(x, this.world.heightAt(x, z) + 1.7, z, cantidad, critico),
+      sacudida: () => this.camara.sacudidaPulso(),
+    });
+    this.bendiciones = [];
+    this.totales = totalesVacios();
+    this.bendicionesPendientes = [];
+    this.puntosMapa = [];
+    this.mejorasTomadas = 0;
+    this.aguante = 1;
+    this.esprintando = false;
+    this.descansoAguante = 0;
+    this.empujeX = this.empujeZ = 0;
+    this.canonNivel = 0;
+    this.canonCd = 0;
+    this.apuntando = false;
+    this.mezclaMira = 0;
+    this.miraAlta = 0.15;
+    for (const t of this.trazos) this.scene.remove(t.mesh);
+    this.trazos = [];
+    this.numeros.limpiar();
+    this.aplicarBendiciones();
     this.enemies.clear();
     this.contenido.reset();
     this.pickups.clear();
@@ -878,6 +955,9 @@ export class Game {
     this.vestirEquipo();
     if (this.jumpBtn) this.jumpBtn.style.display = 'block';
     if (this.micBtn) this.micBtn.style.display = 'block';
+    this.clock.getDelta();
+    // En la demo no hay radio ni brief: que se vea la pelea.
+    if (this.demo) return;
     lockPointer(this.canvas);
     ui.toast('ADA', 'HELIOS ha detectado mi señal. Aguanta 10 minutos: el cohete subirá la orden de apagado del velo.', 'info', 6);
     ui.decir('ada', 'ADA', 'HELIOS ha detectado mi señal. Aguanta diez minutos hasta la ventana de lanzamiento.', 6);
@@ -886,7 +966,6 @@ export class Game {
       ui.toast('ADA', `Especial listo: ${sp.name}. ${sp.blurb}`, 'info', 6);
     }
     void this.abrirBrief();
-    this.clock.getDelta();
   }
 
   /** Pide el brief único de la partida (misión + NPCs) sin bloquear el juego. */
@@ -936,8 +1015,9 @@ export class Game {
 
   private get mods(): Modifiers {
     return {
-      cooldown: Math.pow(0.92, this.passive('enfriamiento')) * this.heroCooldownMul / this.factorTemporal('recarga'),
-      area: 1 + 0.1 * this.passive('area'),
+      cooldown: Math.pow(0.92, this.passive('enfriamiento')) * this.heroCooldownMul / this.factorTemporal('recarga')
+        * Math.max(0.4, 1 - this.totales.recarga),
+      area: (1 + 0.1 * this.passive('area')) * (1 + this.totales.area),
     };
   }
 
@@ -973,11 +1053,28 @@ export class Game {
       } else if (efecto.tipo === 'mejora') {
         this.pendingLevels++;
       } else if (efecto.tipo === 'nivel') {
-        const ids = (Object.keys(WEAPONS) as WeaponId[])
-          .filter((id) => this.weapons.level(id) < WEAPONS[id].levels.length)
-          .sort((a, b) => this.weapons.level(a) - this.weapons.level(b));
+        // «Cualquiera» sube la herramienta que llevas con menos nivel; solo si
+        // ya están todas al máximo, te da una nueva.
+        const subibles = (Object.keys(WEAPONS) as WeaponId[])
+          .filter((id) => this.weapons.level(id) < WEAPONS[id].levels.length);
+        const ids = [
+          ...subibles.filter((id) => this.weapons.level(id) > 0).sort((a, b) => this.weapons.level(a) - this.weapons.level(b)),
+          ...subibles.filter((id) => this.weapons.level(id) === 0),
+        ];
         const id = efecto.herramienta === 'cualquiera' ? ids[0] : efecto.herramienta;
+        if (id && this.weapons.level(id) < WEAPONS[id].levels.length) {
+          ui.toast('ADA', `${WEAPONS[id].name} sube a nivel ${this.weapons.level(id) + 1}.`, 'info', 3);
+        }
         if (id && this.weapons.level(id) < WEAPONS[id].levels.length) this.weapons.upgrade(id);
+      } else if (efecto.tipo === 'canon') {
+        const primero = this.canonNivel === 0;
+        this.canonNivel = Math.min(CANON.dano.length, this.canonNivel + 1);
+        ui.toast('Cañón solar', primero
+          ? 'Clic derecho para apuntar, clic izquierdo para disparar. Es lo único que alcanza al Dragón del Velo en el aire.'
+          : `Sube a nivel ${this.canonNivel}: más daño y más cadencia.`, 'relic', primero ? 8 : 4);
+        if (primero) alerta('¡Tienes el Cañón solar! Clic derecho para apuntar');
+      } else if (efecto.tipo === 'bendicion') {
+        this.bendicionesPendientes.push({ elegir: efecto.elegir, suerte: efecto.suerte });
       } else if (efecto.tipo === 'temporal') {
         this.temporales.set(efecto.cual, { hasta: this.time + efecto.segundos, factor: efecto.factor });
       } else if (efecto.tipo === 'marcar') {
@@ -1010,7 +1107,7 @@ export class Game {
       this.world.follow(this.player.position);
     }
 
-    if (this.state !== 'paused' && this.state !== 'levelup') {
+    if (this.state !== 'paused' && this.state !== 'levelup' && this.state !== 'mapa') {
       this.mezclador.update(dt);
       this.mezcladorEquipo.update(dt);
       this.mezcladorTabla.update(dt);
@@ -1051,11 +1148,17 @@ export class Game {
 
   private update(dt: number) {
     this.time += dt;
+    if (this.demo) this.avanzarDemo(dt);
     // Prueba de formas de ADA: K pasa a la siguiente (se recuerda en este navegador).
     if (wasPressed('KeyK')) this.cambiarFormaAda();
     if (wasPressed('KeyT') && !(document.activeElement instanceof HTMLInputElement)) {
       this.abrirLineaVoz();
     }
+    if (wasPressed('KeyM')) {
+      this.abrirMapaSector();
+      return;
+    }
+    if (wasPressed('KeyF')) this.usarCofre();
     if (wasPressed('KeyV') && !this.vozConV) {
       this.vozConV = true;
       void this.hablarAlDron();
@@ -1066,11 +1169,15 @@ export class Game {
     }
 
     const look = consumeLook(dt);
-    this.yaw -= look.x * LOOK_SPEED;
-    this.pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, this.pitch + look.y * LOOK_SPEED));
+    this.yaw -= look.x * LOOK_SPEED * (this.apuntando ? 0.7 : 1);
+    // Apuntando, el ratón sube y baja la mira (hasta el cielo); si no, la cámara.
+    if (this.apuntando) this.miraAlta = Math.max(-0.45, Math.min(1.3, this.miraAlta - look.y * LOOK_SPEED * 0.7));
+    else this.pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, this.pitch + look.y * LOOK_SPEED));
+    this.actualizarCanon(dt);
 
     this.movePlayer(dt);
-    this.direct(dt);
+    // En la demo no hay horda: solo los jefes.
+    if (!this.demo) this.direct(dt);
     const pj = this.player.position;
     this.companero.update(dt, {
       px: pj.x, py: pj.y, pz: pj.z,
@@ -1114,6 +1221,8 @@ export class Game {
       bajas: this.kills,
       danoRecibido: this.hpLost,
       balizas: this.enemies.countOf('baliza'),
+      vx: this.velX,
+      vz: this.velZ,
       enemigosEn: (x, z, radio) => {
         let n = 0;
         this.enemies.forEachInRadius(x, z, radio, () => { n++; });
@@ -1125,7 +1234,7 @@ export class Game {
       },
     });
     this.receiveDamage(danoContenido * (this.intocable() ? 0 : 1));
-    this.hp = Math.min(this.maxHp, this.hp + this.passive('reparacion') * 0.7 * dt);
+    this.hp = Math.min(this.maxHp, this.hp + (this.passive('reparacion') * 0.7 + this.totales.regen) * dt);
     if (!this.heridoAvisado && this.hp < this.maxHp * 0.7) {
       this.heridoAvisado = true;
       this.decir('ada', 'herido', 'el traje ha perdido un tercio de su integridad');
@@ -1156,10 +1265,10 @@ export class Game {
     this.enemies.render();
 
     const radius = RUN.pickupRadius * (1 + 0.35 * this.passive('iman')) * (this.dron.luz ? 1.25 : 1)
-      * this.factorTemporal('iman');
+      * this.factorTemporal('iman') * (1 + this.totales.iman);
     const got = this.pickups.update(dt, px, pz, radius);
     if (got > 0) {
-      this.scrap += got;
+      this.scrap += got * (1 + this.totales.chatarra);
       this.xp += got;
       sfx('pickup');
       while (this.xp >= RUN.xpFor(this.level + this.pendingLevels)) {
@@ -1179,15 +1288,28 @@ export class Game {
       time: this.time, hp: this.hp, maxHp: this.maxHp, level: this.level, xp: this.xp,
       xpNext: RUN.xpFor(this.level + this.pendingLevels), kills: this.kills, scrap: this.scrap,
       weapons: [...this.weapons.levels.entries()], signal: this.enemies.countOf('baliza'),
+      recargas: [...this.weapons.levels.keys()].map((id) => this.weapons.recarga(id, this.mods)),
+      carga: this.contenido.cargaPilon,
+      bendiciones: this.resumenBendiciones(),
+      potencia: this.weapons.damageMul,
+      aguante: this.aguante,
       anchor: { x: (feet.x + 1) / 2 * window.innerWidth, y: (1 - feet.y) / 2 * window.innerHeight },
-      locked: isLocked(),
+      locked: isLocked() || !!this.demo,
       duracion: RUN.length,
       reliquias: this.save.relics.length + this.relicsFound.length,
       exposicion: this.contenido.exposicion,
       acido: this.world.acidoEn(px, pz),
       jefes: this.contenido.jefesHud,
-      jefeActivo: this.contenido.jefesHud.find((j) => j.vida !== undefined),
-      interaccion: this.contenido.interaccionNpc(px, pz),
+      jefeActivo: this.contenido.barraJefe,
+      interaccion: this.contenido.interaccionCofre(px, pz, this.scrap) ?? this.contenido.interaccionDuelo(px, pz)
+        ?? this.contenido.interaccionNpc(px, pz),
+      canon: {
+        nivel: this.canonNivel,
+        recarga: this.canonNivel ? this.canonCd / CANON.recarga[this.canonNivel - 1] : 0,
+        apuntando: this.apuntando,
+        // Con el ratón capturado siempre se ve la mira; en la demo, solo al apuntar.
+        mira: this.apuntando || isLocked(),
+      },
       zona: this.contenido.zonaDe(px, pz),
     });
     ui.drawMinimap({
@@ -1199,12 +1321,309 @@ export class Game {
         ...this.contenido.marcas,
       ],
       marca: this.contenido.marca,
+      puntos: this.puntosMapa,
       carta: this.world.carta(),
     });
+    this.numeros.dibujar(dt, this.camera);
 
     if (this.hp <= 0) return this.endRun(false);
     if (this.time >= RUN.length) return this.endRun(true);
-    if (this.pendingLevels > 0) this.levelUp();
+    // Primero las bendiciones (pilón o cofre), luego las subidas de nivel:
+    // nunca dos pantallas de elegir a la vez.
+    if (this.bendicionesPendientes.length) this.abrirBendicion();
+    else if (this.pendingLevels > 0) this.levelUp();
+  }
+
+  // ------------------------------------------------- Cofres, bendiciones y mapa
+
+  /** F: abre el cofre que tengas a mano (si te llega la chatarra) o empieza un duelo. */
+  private usarCofre() {
+    const p = this.player.position;
+    const coste = this.contenido.abrirCofre(p.x, p.z, this.scrap);
+    if (coste === -1 && this.contenido.empezarDuelo(p.x, p.z)) {
+      sfx('carga');
+      return;
+    }
+    if (coste === -2) {
+      sfx('sinChatarra');
+      document.querySelector('.h2-interaccion')?.animate(
+        [{ transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'translateX(0)' }],
+        { duration: 240 },
+      );
+      ui.toast('ADA', 'No nos llega la chatarra para este cofre. Recoge más.', 'info', 3);
+    } else if (coste >= 0) {
+      this.scrap -= coste;
+      sfx('cofre');
+    }
+  }
+
+  // ------------------------------------------------------------ Modo demo
+
+  /**
+   * Empieza (o vuelve a empezar) la demo: sin título ni horda, con una build
+   * de nivel medio, primero el Cancerbero y después el Dragón del Velo.
+   */
+  empezarDemo() {
+    this.destroyTitle?.();
+    this.destroyTitle = null;
+    this.introVista = true;
+    piloto.activo = true;
+    this.demo = { fase: 'preparar', t: 0 };
+    this.startRun();
+    this.contenido.prepararDemo();
+    this.enemies.clear();
+    // Pelea en un claro: lejos de ruinas que tapen la cámara.
+    const claro = this.world.lugarLibre(Math.random, [25, 80], 16) ?? { x: 0, z: 0 };
+    this.player.position.set(claro.x, this.world.heightAt(claro.x, claro.z), claro.z);
+    this.yaw = Math.atan2(claro.x, claro.z);
+    this.camara.fijar(this.yaw, this.pitch, this.player.position);
+    const build = [['cortador', 3], ['lanza', 2], ['mortero', 2], ['arco', 2]] as const;
+    for (const [id, nivel] of build) while (this.weapons.level(id) < nivel) this.weapons.upgrade(id);
+    this.canonNivel = 2;
+    this.maxHp = this.hp = 400;
+    this.mejorasTomadas = 4;
+    this.aplicarBendiciones();
+    alerta('Modo demo: el piloto automático juega por ti', 3);
+  }
+
+  /** Fases de la demo y el piloto: decide cómo moverse, esquivar y apuntar este fotograma. */
+  private avanzarDemo(dt: number) {
+    const d = this.demo!;
+    d.t += dt;
+    const p = this.player.position;
+    // Que no se acabe a medias: ADA remienda el traje si baja mucho.
+    if (this.hp < this.maxHp * 0.3) {
+      this.hp = this.maxHp * 0.7;
+      ui.toast('ADA', 'Remiendo de emergencia (solo en la demo).', 'info', 2);
+    }
+    const estado = this.contenido.estadoDemo;
+    if (d.fase === 'preparar' && d.t > 2.5) {
+      const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
+      this.contenido.invocarJefe('sabueso-helios', p.x + fx * 22, p.z + fz * 22, p.x, p.z);
+      d.fase = 'cancerbero';
+      d.t = 0;
+    } else if (d.fase === 'cancerbero' && estado.golem === 'caido') {
+      d.fase = 'pausa';
+      d.t = 0;
+      alerta('¡Cancerbero vencido! Ahora, el Dragón del Velo', 3);
+    } else if (d.fase === 'pausa' && d.t > 4) {
+      this.contenido.llamarDragon(p.x, p.z);
+      d.fase = 'dragon';
+      d.t = 0;
+    } else if (d.fase === 'dragon' && d.t > 3 && estado.dragon === 'nada') {
+      d.fase = 'fin';
+      d.t = 0;
+      alerta('¡Demo terminada! Se repite en unos segundos', 4);
+    } else if (d.fase === 'fin' && d.t > 8) {
+      this.empezarDemo();
+      return;
+    }
+
+    const s = pilotar({
+      x: p.x, y: p.y, z: p.z, t: this.time,
+      objetivo: this.contenido.objetivoPiloto, zonas: zonasActivas.values(), canon: this.canonNivel > 0,
+    });
+    if (s.yaw !== null) {
+      let giro = s.yaw - this.yaw;
+      giro = Math.atan2(Math.sin(giro), Math.cos(giro));
+      this.yaw += giro * Math.min(1, dt * (s.apuntar ? 6 : 2.5));
+    }
+    if (s.apuntar) this.miraAlta += (s.miraAlta - this.miraAlta) * Math.min(1, dt * 8);
+    // La dirección del mundo pasa a stick, relativa a la cámara (W es y = −1).
+    const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw), rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
+    piloto.x = s.mx * rx + s.mz * rz;
+    piloto.y = -(s.mx * fx + s.mz * fz);
+    piloto.teclas.clear();
+    if (s.esprintar) piloto.teclas.add('ShiftLeft');
+    if (s.apuntar) piloto.teclas.add('KeyZ');
+    if (s.disparar) piloto.teclas.add('KeyX');
+  }
+
+  // ------------------------------------------------------- Cañón solar
+
+  /** Apuntar, recargar, disparar y apagar los trazos de los disparos. */
+  private actualizarCanon(dt: number) {
+    this.apuntando = this.canonNivel > 0 && (ratonHeld(2) || isHeld('KeyZ'));
+    this.mezclaMira += ((this.apuntando ? 1 : 0) - this.mezclaMira) * Math.min(1, dt * 12);
+    this.canonCd = Math.max(0, this.canonCd - dt);
+    if (this.canonNivel > 0 && this.canonCd <= 0 && (isLocked() && ratonHeld(0) || isHeld('KeyX'))) this.disparar();
+    for (let i = this.trazos.length - 1; i >= 0; i--) {
+      const t = this.trazos[i];
+      t.t += dt;
+      const k = t.t / 0.14;
+      (t.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1 - k);
+      t.mesh.scale.x = t.mesh.scale.y = 0.16 * (1 - k * 0.6);
+      if (k >= 1) {
+        this.scene.remove(t.mesh);
+        (t.mesh.material as THREE.Material).dispose();
+        this.trazos.splice(i, 1);
+      }
+    }
+  }
+
+  /**
+   * Un disparo: rayo instantáneo desde la cámara por el centro de la mira.
+   * Acierta a lo primero que corte: horda, jefes, campeones o el dragón (su
+   * cabeza es punto débil). El trazo sale del hombro del astronauta.
+   */
+  private disparar() {
+    const n = this.canonNivel;
+    this.canonCd = CANON.recarga[n - 1];
+    const o = this.camera.position;
+    const d = this.camera.getWorldDirection(this.vMira);
+    let alcance: number = CANON.alcance;
+    const jefe = this.contenido.rayo(o, d, alcance);
+    if (jefe) alcance = jefe.t;
+    let enemigo = -1;
+    for (let i = 0; i < this.enemies.count; i++) {
+      if (this.enemies.hp[i] <= 0) continue;
+      const def = this.enemies.defOf(i);
+      const ex = this.enemies.x[i], ez = this.enemies.z[i];
+      const ey = this.world.heightAt(ex, ez) + Math.max(0.8, def.height * 0.8);
+      const t = rayoEsfera(o, d, ex, ey, ez, def.radius + 0.35);
+      if (t !== null && t < alcance) { alcance = t; enemigo = i; }
+    }
+    const crit = Math.random() < this.weapons.critico ? this.weapons.multCritico : 1;
+    const dano = CANON.dano[n - 1] * this.weapons.damageMul * crit;
+    const hx = o.x + d.x * alcance, hy = o.y + d.y * alcance, hz = o.z + d.z * alcance;
+    if (enemigo >= 0) {
+      this.enemies.hit(enemigo, dano, o.x, o.z, 0.6);
+      this.numeros.sumar(hx, hy, hz, dano, crit > 1);
+      marcarAcierto(false);
+    } else if (jefe) {
+      const causado = jefe.golpear(dano);
+      this.numeros.sumar(jefe.x, jefe.y, jefe.z, causado, crit > 1 || jefe.debil);
+      marcarAcierto(jefe.debil);
+    }
+    // Trazo de luz desde el hombro hasta donde ha dado.
+    const p = this.player.position;
+    const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw), rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
+    const boca = this.vPos.set(p.x + rx * 0.55 + fx * 0.4, p.y + 1.7, p.z + rz * 0.55 + fz * 0.4);
+    const mesh = new THREE.Mesh(this.geoTrazo, new THREE.MeshBasicMaterial({
+      color: '#ffe066', transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    mesh.position.copy(boca);
+    mesh.lookAt(hx, hy, hz);
+    mesh.scale.set(0.16, 0.16, Math.hypot(hx - boca.x, hy - boca.y, hz - boca.z));
+    this.scene.add(mesh);
+    this.trazos.push({ mesh, t: 0 });
+    if (this.apuntando) this.miraAlta += 0.008;
+    sfx('shot');
+  }
+
+  /** Cámara de apuntar: por encima del hombro derecho, mirando adonde apunta la mira. */
+  private camaraDeMira() {
+    if (this.mezclaMira < 0.001) return;
+    const p = this.player.position;
+    const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw), rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
+    const cp = Math.cos(this.miraAlta), sp = Math.sin(this.miraAlta);
+    const pos = this.vPos.set(p.x + rx * 1.1 - fx * 3.4 * cp, p.y + 2.5 - sp * 1.4, p.z + rz * 1.1 - fz * 3.4 * cp);
+    // Sin meterse dentro de ruinas ni rocas, ni bajo el suelo.
+    const fuera = this.world.resolve(pos.x, pos.z, 0.6, this.tmp);
+    pos.x = fuera.x;
+    pos.z = fuera.z;
+    pos.y = Math.max(pos.y, this.world.heightAt(pos.x, pos.z) + 0.6);
+    const mira = this.vMira.set(pos.x + fx * cp, pos.y + sp, pos.z + fz * cp);
+    this.mMira.lookAt(pos, mira, THREE.Object3D.DEFAULT_UP);
+    this.qMira.setFromRotationMatrix(this.mMira);
+    this.camera.position.lerp(pos, this.mezclaMira);
+    this.camera.quaternion.slerp(this.qMira, this.mezclaMira);
+  }
+
+  /** Abre la pantalla de bendición: una al azar (cofre) o a elegir (pilón). */
+  private abrirBendicion() {
+    const pendiente = this.bendicionesPendientes.shift()!;
+    // La suerte sube con el minuto: lo de los últimos minutos sale mejor.
+    const suerte = pendiente.suerte + this.time / RUN.length * 0.6;
+    const opciones = tirarBendiciones(Math.random, Math.max(1, pendiente.elegir), suerte);
+    // En la demo no se para a elegir: se queda la más rara.
+    if (this.demo) {
+      this.sumarBendicion(opciones.reduce((a, b) => RAREZAS[b.rareza].indice > RAREZAS[a.rareza].indice ? b : a));
+      return;
+    }
+    this.state = 'levelup';
+    this.expectUnlock = isLocked();
+    unlockPointer();
+    sfx(pendiente.elegir > 1 ? 'carga' : 'cofre');
+    const cofre = pendiente.elegir <= 1;
+    mostrarMejoras(this.level, opciones.map((b) => {
+      const def = BENDICIONES[b.id];
+      const rareza = RAREZAS[b.rareza];
+      return {
+        id: def.icono, tipo: 'bendicion' as const, titulo: def.nombre, texto: describir(b), color: rareza.color,
+        rareza: { id: b.rareza, nombre: rareza.nombre, color: rareza.color },
+      };
+    }), (i) => {
+      this.sumarBendicion(opciones[i]);
+      this.state = 'playing';
+      this.clock.getDelta();
+      lockPointer(this.canvas);
+    }, {
+      titulo: cofre ? '¡COFRE ABIERTO!' : '¡PILÓN CARGADO!',
+      frase: cofre
+        ? 'ADA ha pirateado el cofre. Esto había dentro: tócalo para quedártelo.'
+        : 'El pilón ha cargado el traje. Elige una bendición para el resto del sector.',
+    });
+  }
+
+  private sumarBendicion(b: Bendicion) {
+    this.bendiciones.push(b);
+    this.totales[b.id] += b.valor;
+    if (b.id === 'vida') {
+      this.maxHp += b.valor;
+      this.hp = Math.min(this.maxHp, this.hp + b.valor);
+    }
+    this.aplicarBendiciones();
+    ui.toast('ADA', `${BENDICIONES[b.id].nombre} (${RAREZAS[b.rareza].nombre.toLowerCase()}): ${describir(b)}`, 'info', 4);
+  }
+
+  /** Lo que las bendiciones cambian en las herramientas (el resto se lee al usarlo). */
+  private aplicarBendiciones() {
+    this.weapons.damageMul = this.heroDamageMul * (1 + this.totales.dano) * this.potencia;
+    this.weapons.critico = 0.05 + this.totales.critico;
+  }
+
+  /** Multiplicador de daño que dan las mejoras elegidas al subir de nivel. */
+  private get potencia() {
+    return 1 + ESCALADO.porMejora * this.mejorasTomadas;
+  }
+
+  /** Una ficha por tipo de bendición, con el color de la mejor rareza que tengas. */
+  private resumenBendiciones() {
+    const porTipo = new Map<BendicionId, Bendicion[]>();
+    for (const b of this.bendiciones) porTipo.set(b.id, [...(porTipo.get(b.id) ?? []), b]);
+    return [...porTipo.entries()].map(([id, lista]) => {
+      const mejor = lista.reduce((a, b) => RAREZAS[b.rareza].indice > RAREZAS[a.rareza].indice ? b : a);
+      const total = lista.reduce((s, b) => ({ ...s, valor: s.valor + b.valor }), { ...mejor, valor: 0 });
+      return {
+        id, icono: BENDICIONES[id].icono, color: RAREZAS[mejor.rareza].color, n: lista.length,
+        titulo: `${BENDICIONES[id].nombre}: ${describir(total)}`,
+      };
+    });
+  }
+
+  /** M: el mapa del sector. La partida espera mientras está abierto. */
+  private abrirMapaSector() {
+    this.state = 'mapa';
+    this.expectUnlock = isLocked();
+    unlockPointer();
+    const p = this.player.position;
+    abrirMapa({
+      jugador: { x: p.x, z: p.z, yaw: this.yaw },
+      carta: this.world.carta(),
+      arena: RUN.arena,
+      lugares: this.contenido.marcas,
+      nave: this.world.nave,
+      cohete: this.world.padPosition,
+      zona: this.contenido.zonaDe(p.x, p.z),
+      puntos: this.puntosMapa,
+    }, (puntos) => {
+      this.puntosMapa = puntos;
+      endFrame();
+      this.state = 'playing';
+      this.clock.getDelta();
+      lockPointer(this.canvas);
+    });
   }
 
   private movePlayer(dt: number) {
@@ -1234,8 +1653,21 @@ export class Game {
     if (this.propulsando && mochilaNv >= 3) equipo *= 1.25;
 
     const vadeo = this.world.acidoEn(p.x, p.z) > 0 ? 0.6 : 1;
-    const maxSpeed = this.heroSpeed * MOVE.speedMul * (1 + 0.1 * this.passive('velocidad')) * overdrive * equipo
-      * vadeo * this.factorTemporal('velocidad');
+    // Sprint: mantener Shift corre más mientras dure el aguante. Agotado, no
+    // vuelve a correr hasta recuperar un tercio (sin parpadeos de sprint).
+    const quiereCorrer = isHeld('ShiftLeft', 'ShiftRight') && pidiendo && !this.montado && !this.apuntando;
+    if (quiereCorrer && this.aguante > (this.esprintando ? 0 : MOVE.aguanteMinimo)) {
+      this.esprintando = true;
+      this.aguante = Math.max(0, this.aguante - dt / MOVE.aguanteSegundos);
+      this.descansoAguante = 0;
+    } else {
+      this.esprintando = false;
+      this.descansoAguante += dt;
+      if (this.descansoAguante > MOVE.aguantePausa) this.aguante = Math.min(1, this.aguante + dt / MOVE.aguanteRecarga);
+    }
+    const sprint = this.esprintando ? MOVE.sprintMul : 1;
+    const maxSpeed = this.heroSpeed * MOVE.speedMul * (1 + 0.1 * this.passive('velocidad') + this.totales.velocidad) * overdrive * equipo
+      * vadeo * this.factorTemporal('velocidad') * sprint * (this.apuntando ? 0.6 : 1);
     // W avanza hacia donde mira la cámara; A y D van de lado.
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
@@ -1273,7 +1705,11 @@ export class Game {
       this.velZ += (wishZ * maxSpeed - this.velZ) * k;
     }
 
-    const r = this.world.resolve(p.x + this.velX * dt, p.z + this.velZ * dt, PLAYER_RADIUS, this.tmp);
+    // El empuje de los jefes se suma al movimiento y se apaga en medio segundo.
+    const r = this.world.resolve(p.x + (this.velX + this.empujeX) * dt, p.z + (this.velZ + this.empujeZ) * dt, PLAYER_RADIUS, this.tmp);
+    const freno = Math.exp(-dt * 4);
+    this.empujeX *= freno;
+    this.empujeZ *= freno;
     p.x = r.x;
     p.z = r.z;
     const ground = this.world.heightAt(p.x, p.z);
@@ -1346,6 +1782,7 @@ export class Game {
         : this.propulsando ? 'Volar'
         : this.montado ? 'Surfear'
         : !this.grounded ? 'Saltar'
+        : this.esprintando && hSpeed > 8 ? 'Esprintar'
         : hSpeed > 3.6 ? 'Correr'
         : hSpeed > 0.4 ? 'Caminar' : 'Reposo';
       this.animarAstronauta(clip);
@@ -1353,8 +1790,11 @@ export class Game {
       const accion = this.acciones.get(clip)!;
       if (clip === 'Caminar') accion.timeScale = Math.max(0.6, hSpeed / 2.6);
       else if (clip === 'Correr') accion.timeScale = Math.max(0.8, hSpeed / 5.5);
-      if (hSpeed > 0.4) {
-        let giro = Math.atan2(this.velX, this.velZ) - this.rumbo;
+      else if (clip === 'Esprintar') accion.timeScale = Math.max(0.9, hSpeed / 10);
+      // Apuntando, mira hacia donde apunta la cámara; si no, hacia donde va.
+      if (this.apuntando || hSpeed > 0.4) {
+        const hacia = this.apuntando ? Math.atan2(-Math.sin(this.yaw), -Math.cos(this.yaw)) : Math.atan2(this.velX, this.velZ);
+        let giro = hacia - this.rumbo;
         giro = Math.atan2(Math.sin(giro), Math.cos(giro));
         this.rumbo += giro * Math.min(1, dt * 12);
       }
@@ -1421,9 +1861,10 @@ export class Game {
       yaw: this.yaw,
       pitch: this.pitch,
       amenazas,
-      fovBase: this.baseFov,
+      fovBase: this.baseFov + (this.esprintando ? 5 : 0) - 16 * this.mezclaMira,
       escalaSacudida,
     });
+    this.camaraDeMira();
     // Disparo del pulso: trauma menor al del daño.
     const dmgPulso = this.weapons.damageDealt.pulso;
     if (dmgPulso > this.lastPulsoDmg) this.camara.sacudidaPulso();
@@ -1606,6 +2047,7 @@ export class Game {
   private levelUp() {
     this.pendingLevels--;
     this.level++;
+    if (this.demo) return;
     this.companero.alSubirNivel();
     if (this.heroSpecial === 'pulso-ada') this.activateAdaPulse();
     this.state = 'levelup';
@@ -1614,6 +2056,10 @@ export class Game {
     sfx('level');
     ui.showLevelUp(this.level, this.rollChoices(), (choice) => {
       this.registrarEleccion(choice);
+      if (choice.kind !== 'heal') {
+        this.mejorasTomadas++;
+        this.aplicarBendiciones();
+      }
       if (choice.kind === 'weapon') this.weapons.upgrade(choice.id);
       else if (choice.kind === 'gear') this.equipar(choice.id, choice.level);
       else if (choice.kind === 'passive') {
@@ -1648,7 +2094,7 @@ export class Game {
   /** DPS real de la build actual (para el director elástico). */
   private dpsActual(): number {
     return dpsBuild(new Map(this.weapons.levels), new Map(this.passives), TABLA_ARMAS, this.enemies.count)
-      * this.heroDamageMul;
+      * this.weapons.damageMul;
   }
 
   /** Memoria de tiradas: rechazos, última oferta y última arma elegida. */
@@ -1791,4 +2237,15 @@ export class Game {
       weapons: [...this.weapons.levels.entries()],
     }, () => this.startRun(), () => this.toTitle());
   }
+}
+
+/** Distancia a lo largo del rayo (o + d·t, d unitario) hasta la esfera, o null si no la toca. */
+function rayoEsfera(o: THREE.Vector3, d: THREE.Vector3, x: number, y: number, z: number, r: number) {
+  const ox = o.x - x, oy = o.y - y, oz = o.z - z;
+  const b = ox * d.x + oy * d.y + oz * d.z;
+  const c = ox * ox + oy * oy + oz * oz - r * r;
+  const disc = b * b - c;
+  if (disc < 0) return null;
+  const t = -b - Math.sqrt(disc);
+  return t >= 0 ? t : null;
 }

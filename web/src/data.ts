@@ -1,7 +1,7 @@
 // Todo el diseño del juego vive aquí: armas, mejoras, enemigos y reliquias.
 // Equilibrar es tocar números en este archivo, no lógica.
 
-export type WeaponId = 'cortador' | 'pulso' | 'dron' | 'interferencia';
+export type WeaponId = 'cortador' | 'pulso' | 'dron' | 'interferencia' | 'lanza' | 'arco' | 'mortero';
 export type EnemyId = 'recolector' | 'baliza' | 'segador' | 'saltador' | 'avispa' | 'caparazon' | 'sembrador';
 export type PassiveId = 'velocidad' | 'iman' | 'blindaje' | 'enfriamiento' | 'area' | 'reparacion';
 export type GearId = 'mochila' | 'tabla' | 'botas';
@@ -14,12 +14,31 @@ export interface WeaponLevel {
   cooldown: number;   // segundos entre usos
   count: number;      // proyectiles, drones o pulsos simultáneos
   area: number;       // radio o alcance en metros
+  /** Cuántos enemigos extra atraviesa el proyectil (solo cortador). */
+  pierce?: number;
   /** Factor de velocidad que deja al enemigo (1 = sin freno). Solo interferencia. */
   slowFactor?: number;
-  /** Segundos que dura el freno de este nivel. Solo interferencia. */
+  /** Segundos que dura el freno de este nivel. Interferencia y arco. */
   slowTime?: number;
+  /** Saltos de enemigo a enemigo de cada descarga (solo arco). */
+  saltos?: number;
+  /** Segundos que arde el charco de plasma tras la explosión (solo mortero). */
+  charco?: number;
   /** Qué cambia respecto al nivel anterior, para la pantalla de subida. */
   mejora?: string;
+}
+
+/**
+ * Escalado del daño. Cada nivel de una herramienta multiplica su daño por
+ * golpe (los DPS de los comentarios de WEAPONS son antes de esto), y cada
+ * mejora elegida al subir de nivel suma potencia a todas: cuanto mejor es la
+ * build, más pegan los números. Va a la par con la vida de los enemigos.
+ */
+export const ESCALADO = { porNivel: 0.2, porMejora: 0.025 };
+
+/** Multiplicador de daño por golpe de una herramienta a ese nivel (1 en el primero). */
+export function factorNivel(nivel: number) {
+  return 1 + ESCALADO.porNivel * Math.max(0, nivel - 1);
 }
 
 export interface WeaponDef {
@@ -42,20 +61,20 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     blurb: 'La herramienta de muestreo del taladro. Dispara al Recolector más cercano.',
     rol: 'Precisión: daño monobjetivo a larga distancia. Tu respuesta contra Segadores y objetivos duros.',
     levels: [
-      // DPS monobjetivo: 20.0
-      { damage: 12, cooldown: 0.6, count: 1, area: 16, mejora: 'Cuchilla de muestreo: un corte por descarga.' },
-      // DPS: 25.5 (+27 %). Arregla el nivel muerto original (era −15 %).
-      { damage: 14, cooldown: 0.55, count: 1, area: 17, mejora: 'Filamento estable: +daño y recarga más rápida.' },
-      // DPS: 43.6 (+71 %: segunda cuchilla).
-      { damage: 12, cooldown: 0.55, count: 2, area: 18, mejora: 'Cuchilla gemela: dispara a dos objetivos.' },
-      // DPS: 56.0 (+28 %).
-      { damage: 14, cooldown: 0.5, count: 2, area: 19, mejora: 'Corte profundo: +daño por cuchilla.' },
-      // DPS: 89.4 (+60 %: tercera cuchilla).
-      { damage: 14, cooldown: 0.47, count: 3, area: 20, mejora: 'Triple haz: dispara a tres objetivos.' },
-      // DPS: 120.0 (+34 %). El cortador sigue siendo el rey monobjetivo a
-      // larga distancia (frente a 157.1 original: −24 %, potencia movida al
-      // resto de herramientas para que todas sean viables).
-      { damage: 16, cooldown: 0.4, count: 3, area: 22, mejora: 'Plasma sobrecargado: máxima cadencia y alcance.' },
+      // DPS monobjetivo: 21.8. Rayo único, cadencia base.
+      { damage: 12, cooldown: 0.55, count: 1, area: 16, mejora: 'Cuchilla de muestreo: un corte por descarga.' },
+      // DPS: 26.7 (+22 %). La cadencia se nota desde el segundo nivel.
+      { damage: 12, cooldown: 0.45, count: 1, area: 17, mejora: 'Gatillo rápido: dispara mucho más a menudo.' },
+      // DPS: 48.9 (+83 %: segunda cuchilla).
+      { damage: 11, cooldown: 0.45, count: 2, area: 18, mejora: 'Cuchilla gemela: dispara a dos objetivos.' },
+      // DPS: 60.0 (+23 %) + perfora un enemigo extra.
+      { damage: 12, cooldown: 0.4, count: 2, area: 19, pierce: 1, mejora: 'Corte profundo: atraviesa un enemigo extra.' },
+      // DPS: 100.0 (+67 %: tercera cuchilla y más cadencia).
+      { damage: 12, cooldown: 0.36, count: 3, area: 20, pierce: 1, mejora: 'Triple haz: tres cortes por descarga.' },
+      // DPS: 150.0 (+50 %). Lluvia de plasma: cuatro cuchillas que atraviesan
+      // filas enteras. Se queda por debajo del pulso contra cinco (164): el
+      // cortador manda contra jefes, el área contra la horda.
+      { damage: 12, cooldown: 0.32, count: 4, area: 22, pierce: 2, mejora: 'Plasma sobrecargado: cuatro cortes perforantes.' },
     ],
   },
   pulso: {
@@ -65,18 +84,20 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     blurb: 'ADA descarga el condensador del traje. Daña todo lo que hay alrededor.',
     rol: 'Área: explosión que limpia multitudes. Cuantos más enemigos, mejor rinde.',
     levels: [
-      // DPS por enemigo: 5.3 (con 5 enemigos: 26.7).
-      { damage: 16, cooldown: 3.0, count: 1, area: 4.5, mejora: 'Descarga básica de ADA.' },
-      // 6.9 (+29 %).
-      { damage: 20, cooldown: 2.9, count: 1, area: 5.2, mejora: 'Condensador mayor: +daño y +radio.' },
-      // 8.9 (+29 %).
-      { damage: 24, cooldown: 2.7, count: 1, area: 6.0, mejora: 'Bobina doble: la onda llega más lejos.' },
-      // 12.0 (+35 %).
-      { damage: 30, cooldown: 2.5, count: 1, area: 6.8, mejora: 'Sobrecarga contenida: +daño de explosión.' },
-      // 17.3 (+44 %).
-      { damage: 38, cooldown: 2.2, count: 1, area: 7.6, mejora: 'Ciclo rápido: recarga mucho antes.' },
-      // 24.2 (+40 %; con 5 enemigos: 121, supera al cortador contra multitudes).
-      { damage: 46, cooldown: 1.9, count: 1, area: 8.5, mejora: 'Tormenta EMP: la onda cubre media pantalla.' },
+      // DPS por enemigo: 6.2 (con 5 enemigos: 30.8). Doble onda desde el nivel 5.
+      { damage: 16, cooldown: 2.6, count: 1, area: 4.5, mejora: 'Descarga básica de ADA.' },
+      // 8.0 (+29 %).
+      { damage: 20, cooldown: 2.5, count: 1, area: 5.2, mejora: 'Condensador mayor: +daño y +radio.' },
+      // 10.4 (+30 %).
+      { damage: 24, cooldown: 2.3, count: 1, area: 6.0, mejora: 'Bobina doble: la onda llega más lejos.' },
+      // 14.3 (+37 %).
+      { damage: 30, cooldown: 2.1, count: 1, area: 6.8, mejora: 'Sobrecarga contenida: +daño de explosión.' },
+      // 21.1 (+48 %) + eco: una segunda onda al 70 % del radio remata con el
+      // 40 % del daño (29.6 cerca del jugador).
+      { damage: 38, cooldown: 1.8, count: 1, area: 7.6, mejora: 'Eco de ADA: una segunda onda remata lo que queda cerca.' },
+      // 32.9 (+56 %; 46 con el eco; con 5 enemigos: 164, supera al cortador
+      // contra multitudes).
+      { damage: 46, cooldown: 1.4, count: 1, area: 8.5, mejora: 'Tormenta EMP: doble onda que cubre media pantalla.' },
     ],
   },
   dron: {
@@ -86,18 +107,18 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     blurb: 'Un inspector de turbina reprogramado. Orbita a tu alrededor y golpea.',
     rol: 'Compañía: daño constante sin apuntar. Te protege mientras corres y recoges.',
     levels: [
-      // DPS por enemigo en contacto: 17.8.
-      { damage: 8, cooldown: 0.45, count: 1, area: 2.6, mejora: 'Un inspector zumbando a tu lado.' },
-      // 21.4 (+20 %) + segundo dron (doble cobertura orbital).
-      { damage: 9, cooldown: 0.42, count: 2, area: 2.8, mejora: 'Segundo dron: cubren más flancos.' },
-      // 27.5 (+28 %).
-      { damage: 11, cooldown: 0.4, count: 2, area: 3.0, mejora: 'Rotores afilados: +daño por golpe.' },
-      // 34.2 (+24 %) + tercer dron.
-      { damage: 13, cooldown: 0.38, count: 3, area: 3.2, mejora: 'Tercer dron: órbita completa.' },
-      // 42.9 (+25 %).
-      { damage: 15, cooldown: 0.35, count: 3, area: 3.4, mejora: 'Enjambre sincronizado: golpean más rápido.' },
-      // 56.3 (+31 %) + cuarto dron.
-      { damage: 18, cooldown: 0.32, count: 4, area: 3.6, mejora: 'Escuadrilla completa: cuatro inspectores.' },
+      // DPS por enemigo en contacto: 19.5.
+      { damage: 8, cooldown: 0.41, count: 1, area: 2.6, mejora: 'Un inspector zumbando a tu lado.' },
+      // 23.7 (+21 %) + segundo dron (doble cobertura orbital).
+      { damage: 9, cooldown: 0.38, count: 2, area: 2.8, mejora: 'Segundo dron: cubren más flancos.' },
+      // 30.6 (+29 %).
+      { damage: 11, cooldown: 0.36, count: 2, area: 3.0, mejora: 'Rotores afilados: +daño por golpe.' },
+      // 39.4 (+29 %) + tercer dron.
+      { damage: 13, cooldown: 0.33, count: 3, area: 3.2, mejora: 'Tercer dron: órbita completa.' },
+      // 50.0 (+27 %).
+      { damage: 15, cooldown: 0.3, count: 3, area: 3.4, mejora: 'Enjambre sincronizado: golpean más rápido.' },
+      // 69.2 (+38 %) + cuarto dron.
+      { damage: 18, cooldown: 0.26, count: 4, area: 3.6, mejora: 'Escuadrilla completa: cuatro inspectores.' },
     ],
   },
   interferencia: {
@@ -107,19 +128,85 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     blurb: 'Ruido de radio a máxima potencia. Frena y desgasta a lo que entra.',
     rol: 'Control: zona que frena y desgasta. Aguanta dentro y la horda se deshace.',
     levels: [
-      // DPS por enemigo: 8.0 + freno ×0.55 durante 0.6 s.
-      { damage: 4, cooldown: 0.5, count: 1, area: 2.6, slowFactor: 0.55, slowTime: 0.6, mejora: 'Estática que frena al que entra.' },
-      // 10.0 (+25 %).
-      { damage: 5, cooldown: 0.5, count: 1, area: 3.0, slowFactor: 0.52, slowTime: 0.7, mejora: 'Más ancho de banda: +radio y +daño.' },
-      // 13.3 (+33 %).
-      { damage: 6, cooldown: 0.45, count: 1, area: 3.4, slowFactor: 0.5, slowTime: 0.8, mejora: 'Ruido denso: frena más fuerte.' },
-      // 17.8 (+33 %).
-      { damage: 8, cooldown: 0.45, count: 1, area: 3.8, slowFactor: 0.47, slowTime: 0.9, mejora: 'Interferencia total en la zona.' },
-      // 25.0 (+41 %).
-      { damage: 10, cooldown: 0.4, count: 1, area: 4.2, slowFactor: 0.44, slowTime: 1.0, mejora: 'La horda casi se detiene dentro.' },
-      // 37.1 (+49 %). Radio 4.8 frente a 8.5 del pulso: exige aguantar cerca,
+      // DPS por enemigo: 8.9 + freno ×0.55 durante 0.6 s.
+      { damage: 4, cooldown: 0.45, count: 1, area: 2.6, slowFactor: 0.55, slowTime: 0.6, mejora: 'Estática que frena al que entra.' },
+      // 11.9 (+33 %).
+      { damage: 5, cooldown: 0.42, count: 1, area: 3.0, slowFactor: 0.52, slowTime: 0.7, mejora: 'Más ancho de banda: +radio y +daño.' },
+      // 15.8 (+33 %).
+      { damage: 6, cooldown: 0.38, count: 1, area: 3.4, slowFactor: 0.5, slowTime: 0.8, mejora: 'Ruido denso: frena más fuerte.' },
+      // 22.9 (+45 %).
+      { damage: 8, cooldown: 0.35, count: 1, area: 3.8, slowFactor: 0.47, slowTime: 0.9, mejora: 'Interferencia total en la zona.' },
+      // 33.3 (+46 %).
+      { damage: 10, cooldown: 0.3, count: 1, area: 4.2, slowFactor: 0.44, slowTime: 1.0, mejora: 'La horda casi se detiene dentro.' },
+      // 50.0 (+50 %). Radio 4.8 frente a 8.5 del pulso: exige aguantar cerca,
       // por eso su DPS en zona supera al del pulso (prima de riesgo).
-      { damage: 13, cooldown: 0.35, count: 1, area: 4.8, slowFactor: 0.4, slowTime: 1.2, mejora: 'Apagón de HELIOS: freno y desgaste máximos.' },
+      { damage: 13, cooldown: 0.26, count: 1, area: 4.8, slowFactor: 0.4, slowTime: 1.2, mejora: 'Apagón de HELIOS: freno y desgaste máximos.' },
+    ],
+  },
+  // Las tres de área: cada una castiga a la horda amontonada de una forma
+  // distinta (desde arriba, en cadena o con un charco que arde).
+  lanza: {
+    id: 'lanza',
+    name: 'Lanza solar',
+    color: '#ffe066',
+    blurb: 'ARES-IX concentra el sol en órbita y lo deja caer donde más HELIOS se amontona.',
+    rol: 'Área a distancia: golpes enormes desde el cielo sobre los grupos. Rompe cercos antes de que lleguen.',
+    levels: [
+      // Por enemigo dentro del círculo: 12.5 (aviso de 0,55 s antes del golpe).
+      { damage: 30, cooldown: 2.4, count: 1, area: 2.6, mejora: 'Un rayo de sol cae sobre el grupo más denso.' },
+      // 17.3 (+38 %).
+      { damage: 38, cooldown: 2.2, count: 1, area: 2.9, mejora: 'Lente afinada: +daño y +radio.' },
+      // 32.4 (+87 %: segundo rayo, a otro grupo).
+      { damage: 34, cooldown: 2.1, count: 2, area: 3.1, mejora: 'Doble foco: dos rayos a dos grupos.' },
+      // 46.3 (+43 %).
+      { damage: 44, cooldown: 1.9, count: 2, area: 3.4, mejora: 'Espejos en órbita: +daño y +radio.' },
+      // 81.2 (+75 %: tercer rayo).
+      { damage: 46, cooldown: 1.7, count: 3, area: 3.7, mejora: 'Tres soles: tres rayos por descarga.' },
+      // 154.7 (+90 %). Mediodía: cuatro columnas de luz que barren el campo.
+      { damage: 58, cooldown: 1.5, count: 4, area: 4.2, mejora: 'Mediodía en Meta: cuatro rayos enormes.' },
+    ],
+  },
+  arco: {
+    id: 'arco',
+    name: 'Arco de ADA',
+    color: '#8ad7ff',
+    blurb: 'ADA suelta el condensador en un rayo que salta de máquina en máquina y las deja aturdidas.',
+    rol: 'Cadena: limpia filas sin apuntar y frena un instante a todo lo que toca.',
+    levels: [
+      // Daño total por descarga si encadena todos los saltos: 9 × 4 = 36 (32.7/s).
+      { damage: 9, cooldown: 1.1, count: 1, area: 5, saltos: 3, slowFactor: 0.25, slowTime: 0.35, mejora: 'Una descarga que salta tres veces.' },
+      // 50.0/s (+53 %).
+      { damage: 10, cooldown: 1.0, count: 1, area: 5.5, saltos: 4, slowFactor: 0.25, slowTime: 0.35, mejora: 'Un salto más y más alcance entre objetivos.' },
+      // 69.5/s (+39 %).
+      { damage: 11, cooldown: 0.95, count: 1, area: 6, saltos: 5, slowFactor: 0.22, slowTime: 0.4, mejora: 'Bobina caliente: seis máquinas por descarga.' },
+      // 146.7/s (+111 %: segunda cadena).
+      { damage: 11, cooldown: 0.9, count: 2, area: 6, saltos: 5, slowFactor: 0.22, slowTime: 0.4, mejora: 'Doble arco: dos cadenas a la vez.' },
+      // 227.5/s (+55 %).
+      { damage: 13, cooldown: 0.8, count: 2, area: 6.5, saltos: 6, slowFactor: 0.2, slowTime: 0.45, mejora: 'Tormenta seca: más saltos y más daño.' },
+      // 416.0/s (+83 %) si todas las cadenas encuentran objetivo: solo pasa
+      // en plena horda; contra un jefe solo pega el primer eslabón.
+      { damage: 13, cooldown: 0.75, count: 3, area: 7, saltos: 7, slowFactor: 0.18, slowTime: 0.5, mejora: 'Red de ADA: tres cadenas de ocho saltos.' },
+    ],
+  },
+  mortero: {
+    id: 'mortero',
+    name: 'Mortero de chatarra',
+    color: '#ff7a45',
+    blurb: 'Bombas de chatarra con núcleo de plasma: estallan y dejan el suelo ardiendo.',
+    rol: 'Explosiones: daño de área con empuje y un charco que sigue quemando. Ideal para pasillos y cercos.',
+    levels: [
+      // Por enemigo en la explosión: 12.2, más el charco (25 % cada 0,4 s).
+      { damage: 22, cooldown: 1.8, count: 1, area: 2.4, charco: 1.5, mejora: 'Una bomba que estalla y arde.' },
+      // 15.3 (+25 %).
+      { damage: 26, cooldown: 1.7, count: 1, area: 2.7, charco: 1.5, mejora: 'Carga mayor: +daño y +radio.' },
+      // 30.0 (+96 %: segunda bomba).
+      { damage: 24, cooldown: 1.6, count: 2, area: 2.9, charco: 2, mejora: 'Tubo doble: dos bombas por descarga.' },
+      // 40.0 (+33 %).
+      { damage: 30, cooldown: 1.5, count: 2, area: 3.1, charco: 2.5, mejora: 'Plasma espeso: el charco dura más.' },
+      // 68.6 (+71 %: tercera bomba).
+      { damage: 32, cooldown: 1.4, count: 3, area: 3.3, charco: 2.5, mejora: 'Ráfaga de tres: cubre todo el frente.' },
+      // 133.3 (+94 %). Bombardeo: cuatro bombas y charcos de tres segundos.
+      { damage: 40, cooldown: 1.2, count: 4, area: 3.6, charco: 3, mejora: 'Bombardeo: cuatro bombas y charcos enormes.' },
     ],
   },
 };
@@ -169,6 +256,9 @@ export const SINERGIAS: Record<WeaponId, { alta: PassiveId[]; media: PassiveId[]
   pulso: { alta: ['area', 'enfriamiento'], media: ['velocidad', 'blindaje'] },
   dron: { alta: ['velocidad', 'area'], media: ['enfriamiento', 'blindaje', 'reparacion'] },
   interferencia: { alta: ['area', 'blindaje', 'reparacion'], media: ['enfriamiento', 'velocidad'] },
+  lanza: { alta: ['area', 'enfriamiento'], media: ['velocidad', 'iman'] },
+  arco: { alta: ['enfriamiento', 'area'], media: ['velocidad', 'reparacion'] },
+  mortero: { alta: ['area', 'enfriamiento'], media: ['blindaje', 'velocidad'] },
 };
 
 /** DPS monobjetivo teórico de un nivel de arma (daño × count / recarga). */
@@ -189,19 +279,22 @@ export interface EnemyDef {
   blurb: string;
 }
 
+// Vida ×1,35 respecto a la primera versión, a la par con el escalado del
+// daño (ESCALADO). Medido con el bot que elige al azar, 5 partidas cada uno:
+// antes ganaba 3 de 5; así gana 2 de 5 (media 385 s); con ×1,8 no ganaba ninguna.
 export const ENEMIES: Record<EnemyId, EnemyDef> = {
   recolector: {
-    id: 'recolector', name: 'Recolector', hp: 10, speed: 3.1, damage: 10, radius: 0.55,
+    id: 'recolector', name: 'Recolector', hp: 14, speed: 3.1, damage: 10, radius: 0.55,
     scrap: 1, height: 0.7,
     blurb: 'Dron de extracción. Va directo a por la señal de ADA.',
   },
   baliza: {
-    id: 'baliza', name: 'Baliza', hp: 8, speed: 1.6, damage: 0, radius: 0.5,
+    id: 'baliza', name: 'Baliza', hp: 11, speed: 1.6, damage: 0, radius: 0.5,
     scrap: 4, height: 2.6,
     blurb: 'No ataca. Triangula la señal: mientras viva, llegan más Recolectores.',
   },
   segador: {
-    id: 'segador', name: 'Segador', hp: 260, speed: 2.1, damage: 30, radius: 1.3,
+    id: 'segador', name: 'Segador', hp: 350, speed: 2.1, damage: 30, radius: 1.3,
     scrap: 25, height: 1.2,
     blurb: 'Una cosechadora agrícola de siglos. Lenta, enorme, y suelta reliquias.',
   },
@@ -289,6 +382,11 @@ export const MOVE = {
   jetCeiling: 9,     // m sobre el suelo: más arriba ya no sube
   dashDist: 7,       // m que recorre el acelerón de las botas
   dashTime: 0.2,     // s que dura
+  sprintMul: 1.45,   // Shift: cuánto más rápido se corre
+  aguanteSegundos: 4, // s de sprint con el aguante lleno
+  aguanteRecarga: 2.5, // s para recuperarlo entero
+  aguantePausa: 0.5, // s sin correr antes de empezar a recuperarlo
+  aguanteMinimo: 0.3, // agotado, hace falta esto para volver a correr
   coyote: 0.12,      // s de perdón al salir de una loma
   buffer: 0.15,      // s de salto anticipado antes de tocar suelo
 };

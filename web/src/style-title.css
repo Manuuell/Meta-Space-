@@ -200,6 +200,17 @@ button.ms-pill:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .ms-tile--codex { grid-area: codex; flex-direction: column; justify-content: center; text-align: center; background: linear-gradient(150deg, #e25aa8, #a93d91); }
 .ms-tile--codex .ms-tile__icon { width: 58px; height: 58px; border-radius: 50%; font-size: 25px; }
 .ms-tile--codex b { font-size: 21px; }
+/* Los iconos del menú son SVG del mismo idioma que los modelos (ver
+ * iconos.ts): rellenan su medallón en vez de depender de la fuente. */
+.ms-tile__icon .icono { width: 100%; height: 100%; display: block; }
+.ms-event-card__icon .icono, .ms-contract-card > span:first-child .icono { width: 30px; height: 30px; display: block; }
+.ms-dock i .icono { width: 24px; height: 24px; display: block; }
+.ms-pill i .icono { width: 18px; height: 18px; display: block; }
+.ms-pill--icon .icono { width: 24px; height: 24px; display: block; }
+.ms-resource b .icono, .ms-hero-chip span .icono { width: 16px; height: 16px; vertical-align: -3px; }
+.ms-panel-banner > span .icono { width: 34px; height: 34px; display: block; }
+.ms-panel-tabs .icono, .ms-panel-region > span .icono { width: 22px; height: 22px; display: block; }
+.ms-rank-icon .icono { width: 24px; height: 24px; display: block; }
 @media (hover:hover) and (pointer:fine) {
   .ms-tile:hover { transform: translateY(-2px); filter: brightness(1.1); box-shadow: 0 9px 0 rgba(14, 16, 40, .48), 0 14px 24px rgba(9, 9, 28, .25); }
   .ms-panel-action:hover { filter: brightness(1.1); transform: translateY(-1px); }

@@ -4,12 +4,16 @@ import type { Modelo } from './modelos/kit.ts';
 import { crearAltarJefe } from './modelos/altar-jefe.ts';
 import { crearAltarDesafio } from './modelos/altar-desafio.ts';
 import { crearCaja } from './modelos/caja-premio.ts';
+import { crearPilonCarga } from './modelos/pilon-carga.ts';
 import { crearRefugio } from './modelos/refugio.ts';
 import { crearTorreVelo } from './modelos/torre-velo.ts';
 import { crearNpcMecanica } from './modelos/npc-mecanica.ts';
 import { crearNpcVigia } from './modelos/npc-vigia.ts';
 import { crearNpcBotanica } from './modelos/npc-botanica.ts';
 import { crearSegadorJefe, TIEMPOS_JEFE_COSECHA } from './modelos/segador-jefe.ts';
+import { JefeGolem } from './jefe-golem.ts';
+import { JefeVolador } from './jefe-volador.ts';
+import type { ObjetivoPiloto } from './demo.ts';
 import { crearHeraldo, TIEMPOS_HERALDO } from './modelos/heraldo.ts';
 import { crearOjoHelios, TIEMPOS_OJO } from './modelos/ojo-helios.ts';
 import {
@@ -19,24 +23,42 @@ import {
   CLIPS_ARA,
   CLIPS_CAJA,
   CLIPS_NPC,
+  CLIPS_PILON,
   COLOCACION,
   DESAFIOS,
   DISTANCIAS_NPC,
+  DRAGON,
   ESTRUCTURAS,
+  CAMPEONES,
+  DUELOS,
+  GOLEMS,
+  MINIJEFES,
   NPCS,
+  PILON,
   RADIO_ARA,
   aQuienHabla,
   detectarIntencion,
   frase,
   tirarBotin,
   type AltarJefe,
+  type JefeAltarId,
   type Desafio,
   type Efecto,
   type Intencion,
   type NpcMapa,
 } from './contenido/mapa.ts';
 
-export type TipoMarca = 'altar' | 'ara' | 'caja' | 'torre' | 'refugio' | 'npc';
+export type TipoMarca = 'altar' | 'ara' | 'caja' | 'torre' | 'refugio' | 'npc' | 'pilon' | 'duelo' | 'dragon';
+
+/** Lo que acierta un disparo del Cañón solar: a qué distancia y cómo dañarlo. */
+export interface AciertoRayo {
+  t: number;
+  x: number;
+  y: number;
+  z: number;
+  debil: boolean;
+  golpear: (cantidad: number) => number;
+}
 
 export interface MarcaContenido {
   id: string;
@@ -44,6 +66,20 @@ export interface MarcaContenido {
   x: number;
   z: number;
   hecho?: boolean;
+  /** Si el jugador ya lo ha tenido cerca (el mapa grande solo enseña eso). */
+  visto?: boolean;
+  /** Cofres: lo que cuesta abrirlo ahora. */
+  coste?: number;
+}
+
+/** Aviso de algo que se puede usar con una tecla («F · Abrir cofre · 20»). */
+export interface Interaccion {
+  tecla: string;
+  texto: string;
+  /** Precio en chatarra, si lo tiene. */
+  coste?: number;
+  /** No te llega la chatarra: el aviso sale en rojo. */
+  bloqueado?: boolean;
 }
 
 /** Objetivo no instanciado de la horda: jefes y torres aceptan daño real. */
@@ -99,6 +135,25 @@ interface EstadoCaja {
   dinamica: boolean;
 }
 
+interface EstadoPilon {
+  actor: Actor;
+  /** De 0 a 1. */
+  carga: number;
+  estado: 'espera' | 'cargando' | 'cargado' | 'agotado';
+  t: number;
+  premiado: boolean;
+  anillo: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
+}
+
+interface EstadoDuelo {
+  actor: Actor;
+  indice: number;
+  estado: 'espera' | 'activo' | 'superado' | 'fallado';
+  t: number;
+  retadores: JefeGolem[];
+  arena: THREE.Mesh;
+}
+
 interface EstadoTorre {
   actor: Actor;
   vida: number;
@@ -140,9 +195,14 @@ type Ataque = {
   duracion: number;
 };
 
+type TipoMinijefe = 'segador-jefe' | 'heraldo' | 'ojo-helios';
+
+/** Minijefe: los jefes de antes, que ahora salen solos cada cierto tiempo. */
 interface EstadoJefe {
-  altar: EstadoAltar;
+  tipo: TipoMinijefe;
   actor: Actor;
+  /** Segundos desde que cayó (se quita a los 3,5 s). */
+  tMuerto: number;
   nombre: string;
   vida: number;
   vidaMax: number;
@@ -174,6 +234,9 @@ export interface ContextoContenido {
   balizas: number;
   enemigosEn: (x: number, z: number, radio: number) => number;
   crearBaliza: (x: number, z: number) => void;
+  /** Velocidad del jugador: los gólems apuntan adonde va a estar. */
+  vx?: number;
+  vz?: number;
 }
 
 export interface EventosContenido {
@@ -182,13 +245,66 @@ export interface EventosContenido {
   curar: (cantidad: number) => void;
   alarma?: () => void;
   recoger?: () => void;
+  /** Gólems: empujan al jugador, avisan de cada ataque y sacuden la cámara. */
+  empujar?: (fx: number, fz: number, salto: number) => void;
+  aviso?: (texto: string) => void;
+  sacudida?: () => void;
+  sonido?: (nombre: 'boom' | 'solar' | 'pulse') => void;
 }
 
-const nombresJefe: Record<AltarJefe['jefe'], string> = {
-  'segador-jefe': 'Segador, Jefe de Cosecha',
-  heraldo: 'Heraldo del Velo',
-  'ojo-helios': 'Ojo de HELIOS',
-};
+
+/**
+ * Círculo de carga de un pilón: un aro en el suelo que se llena en el sentido
+ * de las agujas del reloj (de cian a oro) y un disco suave que se enciende
+ * mientras el jugador está dentro.
+ */
+function anilloCarga(radio: number): THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial> {
+  const geo = new THREE.CircleGeometry(radio, 72).rotateX(-Math.PI / 2);
+  const material = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+      progreso: { value: 0 },
+      dentro: { value: 0 },
+      radio: { value: radio },
+      base: { value: new THREE.Color('#5ee0ff') },
+      lleno: { value: new THREE.Color('#ffd25a') },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vP;
+      void main() {
+        vP = position.xz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform float progreso, dentro, radio;
+      uniform vec3 base, lleno;
+      varying vec2 vP;
+      void main() {
+        float r = length(vP) / radio;
+        float a = atan(vP.x, vP.y) / 6.2831853 + 0.5;
+        float aro = smoothstep(0.86, 0.89, r) * (1.0 - smoothstep(0.98, 1.0, r));
+        bool cargado = a <= progreso;
+        vec3 color = cargado ? lleno : base;
+        float alfa = aro * (cargado ? 0.95 : 0.4);
+        // Dentro: un disco suave que respira hacia el borde.
+        alfa += (1.0 - aro) * step(r, 0.88) * dentro * (0.08 + 0.1 * r);
+        gl_FragColor = vec4(color, alfa);
+      }`,
+  });
+  return new THREE.Mesh(geo, material);
+}
+
+/** Distancia a lo largo del rayo (o + d·t, d unitario) hasta la esfera, o null si no la toca. */
+function rayoEsfera(o: { x: number; y: number; z: number }, d: { x: number; y: number; z: number }, x: number, y: number, z: number, r: number) {
+  const ox = o.x - x, oy = o.y - y, oz = o.z - z;
+  const b = ox * d.x + oy * d.y + oz * d.z;
+  const c = ox * ox + oy * oy + oz * oz - r * r;
+  const disc = b * b - c;
+  if (disc < 0) return null;
+  const t = -b - Math.sqrt(disc);
+  return t >= 0 ? t : (c < 0 ? 0 : null);
+}
 
 function rng(semilla: number) {
   let s = semilla >>> 0;
@@ -213,14 +329,25 @@ export class ContenidoJuego {
   private torres: EstadoTorre[] = [];
   private npcs: EstadoNpc[] = [];
   private aras: EstadoAra[] = [];
-  private jefe: EstadoJefe | null = null;
+  private pilones: EstadoPilon[] = [];
+  private pilonesGastados = 0;
+  private cofresAbiertos = 0;
+  /** Ids de lo que el jugador ya ha tenido cerca. */
+  private vistos = new Set<string>();
+  private jefes: EstadoJefe[] = [];
+  private minijefesCreados = 0;
+  private siguienteMinijefe: number = MINIJEFES.primero;
+  private golem: JefeGolem | null = null;
+  private altarGolem: EstadoAltar | null = null;
+  private jugador = { x: 0, z: 0 };
+  private duelos: EstadoDuelo[] = [];
+  private duelosGanados = 0;
+  private dragon: JefeVolador | null = null;
   private ocupados: { x: number; z: number; r: number }[] = [];
   private refugio: Actor | null = null;
   private siguienteSuministro = 120;
   private exposicionValor = 0;
   private marcaActiva: MarcaContenido | null = null;
-  private refugioAlarma = false;
-  private refugioCalmaEn = 0;
   private scene: THREE.Scene;
   private world: World;
   private eventos: EventosContenido;
@@ -243,39 +370,92 @@ export class ContenidoJuego {
 
   get marcas(): MarcaContenido[] {
     const marcas: MarcaContenido[] = [];
-    for (const a of this.altares) marcas.push({ id: a.def.id, tipo: 'altar', x: a.actor.x, z: a.actor.z, hecho: a.estado === 'agotado' });
-    for (const a of this.aras) marcas.push({ id: a.actor.id, tipo: 'ara', x: a.actor.x, z: a.actor.z, hecho: a.estado === 'superado' });
-    for (const c of this.cajas) marcas.push({ id: c.actor.id, tipo: 'caja', x: c.actor.x, z: c.actor.z, hecho: c.abierta });
-    for (const t of this.torres) marcas.push({ id: t.actor.id, tipo: 'torre', x: t.actor.x, z: t.actor.z, hecho: t.destruida });
-    if (this.refugio) marcas.push({ id: 'refugio', tipo: 'refugio', x: this.refugio.x, z: this.refugio.z });
-    for (const n of this.npcs) marcas.push({ id: n.def.id, tipo: 'npc', x: n.actor.x, z: n.actor.z });
+    const visto = (id: string) => this.vistos.has(id);
+    // Los altares de jefe y el refugio se ven siempre: la vigía los conoce.
+    for (const a of this.altares) marcas.push({ id: a.def.id, tipo: 'altar', x: a.actor.x, z: a.actor.z, hecho: a.estado === 'agotado', visto: true });
+    for (const a of this.aras) marcas.push({ id: a.actor.id, tipo: 'ara', x: a.actor.x, z: a.actor.z, hecho: a.estado === 'superado', visto: visto(a.actor.id) });
+    for (const p of this.pilones) marcas.push({ id: p.actor.id, tipo: 'pilon', x: p.actor.x, z: p.actor.z, hecho: p.estado === 'agotado' || p.estado === 'cargado', visto: visto(p.actor.id) });
+    for (const c of this.cajas) {
+      marcas.push({
+        id: c.actor.id, tipo: 'caja', x: c.actor.x, z: c.actor.z, hecho: c.abierta, visto: visto(c.actor.id) || c.dinamica,
+        coste: c.def.apertura.como === 'pagar' ? this.costeCofre(c) : undefined,
+      });
+    }
+    for (const t of this.torres) marcas.push({ id: t.actor.id, tipo: 'torre', x: t.actor.x, z: t.actor.z, hecho: t.destruida, visto: visto(t.actor.id) });
+    if (this.refugio) marcas.push({ id: 'refugio', tipo: 'refugio', x: this.refugio.x, z: this.refugio.z, visto: true });
+    for (const n of this.npcs) marcas.push({ id: n.def.id, tipo: 'npc', x: n.actor.x, z: n.actor.z, visto: visto(n.def.id) });
+    for (const d of this.duelos) marcas.push({ id: d.actor.id, tipo: 'duelo', x: d.actor.x, z: d.actor.z, hecho: d.estado === 'superado', visto: visto(d.actor.id) });
+    if (this.dragon && !this.dragon.derrotado) marcas.push({ id: 'dragon', tipo: 'dragon', x: this.dragon.x, z: this.dragon.z, visto: true });
     return marcas;
   }
 
   get jefesHud(): JefeHud[] {
     return this.altares.map((altar) => {
-      const activo = this.jefe?.altar === altar && !this.jefe.derrotado ? this.jefe : null;
+      const activo = this.altarGolem === altar && this.golem && !this.golem.derrotado ? this.golem : null;
       return {
         minuto: altar.def.minuto,
-        nombre: nombresJefe[altar.def.jefe],
+        nombre: GOLEMS[altar.def.jefe].nombre,
         vencido: altar.estado === 'recompensa' || altar.estado === 'listo' || altar.estado === 'agotado',
         vida: activo?.vida,
-        vidaMax: activo?.vidaMax,
+        vidaMax: activo?.def.vida,
       };
     });
   }
 
+  /** La barra grande del HUD: el gólem si está en pie; si no, el minijefe más cercano. */
+  get barraJefe(): { nombre: string; vida: number; vidaMax: number } | undefined {
+    if (this.dragon && !this.dragon.derrotado) {
+      return { nombre: this.dragon.nombre + (this.dragon.posado ? ' · ¡posado!' : ' · usa el Cañón'), vida: this.dragon.vida, vidaMax: this.dragon.vidaMax };
+    }
+    const duelo = this.duelos.find((d) => d.estado === 'activo');
+    if (duelo) {
+      const vivos = duelo.retadores.filter((r) => !r.derrotado);
+      const resta = Math.ceil(DUELOS.segundos - duelo.t);
+      return {
+        nombre: `Duelo · ${resta} s · ${vivos.length} campeón${vivos.length === 1 ? '' : 'es'}`,
+        vida: duelo.retadores.reduce((s, r) => s + r.vida, 0),
+        vidaMax: duelo.retadores.reduce((s, r) => s + r.def.vida, 0),
+      };
+    }
+    if (this.golem?.activo) return { nombre: this.golem.def.nombre, vida: this.golem.vida, vidaMax: this.golem.def.vida };
+    let mejor: EstadoJefe | null = null, dmin = 30;
+    for (const j of this.jefes) {
+      if (j.derrotado || j.entrada > 0) continue;
+      const d = Math.hypot(j.actor.x - this.jugador.x, j.actor.z - this.jugador.z);
+      if (d < dmin) { dmin = d; mejor = j; }
+    }
+    return mejor ? { nombre: mejor.nombre, vida: mejor.vida, vidaMax: mejor.vidaMax } : undefined;
+  }
+
+  /** Carga del pilón en el que está el jugador (0..1), o null si no está en ninguno. */
+  get cargaPilon(): number | null {
+    for (const p of this.pilones) if (p.estado === 'cargando' && p.anillo.userData.dentro) return p.carga;
+    return null;
+  }
+
   get objetivoJefe(): ObjetivoCombate[] {
     const objetivos: ObjetivoCombate[] = [];
-    const jefe = this.jefe;
-    if (jefe && !jefe.derrotado && jefe.entrada <= 0) {
+    const golem = this.golem;
+    if (golem?.activo) {
+      objetivos.push({ id: golem.def.id, x: golem.x, z: golem.z, radio: golem.def.radio, activo: true, golpear: (cantidad) => golem.golpear(cantidad) });
+    }
+    for (const duelo of this.duelos) {
+      duelo.retadores.forEach((r, k) => {
+        if (r.activo) objetivos.push({ id: `${duelo.actor.id}-${k}`, x: r.x, z: r.z, radio: r.def.radio, activo: true, golpear: (cantidad) => r.golpear(cantidad) });
+      });
+    }
+    // En el aire el dragón solo recibe el Cañón; posado, le llega todo.
+    const dragon = this.dragon;
+    if (dragon?.posado) objetivos.push({ id: 'dragon', x: dragon.x, z: dragon.z, radio: 3.2, activo: true, golpear: (cantidad) => dragon.golpear(cantidad) });
+    for (const jefe of this.jefes) {
+      if (jefe.derrotado || jefe.entrada > 0) continue;
       objetivos.push({
         id: jefe.actor.id,
         x: jefe.actor.modelo.raiz.position.x,
         z: jefe.actor.modelo.raiz.position.z,
         radio: jefe.radio,
         activo: true,
-        golpear: (cantidad) => this.golpearJefe(cantidad),
+        golpear: (cantidad) => this.golpearJefe(jefe, cantidad),
       });
     }
     for (const torre of this.torres) {
@@ -293,15 +473,40 @@ export class ContenidoJuego {
   }
 
   reset() {
-    if (this.jefe) {
-      this.eliminarActor(this.jefe.actor);
-      this.jefe = null;
+    for (const jefe of this.jefes) this.eliminarActor(jefe.actor);
+    this.jefes = [];
+    this.minijefesCreados = 0;
+    this.siguienteMinijefe = MINIJEFES.primero;
+    this.golem?.dispose();
+    this.golem = null;
+    this.altarGolem = null;
+    this.dragon?.dispose();
+    this.dragon = null;
+    this.duelosGanados = 0;
+    for (const duelo of this.duelos) {
+      for (const r of duelo.retadores) r.dispose();
+      duelo.retadores = [];
+      duelo.estado = 'espera';
+      duelo.t = 0;
+      duelo.arena.visible = false;
+      this.reproducir(duelo.actor, CLIPS_ALTAR_JEFE.dormido);
     }
     for (const caja of this.cajas.filter((c) => c.dinamica)) this.eliminarActor(caja.actor);
     this.cajas = this.cajas.filter((c) => !c.dinamica);
     this.exposicionValor = 0;
     this.marcaActiva = null;
     this.siguienteSuministro = 120;
+    this.cofresAbiertos = 0;
+    this.pilonesGastados = 0;
+    this.vistos.clear();
+    for (const pilon of this.pilones) {
+      pilon.carga = pilon.t = 0;
+      pilon.estado = 'espera';
+      pilon.premiado = false;
+      pilon.anillo.visible = true;
+      pilon.anillo.material.uniforms.progreso.value = 0;
+      this.reproducir(pilon.actor, CLIPS_PILON.espera);
+    }
     for (const altar of this.altares) {
       altar.estado = 'dormido';
       altar.t = 0;
@@ -337,11 +542,13 @@ export class ContenidoJuego {
       const cerca = Math.hypot(c.px - actor.modelo.raiz.position.x, c.pz - actor.modelo.raiz.position.z) <= actor.alcanceVista;
       actor.modelo.raiz.visible = cerca || altarActivo;
       if (actor.modelo.raiz.visible) actor.mixer.update(c.dt);
+      if (cerca && !this.vistos.has(actor.id) && Math.hypot(c.px - actor.x, c.pz - actor.z) <= 40) this.vistos.add(actor.id);
     }
 
     this.actualizarExposicion(c);
     this.actualizarAltares(c);
     this.actualizarCajas(c);
+    this.actualizarPilones(c);
     this.actualizarAras(c);
     this.actualizarNpcs(c);
 
@@ -355,7 +562,22 @@ export class ContenidoJuego {
       this.eventos.toast('OPERADOR', 'Suministros de ARES-IX en camino. Busca la baliza blanca.', 4);
     }
 
-    return this.actualizarJefe(c);
+    this.jugador.x = c.px;
+    this.jugador.z = c.pz;
+    const jugador = { x: c.px, z: c.pz, vx: c.vx ?? 0, vz: c.vz ?? 0, dt: c.dt };
+    let dano = this.actualizarJefes(c);
+    if (this.golem) dano += this.golem.update(jugador);
+    dano += this.actualizarDuelos(c, jugador);
+    if (this.dragon) {
+      dano += this.dragon.update(jugador);
+      if (this.dragon.terminado) {
+        this.eventos.toast('ADA', 'El Dragón del Velo ha caído. Ese trozo de cielo vuelve a ser nuestro.', 6);
+        this.eventos.aplicar(DRAGON.recompensa);
+        this.dragon.dispose();
+        this.dragon = null;
+      }
+    }
+    return dano;
   }
 
   zonaDe(x: number, z: number) {
@@ -383,6 +605,157 @@ export class ContenidoJuego {
     return cerca ? { tecla: 'V', texto: 'Mantén V para hablar con ' + cerca.n.def.nombre } : undefined;
   }
 
+  // ------------------------------------------------------------ modo demo
+
+  /** Modo demo: los altares no despiertan solos ni salen minijefes; los jefes los pone la demo. */
+  prepararDemo() {
+    for (const a of this.altares) a.estado = 'agotado';
+    this.siguienteMinijefe = Infinity;
+  }
+
+  /** Saca un jefe de altar donde se pida, mirando hacia (hx, hz). */
+  invocarJefe(id: JefeAltarId, x: number, z: number, hx: number, hz: number) {
+    this.golem?.dispose();
+    const p = this.world.resolve(x, z, 3, { x: 0, z: 0 });
+    this.golem = new JefeGolem(this.scene, this.world, GOLEMS[id], p.x, p.z, Math.atan2(hx - p.x, hz - p.z), {
+      empujar: this.eventos.empujar, aviso: this.eventos.aviso, sacudida: this.eventos.sacudida, sonido: this.eventos.sonido,
+    }, this.rand);
+    this.altarGolem = null;
+  }
+
+  /** Llama al Dragón del Velo ahora mismo (el modo demo no espera a los duelos). */
+  llamarDragon(px: number, pz: number) {
+    if (!this.dragon) this.invocarDragon({ px, pz } as ContextoContenido);
+  }
+
+  /** En qué punto está la pelea de la demo: si queda gólem o dragón en pie. */
+  get estadoDemo() {
+    return {
+      golem: this.golem ? (this.golem.terminado ? 'caido' : 'vivo') : 'nada',
+      dragon: this.dragon ? 'vivo' : 'nada',
+    } as const;
+  }
+
+  /** Lo que el piloto de la demo debe rodear y adónde apuntar. */
+  get objetivoPiloto(): ObjetivoPiloto | null {
+    const dragon = this.dragon;
+    if (dragon && !dragon.derrotado) {
+      const cabeza = dragon.esferas()[0];
+      const y = this.world.heightAt(dragon.x, dragon.z) + dragon.alt + 2.8;
+      return { x: dragon.x, z: dragon.z, radio: 3.5, vuela: !dragon.posado, canon: true, mira: cabeza ?? { x: dragon.x, y, z: dragon.z } };
+    }
+    const g = this.golem;
+    if (g && !g.derrotado) {
+      return { x: g.x, z: g.z, radio: g.def.radio, vuela: false, canon: false, mira: { x: g.x, y: this.world.heightAt(g.x, g.z) + g.def.radio * 1.2, z: g.z } };
+    }
+    return null;
+  }
+
+  /** El altar de duelo libre más cercano a mano (4,5 m), si lo hay. */
+  private dueloCercano(x: number, z: number) {
+    return this.duelos.find((d) => d.estado === 'espera' && Math.hypot(x - d.actor.x, z - d.actor.z) < 4.5) ?? null;
+  }
+
+  interaccionDuelo(x: number, z: number): Interaccion | undefined {
+    if (this.duelos.some((d) => d.estado === 'activo')) return undefined;
+    return this.dueloCercano(x, z) ? { tecla: 'F', texto: 'Empezar duelo contra campeones de HELIOS' } : undefined;
+  }
+
+  /** F junto a un altar de duelo: salen sus campeones. Devuelve si empezó. */
+  empezarDuelo(x: number, z: number): boolean {
+    if (this.duelos.some((d) => d.estado === 'activo')) return false;
+    const duelo = this.dueloCercano(x, z);
+    if (!duelo) return false;
+    duelo.estado = 'activo';
+    duelo.t = 0;
+    duelo.arena.visible = true;
+    this.reproducir(duelo.actor, CLIPS_ALTAR_JEFE.invocar, true);
+    const quienes = DUELOS.retadores[Math.min(duelo.indice, DUELOS.retadores.length - 1)];
+    quienes.forEach((id, k) => {
+      const a = (k / quienes.length) * Math.PI * 2 + this.rand();
+      const p = this.world.resolve(duelo.actor.x + Math.cos(a) * 8, duelo.actor.z + Math.sin(a) * 8, 2, { x: 0, z: 0 });
+      duelo.retadores.push(new JefeGolem(this.scene, this.world, CAMPEONES[id], p.x, p.z, Math.atan2(x - p.x, z - p.z), {
+        empujar: this.eventos.empujar, sacudida: this.eventos.sacudida, sonido: this.eventos.sonido,
+        aviso: this.eventos.aviso,
+      }, this.rand));
+    });
+    this.eventos.aviso?.(`¡Duelo! Vence a los campeones en ${DUELOS.segundos} s`);
+    return true;
+  }
+
+  /**
+   * Disparo del Cañón solar: lo primero que corta el rayo entre el dragón
+   * (en el aire, la cabeza es punto débil), los gólems, los campeones y los
+   * minijefes. Null si no da a ninguno.
+   */
+  rayo(o: { x: number; y: number; z: number }, d: { x: number; y: number; z: number }, alcance: number): AciertoRayo | null {
+    let mejor: AciertoRayo | null = null;
+    const probar = (x: number, y: number, z: number, r: number, debil: boolean, golpear: (n: number) => number) => {
+      const t = rayoEsfera(o, d, x, y, z, r);
+      if (t !== null && t <= alcance && (!mejor || t < mejor.t)) {
+        mejor = { t, x: o.x + d.x * t, y: o.y + d.y * t, z: o.z + d.z * t, debil, golpear };
+      }
+    };
+    const dragon = this.dragon;
+    if (dragon && !dragon.derrotado) {
+      for (const e of dragon.esferas()) probar(e.x, e.y, e.z, e.r, e.debil, (n) => dragon.golpear(e.debil ? n * 1.6 : n));
+    }
+    const grandes = [...(this.golem?.activo ? [this.golem] : []), ...this.duelos.flatMap((dl) => dl.retadores.filter((r) => r.activo))];
+    for (const g of grandes) {
+      const suelo = this.world.heightAt(g.x, g.z);
+      probar(g.x, suelo + g.def.radio * 1.2, g.z, g.def.radio * 1.2, false, (n) => g.golpear(n));
+    }
+    for (const j of this.jefes) {
+      if (j.derrotado || j.entrada > 0) continue;
+      const suelo = this.world.heightAt(j.actor.x, j.actor.z);
+      probar(j.actor.x, suelo + j.radio, j.actor.z, j.radio, false, (n) => this.golpearJefe(j, n));
+    }
+    return mejor;
+  }
+
+  /** Lo que cuesta abrir este cofre ahora (sube con cada uno abierto). */
+  costeCofre(caja: EstadoCaja) {
+    const a = caja.def.apertura;
+    return Math.round((a.coste ?? 0) + (a.subida ?? 0) * this.cofresAbiertos);
+  }
+
+  /** El cofre de pago cerrado más cercano a mano (2,4 m), si lo hay. */
+  private cofreCercano(x: number, z: number) {
+    let mejor: EstadoCaja | null = null, dmin = 2.4;
+    for (const caja of this.cajas) {
+      if (caja.abierta || caja.def.apertura.como !== 'pagar') continue;
+      const d = Math.hypot(x - caja.actor.x, z - caja.actor.z);
+      if (d < dmin) { dmin = d; mejor = caja; }
+    }
+    return mejor;
+  }
+
+  /** Aviso del cofre a mano: precio, y en rojo si no te llega. */
+  interaccionCofre(x: number, z: number, chatarra: number): Interaccion | undefined {
+    const caja = this.cofreCercano(x, z);
+    if (!caja) return undefined;
+    const coste = this.costeCofre(caja);
+    const bloqueado = chatarra < coste;
+    return { tecla: 'F', texto: `Abrir ${caja.def.nombre}${bloqueado ? ' (no te llega)' : ''}`, coste, bloqueado };
+  }
+
+  /**
+   * Intenta abrir el cofre a mano pagando. Devuelve lo que cuesta si se abrió,
+   * -1 si no había cofre y -2 si no llega la chatarra.
+   */
+  abrirCofre(x: number, z: number, chatarra: number): number {
+    const caja = this.cofreCercano(x, z);
+    if (!caja) return -1;
+    const coste = this.costeCofre(caja);
+    if (chatarra < coste) return -2;
+    this.cofresAbiertos++;
+    caja.abierta = true;
+    caja.progreso = 0;
+    this.reproducir(caja.actor, CLIPS_CAJA.abrir, true);
+    if (caja.def.apertura.exposicion) this.cambiarExposicion(caja.def.apertura.exposicion);
+    return coste;
+  }
+
   responderVoz(texto: string, x: number, z: number): RespuestaNpc {
     const cerca = this.npcs
       .map((n) => ({ n, d: Math.hypot(x - n.actor.x, z - n.actor.z) }))
@@ -404,9 +777,8 @@ export class ContenidoJuego {
     };
   }
 
-  marcar(que: 'altar' | 'caja' | 'torre' | 'ara' | 'refugio', px: number, pz: number) {
-    const tipo = que === 'altar' ? 'altar' : que === 'caja' ? 'caja' : que === 'torre' ? 'torre' : que === 'ara' ? 'ara' : 'refugio';
-    const candidatos = this.marcas.filter((m) => m.tipo === tipo && !m.hecho);
+  marcar(que: 'altar' | 'caja' | 'torre' | 'ara' | 'refugio' | 'pilon', px: number, pz: number) {
+    const candidatos = this.marcas.filter((m) => m.tipo === que && !m.hecho);
     candidatos.sort((a, b) => Math.hypot(a.x - px, a.z - pz) - Math.hypot(b.x - px, b.z - pz));
     this.marcaActiva = candidatos[0] ?? null;
   }
@@ -435,20 +807,43 @@ export class ContenidoJuego {
       const x = refugio.x + Math.sin(ang) * 7;
       const z = refugio.z + Math.cos(ang) * 7;
       const actor = this.poner(def.id, creadores[k], x, z, ang + Math.PI, CLIPS_NPC.trabajar);
-      this.npcs.push({ actor, def, cerca: false });
+      this.npcs.push({ actor, def, cerca: false, asustado: false, despedida: 0 });
     });
 
-    const altaresId = ['altar-cosecha', 'altar-heraldo', 'altar-ojo'] as const;
-    altaresId.forEach((id, k) => {
+    const estiloAltar = { 'altar-cosecha': 'cosecha', 'altar-sabueso': 'ojo', 'altar-heraldo': 'heraldo', 'altar-ojo': 'ojo' } as const;
+    for (const def of ALTARES_JEFE) {
       const p = this.buscar(COLOCACION.altaresJefe.distancia, 4, COLOCACION.altaresJefe.separacionMinima);
-      const actor = this.poner(id, () => crearAltarJefe(k === 0 ? 'cosecha' : k === 1 ? 'heraldo' : 'ojo'), p.x, p.z, haciaCentro(p.x, p.z), CLIPS_ALTAR_JEFE.dormido);
-      this.altares.push({ def: ALTARES_JEFE[k], actor, estado: 'dormido', t: 0 });
-    });
+      const actor = this.poner(def.id, () => crearAltarJefe(estiloAltar[def.id]), p.x, p.z, haciaCentro(p.x, p.z), CLIPS_ALTAR_JEFE.dormido);
+      this.altares.push({ def, actor, estado: 'dormido', t: 0, adelantado: false });
+    }
 
     for (let k = 0; k < COLOCACION.aras.cuantos; k++) {
       const p = this.buscar(COLOCACION.aras.distancia, 4, COLOCACION.aras.separacionMinima);
       const actor = this.poner('altar-desafio-' + k, crearAltarDesafio, p.x, p.z, haciaCentro(p.x, p.z), CLIPS_ARA.espera);
-      this.aras.push({ actor, desafio: DESAFIOS[k % 3], estado: 'espera', t: 0, fuera: 0, bajasInicio: 0, danoInicio: 0 });
+      this.aras.push({ actor, desafio: DESAFIOS[k % 3], estado: 'espera', t: 0, fuera: 0, bajasInicio: 0, danoInicio: 0, recogidas: 0, chispas: [] });
+    }
+
+    for (let k = 0; k < COLOCACION.pilones.cuantos; k++) {
+      const p = this.buscar(COLOCACION.pilones.distancia, 3, COLOCACION.pilones.separacionMinima);
+      const actor = this.poner('pilon-' + k, crearPilonCarga, p.x, p.z, haciaCentro(p.x, p.z), CLIPS_PILON.espera);
+      const anillo = anilloCarga(PILON.radio);
+      anillo.position.y = 0.06;
+      actor.modelo.raiz.add(anillo);
+      this.pilones.push({ actor, carga: 0, estado: 'espera', t: 0, premiado: false, anillo });
+    }
+
+    for (let k = 0; k < COLOCACION.duelos.cuantos; k++) {
+      const p = this.buscar(COLOCACION.duelos.distancia, 4, COLOCACION.duelos.separacionMinima);
+      const actor = this.poner('altar-duelo-' + k, () => crearAltarJefe('heraldo'), p.x, p.z, haciaCentro(p.x, p.z), CLIPS_ALTAR_JEFE.dormido);
+      // Anillo de la arena: solo se ve mientras dura el duelo.
+      const arena = new THREE.Mesh(
+        new THREE.RingGeometry(DUELOS.radio - 0.5, DUELOS.radio, 72).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: '#ff6a3d', transparent: true, opacity: 0.75, depthWrite: false, side: THREE.DoubleSide }),
+      );
+      arena.position.set(p.x, this.world.heightAt(p.x, p.z) + 0.2, p.z);
+      arena.visible = false;
+      this.scene.add(arena);
+      this.duelos.push({ actor, indice: k, estado: 'espera', t: 0, retadores: [], arena });
     }
 
     const torreDef = ESTRUCTURAS.find((e) => e.id === 'torre-velo')!;
@@ -511,7 +906,7 @@ export class ContenidoJuego {
     }
     const alcanceVista = id.startsWith('npc-') || id === 'refugio' ? 55
       : id.startsWith('caja-') ? 45
-        : id.startsWith('altar-desafio') ? 65
+        : id.startsWith('altar-desafio') || id.startsWith('pilon-') ? 65
           : id.startsWith('altar-') || id.startsWith('torre-velo') ? 95
             : 120;
     const actor = { id, modelo, mixer, acciones, actual: '', x, z, alcanceVista };
@@ -551,16 +946,21 @@ export class ContenidoJuego {
   private actualizarAltares(c: ContextoContenido) {
     for (const altar of this.altares) {
       altar.t += c.dt;
-      if (altar.estado === 'dormido' && c.tiempo >= altar.def.minuto * 60 && (!this.jefe || this.jefe.derrotado)) {
+      if (altar.estado === 'dormido' && c.tiempo >= altar.def.minuto * 60 && (!this.golem || this.golem.derrotado)) {
         altar.estado = 'invocando';
         altar.t = 0;
         this.reproducir(altar.actor, CLIPS_ALTAR_JEFE.invocar, true);
         this.eventos.toast('ADA', altar.def.nombre + ' se está abriendo.', 4);
       } else if (altar.estado === 'invocando' && altar.t >= CLIPS_ALTAR_JEFE.apareceJefe) {
-        this.crearJefe(altar);
+        this.crearGolem(altar);
         altar.estado = 'combate';
         altar.t = 0;
         this.reproducir(altar.actor, CLIPS_ALTAR_JEFE.combate);
+      } else if (altar.estado === 'combate' && this.altarGolem === altar && this.golem?.derrotado) {
+        altar.estado = 'recompensa';
+        altar.t = 0;
+        this.reproducir(altar.actor, CLIPS_ALTAR_JEFE.vencido, true);
+        this.eventos.toast('ADA', this.golem.def.nombre + ' derrotado. El altar se purifica.', 5);
       } else if (altar.estado === 'recompensa' && altar.t >= CLIPS_ALTAR_JEFE.recompensaLista) {
         altar.estado = 'listo';
         this.reproducir(altar.actor, CLIPS_ALTAR_JEFE.esperando);
@@ -582,11 +982,13 @@ export class ContenidoJuego {
             caja.entregada = true;
             this.eventos.aplicar(tirarBotin(caja.def, this.rand()));
             this.reproducir(caja.actor, CLIPS_CAJA.vacia);
-            this.eventos.toast('ADA', caja.def.nombre + ' abierta.', 3);
+            this.eventos.toast('ADA', caja.def.nombre + ': botín recuperado.', 3);
           }
         }
         continue;
       }
+      // Los cofres de pago se abren con la tecla de usar (abrirCofre).
+      if (caja.def.apertura.como === 'pagar') continue;
       const cerca = Math.hypot(c.px - caja.actor.x, c.pz - caja.actor.z) < 1.8;
       caja.progreso = cerca ? caja.progreso + c.dt : Math.max(0, caja.progreso - c.dt * 2);
       if (caja.progreso < caja.def.apertura.segundos) continue;
@@ -594,6 +996,104 @@ export class ContenidoJuego {
       caja.progreso = 0;
       this.reproducir(caja.actor, CLIPS_CAJA.abrir, true);
       if (caja.def.apertura.exposicion) this.cambiarExposicion(caja.def.apertura.exposicion);
+    }
+  }
+
+  private actualizarDuelos(c: ContextoContenido, jugador: { x: number; z: number; vx: number; vz: number; dt: number }) {
+    let dano = 0;
+    for (const duelo of this.duelos) {
+      for (const r of duelo.retadores) dano += r.update(jugador);
+      if (duelo.estado === 'espera' || duelo.estado === 'superado' && !duelo.retadores.length) continue;
+      duelo.t += c.dt;
+      if (duelo.estado === 'activo') {
+        (duelo.arena.material as THREE.MeshBasicMaterial).opacity = 0.5 + 0.3 * Math.sin(duelo.t * 5);
+        if (duelo.retadores.every((r) => r.derrotado)) {
+          duelo.estado = 'superado';
+          duelo.t = 0;
+          duelo.arena.visible = false;
+          this.reproducir(duelo.actor, CLIPS_ALTAR_JEFE.vencido, true);
+          const premio = DUELOS.premios[Math.min(this.duelosGanados, DUELOS.premios.length - 1)];
+          this.duelosGanados++;
+          this.eventos.toast('ADA', 'Duelo ganado. El altar entrega su premio.', 4);
+          this.eventos.aplicar(premio);
+          if (this.duelosGanados === DUELOS.dragonAlGanar && !this.dragon) this.invocarDragon(c);
+        } else if (duelo.t >= DUELOS.segundos) {
+          duelo.estado = 'fallado';
+          duelo.t = 0;
+          duelo.arena.visible = false;
+          for (const r of duelo.retadores) r.dispose();
+          duelo.retadores = [];
+          this.reproducir(duelo.actor, CLIPS_ALTAR_JEFE.agotado, true);
+          this.eventos.toast('ADA', 'Se acabó el tiempo. El altar se calma: puedes volver a intentarlo.', 5);
+        }
+      } else if (duelo.estado === 'fallado' && duelo.t >= 6) {
+        duelo.estado = 'espera';
+        this.reproducir(duelo.actor, CLIPS_ALTAR_JEFE.dormido);
+      } else if (duelo.estado === 'superado' && duelo.retadores.every((r) => r.terminado)) {
+        for (const r of duelo.retadores) r.dispose();
+        duelo.retadores = [];
+        this.reproducir(duelo.actor, CLIPS_ALTAR_JEFE.agotado, true);
+      }
+    }
+    return dano;
+  }
+
+  /** El Dragón del Velo llega volando desde lejos, al otro lado del jugador. */
+  private invocarDragon(c: ContextoContenido) {
+    const a = this.rand() * Math.PI * 2;
+    this.dragon = new JefeVolador(this.scene, this.world, c.px + Math.cos(a) * 70, c.pz + Math.sin(a) * 70, {
+      empujar: this.eventos.empujar, aviso: this.eventos.aviso, sacudida: this.eventos.sacudida, sonido: this.eventos.sonido,
+    }, this.rand);
+    this.eventos.toast('HELIOS', 'Has roto demasiados sellos. El Dragón del Velo viene a por ti.', 6);
+  }
+
+  private actualizarPilones(c: ContextoContenido) {
+    for (const pilon of this.pilones) {
+      const dentro = Math.hypot(c.px - pilon.actor.x, c.pz - pilon.actor.z) <= PILON.radio;
+      pilon.anillo.userData.dentro = dentro;
+      if (pilon.estado === 'espera' || pilon.estado === 'cargando') {
+        if (dentro) {
+          const segundos = PILON.segundos + PILON.masPorUsado * this.pilonesGastados;
+          pilon.carga = Math.min(1, pilon.carga + c.dt / segundos);
+          if (pilon.estado === 'espera') {
+            pilon.estado = 'cargando';
+            this.reproducir(pilon.actor, CLIPS_PILON.cargando);
+          }
+        } else if (pilon.carga > 0) {
+          pilon.carga = Math.max(0, pilon.carga - PILON.descarga * c.dt);
+        }
+        if (!dentro && pilon.estado === 'cargando' && pilon.carga <= 0) {
+          pilon.estado = 'espera';
+          this.reproducir(pilon.actor, CLIPS_PILON.espera);
+        }
+        const accion = pilon.actor.acciones.get(CLIPS_PILON.progreso);
+        if (accion) {
+          accion.paused = true;
+          accion.play();
+          accion.time = pilon.carga * accion.getClip().duration;
+        }
+        pilon.anillo.material.uniforms.progreso.value = pilon.carga;
+        pilon.anillo.material.uniforms.dentro.value = dentro ? 1 : 0;
+        if (pilon.carga >= 1) {
+          pilon.estado = 'cargado';
+          pilon.t = 0;
+          this.pilonesGastados++;
+          this.reproducir(pilon.actor, CLIPS_PILON.cargado, true);
+        }
+        continue;
+      }
+      if (pilon.estado === 'cargado') {
+        pilon.t += c.dt;
+        if (!pilon.premiado && pilon.t >= CLIPS_PILON.premio) {
+          pilon.premiado = true;
+          this.eventos.aplicar(PILON.recompensa);
+        }
+        if (pilon.t >= 1.6) {
+          pilon.estado = 'agotado';
+          pilon.anillo.visible = false;
+          this.reproducir(pilon.actor, CLIPS_PILON.agotado, true);
+        }
+      }
     }
   }
 
@@ -669,48 +1169,64 @@ export class ContenidoJuego {
     });
   }
 
-  private crearJefe(altar: EstadoAltar) {
-    if (this.jefe?.derrotado) {
-      this.scene.remove(this.jefe.actor.modelo.raiz);
-      this.actores = this.actores.filter((actor) => actor !== this.jefe?.actor);
-      this.jefe = null;
-    }
+  /** El gólem del altar sale delante de él, a 6 m. */
+  private crearGolem(altar: EstadoAltar) {
+    this.golem?.dispose();
+    const ang = altar.actor.modelo.raiz.rotation.y;
+    const p = this.world.resolve(altar.actor.x + Math.sin(ang) * 6, altar.actor.z + Math.cos(ang) * 6, 3, { x: 0, z: 0 });
+    const def = GOLEMS[altar.def.jefe];
+    this.golem = new JefeGolem(this.scene, this.world, def, p.x, p.z, ang, {
+      empujar: this.eventos.empujar,
+      aviso: this.eventos.aviso,
+      sacudida: this.eventos.sacudida,
+      sonido: this.eventos.sonido,
+    }, this.rand);
+    this.altarGolem = altar;
+    this.eventos.toast('HELIOS', def.nombre + ' despierta en el ' + altar.def.nombre.toLowerCase() + '.', 5);
+  }
+
+  /** Un minijefe nuevo a 26 m del jugador, con más vida cuanto más avanzada la partida. */
+  private crearMinijefe(c: ContextoContenido) {
+    const disponibles = MINIJEFES.tipos.filter((t) => c.tiempo >= t.desde);
+    const tipo = disponibles[this.minijefesCreados % disponibles.length];
+    this.minijefesCreados++;
+    const a = this.rand() * Math.PI * 2;
+    const p = this.world.resolve(c.px + Math.cos(a) * 26, c.pz + Math.sin(a) * 26, 3, { x: 0, z: 0 });
+    const ang = Math.atan2(c.px - p.x, c.pz - p.z);
+    const vidaMax = Math.round(tipo.vida * (1 + 0.12 * c.tiempo / 60));
     let modelo: () => Modelo;
-    let datos: Omit<EstadoJefe,
-      'altar' | 'actor' | 'vida' | 'ataque' | 'tAtaque' | 'golpeAplicado' |
-      'fase2' | 'capaFasePendiente' | 'capaFaseActiva' | 'derrotado' | 'indiceAtaque'
-    >;
-    if (altar.def.jefe === 'segador-jefe') {
+    let datos: Pick<EstadoJefe, 'velocidad' | 'radio' | 'entrada' | 'clipMover' | 'clipEntrada' | 'clipFase' | 'clipDerrota' | 'ataques'>;
+    if (tipo.id === 'segador-jefe') {
       modelo = crearSegadorJefe;
       datos = {
-        nombre: nombresJefe[altar.def.jefe], vidaMax: 1400, velocidad: 1.9, radio: 2.2, entrada: 2.8,
+        velocidad: 3.6, radio: 2.2, entrada: 2.8,
         clipMover: 'Avanzar', clipEntrada: 'Rugir', clipFase: 'Furia', clipDerrota: 'Derrota',
         ataques: Object.entries(TIEMPOS_JEFE_COSECHA).map(([nombre, t]) => ({ nombre, ...t })),
       };
-    } else if (altar.def.jefe === 'heraldo') {
+    } else if (tipo.id === 'heraldo') {
       modelo = crearHeraldo;
       datos = {
-        nombre: nombresJefe[altar.def.jefe], vidaMax: 2100, velocidad: 1.35, radio: 2.5, entrada: 3,
+        velocidad: 2.9, radio: 2.5, entrada: 3,
         clipMover: 'Flotar', clipEntrada: 'Entrada', clipFase: 'Furia', clipDerrota: 'Derrota',
         ataques: Object.entries(TIEMPOS_HERALDO).map(([nombre, t]) => ({ nombre, ...t })),
       };
     } else {
       modelo = crearOjoHelios;
       datos = {
-        nombre: nombresJefe[altar.def.jefe], vidaMax: 3200, velocidad: 1.15, radio: 3.2, entrada: 3.6,
+        velocidad: 2.4, radio: 3.2, entrada: 3.6,
         clipMover: 'Caminar', clipEntrada: 'Despertar', clipFase: 'Fase 2', clipDerrota: 'Derrota',
         ataques: Object.entries(TIEMPOS_OJO).map(([nombre, t]) => ({ nombre, golpe: t.golpe, finGolpe: t.finGolpe, duracion: t.duracion })),
       };
     }
-    const ang = altar.actor.modelo.raiz.rotation.y;
-    const x = altar.actor.x + Math.sin(ang) * 5;
-    const z = altar.actor.z + Math.cos(ang) * 5;
-    const actor = this.poner(altar.def.jefe, modelo, x, z, ang, datos.clipEntrada, true);
-    this.jefe = {
-      altar,
+    const actor = this.poner(`${tipo.id}-${this.minijefesCreados}`, modelo, p.x, p.z, ang, datos.clipEntrada, true);
+    this.jefes.push({
+      tipo: tipo.id,
       actor,
+      tMuerto: 0,
+      nombre: tipo.nombre,
+      vidaMax,
       ...datos,
-      vida: datos.vidaMax,
+      vida: vidaMax,
       indiceAtaque: 0,
       ataque: null,
       tAtaque: 0,
@@ -719,13 +1235,33 @@ export class ContenidoJuego {
       capaFasePendiente: 0,
       capaFaseActiva: false,
       derrotado: false,
-    };
-    this.eventos.toast('HELIOS', datos.nombre + ' desplegado.', 5);
+    });
+    this.eventos.toast('HELIOS', tipo.nombre + ' se acerca.', 4);
   }
 
-  private actualizarJefe(c: ContextoContenido) {
-    const jefe = this.jefe;
-    if (!jefe || jefe.derrotado) return 0;
+  private actualizarJefes(c: ContextoContenido) {
+    // Calendario de minijefes: cada vez más seguidos, con un tope de vivos.
+    if (c.tiempo >= this.siguienteMinijefe) {
+      const cada = Math.max(MINIJEFES.cadaMinimo, MINIJEFES.cada - MINIJEFES.bajaPorMinuto * c.tiempo / 60);
+      this.siguienteMinijefe = c.tiempo + cada;
+      if (this.jefes.filter((j) => !j.derrotado).length < MINIJEFES.maximoVivos) this.crearMinijefe(c);
+    }
+    let dano = 0;
+    for (const jefe of [...this.jefes]) {
+      if (jefe.derrotado) {
+        jefe.tMuerto += c.dt;
+        if (jefe.tMuerto > 3.5) {
+          this.eliminarActor(jefe.actor);
+          this.jefes = this.jefes.filter((j) => j !== jefe);
+        }
+        continue;
+      }
+      dano += this.actualizarJefe(jefe, c);
+    }
+    return dano;
+  }
+
+  private actualizarJefe(jefe: EstadoJefe, c: ContextoContenido) {
     if (jefe.entrada > 0) {
       jefe.entrada -= c.dt;
       if (jefe.entrada <= 0) this.reproducir(jefe.actor, jefe.clipMover);
@@ -769,14 +1305,16 @@ export class ContenidoJuego {
       ? jefe.tAtaque >= jefe.ataque.golpe
       : jefe.tAtaque >= jefe.ataque.golpe && jefe.tAtaque <= jefe.ataque.finGolpe;
     if (!jefe.golpeAplicado && enVentana) {
-      if (jefe.actor.id === 'ojo-helios' && jefe.ataque.nombre === 'Invocar') {
+      if (jefe.tipo === 'ojo-helios' && jefe.ataque.nombre === 'Invocar') {
         jefe.golpeAplicado = true;
         for (const a of [-Math.PI / 3, 0, Math.PI / 3]) {
           c.crearBaliza(raiz.position.x + Math.sin(raiz.rotation.y + a) * 6, raiz.position.z + Math.cos(raiz.rotation.y + a) * 6);
         }
       } else if (this.jugadorEnAtaque(jefe, c)) {
         jefe.golpeAplicado = true;
-        dano = jefe.actor.id === 'ojo-helios' ? 28 : jefe.actor.id === 'heraldo' ? 20 : 24;
+        dano = jefe.tipo === 'ojo-helios' ? 28 : jefe.tipo === 'heraldo' ? 20 : 24;
+        // Los golpes de los minijefes también empujan.
+        this.eventos.empujar?.(dx / d * 9, dz / d * 9, 3);
       }
     }
     if (jefe.tAtaque >= jefe.ataque.duracion) {
@@ -801,12 +1339,12 @@ export class ContenidoJuego {
     const lateral = dx * rx + dz * rz;
     const ataque = jefe.ataque!;
 
-    if (jefe.actor.id === 'segador-jefe') {
+    if (jefe.tipo === 'segador-jefe') {
       if (ataque.nombre === 'Embestir') return delante >= 0 && delante <= 8 && Math.abs(lateral) <= 1.65;
       const angulo = Math.abs(Math.atan2(lateral, delante));
       return distancia >= 2.2 && distancia <= 4.6 && delante > 0 && angulo <= THREE.MathUtils.degToRad(65);
     }
-    if (jefe.actor.id === 'heraldo') {
+    if (jefe.tipo === 'heraldo') {
       if (ataque.nombre === 'Rociar') return Math.hypot(lateral, delante - 4.8) <= 2.6;
       return [-1.8, 0, 1.8].some((x) => Math.hypot(lateral - x, delante + 0.5) <= 1.35);
     }
@@ -832,9 +1370,8 @@ export class ContenidoJuego {
     return false;
   }
 
-  private golpearJefe(cantidad: number) {
-    const jefe = this.jefe;
-    if (!jefe || jefe.derrotado || cantidad <= 0) return 0;
+  private golpearJefe(jefe: EstadoJefe, cantidad: number) {
+    if (jefe.derrotado || cantidad <= 0) return 0;
     const antes = jefe.vida;
     jefe.vida = Math.max(0, jefe.vida - cantidad);
     if (!jefe.fase2 && jefe.vida <= jefe.vidaMax * 0.5) {
@@ -844,16 +1381,15 @@ export class ContenidoJuego {
       jefe.capaFaseActiva = false;
       jefe.ataque = null;
       jefe.tAtaque = -2.2;
-      this.eventos.toast('ADA', jefe.nombre + ' entra en fase dos.', 4);
     }
     if (jefe.vida <= 0) {
       jefe.derrotado = true;
       jefe.actor.acciones.get('Enfurecido')?.fadeOut(0.1);
       this.reproducir(jefe.actor, jefe.clipDerrota, true);
-      jefe.altar.estado = 'recompensa';
-      jefe.altar.t = 0;
-      this.reproducir(jefe.altar.actor, CLIPS_ALTAR_JEFE.vencido, true);
-      this.eventos.toast('ADA', jefe.nombre + ' derrotado.', 5);
+      // Botín: chatarra y, a veces, una bendición.
+      this.eventos.aplicar(MINIJEFES.recompensa);
+      if (this.rand() < MINIJEFES.bendicion) this.eventos.aplicar([{ tipo: 'bendicion', elegir: 1, suerte: 0.3 }]);
+      this.eventos.toast('ADA', jefe.nombre + ' derribado.', 3);
     }
     return Math.min(cantidad, antes);
   }

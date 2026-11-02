@@ -45,9 +45,11 @@ export function crearAstronauta(): Modelo {
     pieza(o, capsula(0.055, 0.1), brillo('#9ff8ff'), 0, 0, 0, { contorno: false });
     pieza(cabeza, esfera(0.15, 0.55, 1, 1), toon(PALETA.naranja), x * 4, 0.5, 0);
   }
-  const antena = pieza(cabeza, capsula(0.025, 0.26), toon(PALETA.metalOscuro), 0.3, 1.08, -0.05);
-  antena.rotation.z = -0.3;
-  pieza(cabeza, esfera(0.07), brillo(PALETA.plasma), 0.35, 1.24, -0.05);
+  // La antena cuelga de su base: se queda atrás al arrancar y rebota al parar.
+  const antena = nodo('antena', cabeza, 0.26, 0.96, -0.05);
+  const varilla = pieza(antena, capsula(0.025, 0.26), toon(PALETA.metalOscuro), 0.04, 0.12, 0);
+  varilla.rotation.z = -0.3;
+  pieza(antena, esfera(0.07), brillo(PALETA.plasma), 0.09, 0.28, 0);
 
   // Brazos y piernas: articulación en el hombro y en la cadera.
   for (const [lado, s] of [['i', 1], ['d', -1]] as const) {
@@ -68,7 +70,10 @@ export function crearAstronauta(): Modelo {
 
   const animaciones = [
     animacion('Reposo', 2.4, [
-      mov(raiz, 'cadera', ciclo(2.4, (f) => [0, sen(f, 2) * 0.015, 0])),
+      // Respira y pasa el peso de una pierna a otra.
+      mov(raiz, 'cadera', ciclo(2.4, (f) => [sen(f) * 0.025, sen(f, 2) * 0.015, 0])),
+      rot('cadera', ciclo(2.4, (f) => [0, 0, sen(f) * 2])),
+      rot('antena', ciclo(2.4, (f) => [sen(f, 2) * 4, 0, sen(f) * 5])),
       rot('pecho', ciclo(2.4, (f) => [sen(f, 2) * 1.5, 0, 0])),
       rot('cabeza', ciclo(2.4, (f) => [sen(f) * 3, sen(f) * 14, sen(f, 2) * 2])),
       rot('hombro_i', ciclo(2.4, (f) => [sen(f, 2) * 3, 0, 8 + sen(f, 2) * 2])),
@@ -82,19 +87,41 @@ export function crearAstronauta(): Modelo {
       rot('pierna_i', ciclo(1, (f) => [sen(f) * 28, 0, 0])),
       rot('pierna_d', ciclo(1, (f) => [-sen(f) * 28, 0, 0])),
       ...brazos((f) => -sen(f) * 24),
-      mov(raiz, 'cadera', ciclo(1, (f) => [0, 0.045 * (1 - Math.cos(f * TAU * 2)) / 2, 0])),
-      rot('pecho', ciclo(1, (f) => [4, sen(f) * 6, sen(f) * 3])),
-      rot('cabeza', ciclo(1, (f) => [0, -sen(f) * 4, 0])),
-    ], 'movimiento', 'Paso tranquilo con balanceo de brazos y rebote suave.'),
+      // La cadera baja al apoyar (dos veces por ciclo) y se balancea hacia la pierna de apoyo.
+      mov(raiz, 'cadera', ciclo(1, (f) => [sen(f) * 0.03, 0.045 * (1 - Math.cos(f * TAU * 2)) / 2, 0])),
+      rot('cadera', ciclo(1, (f) => [0, -sen(f) * 5, -sen(f) * 3])),
+      rot('pecho', ciclo(1, (f) => [4, sen(f) * 9, sen(f) * 3])),
+      rot('cabeza', ciclo(1, (f) => [-sen(f, 2) * 2, -sen(f) * 6, 0])),
+      esc('cuerpo', ciclo(1, (f) => { const k = Math.max(0, Math.cos(f * TAU * 2)) * 0.03; return [1 + k, 1 - k, 1 + k]; })),
+      rot('antena', ciclo(1, (f) => [-6 + sen(f, 2) * 8, 0, sen(f) * 6])),
+    ], 'movimiento', 'Paso tranquilo: balanceo de cadera y brazos, rebote suave y la antena que acompaña.'),
 
     animacion('Correr', 0.6, [
       rot('pierna_i', ciclo(0.6, (f) => [sen(f) * 46, 0, 0])),
       rot('pierna_d', ciclo(0.6, (f) => [-sen(f) * 46, 0, 0])),
-      ...brazos((f) => -sen(f) * 52, 12, 0.6),
+      ...brazos((f) => -sen(f) * 56, 14, 0.6),
       mov(raiz, 'cadera', ciclo(0.6, (f) => [0, 0.1 * (1 - Math.cos(f * TAU * 2)) / 2, 0])),
-      rot('pecho', ciclo(0.6, (f) => [14, sen(f) * 10, 0])),
-      rot('cabeza', ciclo(0.6, (f) => [-8, -sen(f) * 6, 0])),
-    ], 'movimiento', 'Carrera inclinada hacia delante, con rebote fuerte.'),
+      rot('cadera', ciclo(0.6, (f) => [0, -sen(f) * 8, 0])),
+      rot('pecho', ciclo(0.6, (f) => [14 + sen(f, 2) * 3, sen(f) * 14, 0])),
+      rot('cabeza', ciclo(0.6, (f) => [-8 - sen(f, 2) * 3, -sen(f) * 8, 0])),
+      // Aplasta un poco al pisar y se estira en el vuelo.
+      esc('cuerpo', ciclo(0.6, (f) => { const k = Math.cos(f * TAU * 2) * 0.04; return [1 + k, 1 - k, 1 + k]; })),
+      rot('antena', ciclo(0.6, (f) => [-22 + sen(f, 2) * 12, 0, sen(f) * 8])),
+    ], 'movimiento', 'Carrera inclinada: cadera y hombros a contratiempo, rebote fuerte y la antena hacia atrás.'),
+
+    animacion('Esprintar', 0.45, [
+      // Sprint con Shift: muy inclinado, zancada larga y brazos que bombean.
+      rot('pierna_i', ciclo(0.45, (f) => [sen(f) * 60 - 6, 0, 0])),
+      rot('pierna_d', ciclo(0.45, (f) => [-sen(f) * 60 - 6, 0, 0])),
+      ...brazos((f) => -sen(f) * 78 + 12, 18, 0.45),
+      mov(raiz, 'cadera', ciclo(0.45, (f) => [0, -0.04 + 0.14 * (1 - Math.cos(f * TAU * 2)) / 2, 0.06])),
+      rot('cadera', ciclo(0.45, (f) => [0, -sen(f) * 10, 0])),
+      rot('pecho', ciclo(0.45, (f) => [28 + sen(f, 2) * 4, sen(f) * 16, 0])),
+      rot('cabeza', ciclo(0.45, (f) => [-20, -sen(f) * 9, 0])),
+      esc('cuerpo', ciclo(0.45, (f) => { const k = Math.cos(f * TAU * 2) * 0.05; return [1 + k, 1 - k, 1 + k]; })),
+      rot('antena', ciclo(0.45, (f) => [-48 + sen(f, 2) * 10, 0, sen(f) * 6])),
+      esc('ada', ciclo(0.45, (f) => { const k = 1.15 + 0.2 * sen(f, 2); return [k, k, k]; })),
+    ], 'movimiento', 'Sprint: inclinado a tope, zancada larga, brazos que bombean, antena aplastada y ADA a todo brillo.'),
 
     animacion('Saltar', 0.7, [
       mov(raiz, 'cadera', poses([[0, 0, 0, 0], [0.12, 0, -0.18, 0], [0.3, 0, 0.12, 0], [0.55, 0, 0.04, 0], [0.7, 0, 0, 0]])),

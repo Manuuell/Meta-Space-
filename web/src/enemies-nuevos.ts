@@ -46,22 +46,22 @@ export function esNuevo(id: string): id is NuevoEnemyId {
  */
 export const NUEVOS: Record<NuevoEnemyId, NuevoEnemyDef> = {
   saltador: {
-    id: 'saltador', name: 'Saltador', hp: 22, speed: 2.2, damage: 14, radius: 0.5,
+    id: 'saltador', name: 'Saltador', hp: 30, speed: 2.2, damage: 14, radius: 0.5,
     scrap: 2, height: 0.7,
     blurb: 'Podador de viñas orbitales: todavía cree que corres porque quieres jugar.',
   },
   avispa: {
-    id: 'avispa', name: 'Avispa', hp: 14, speed: 4.2, damage: 5, radius: 0.4,
+    id: 'avispa', name: 'Avispa', hp: 19, speed: 4.2, damage: 5, radius: 0.4,
     scrap: 2, height: 3.4,
     blurb: 'Mensajera de HELIOS con un ala rota: el mensaje llega igualmente.',
   },
   caparazon: {
-    id: 'caparazon', name: 'Caparazón', hp: 70, speed: 1.1, damage: 15, radius: 1.0,
+    id: 'caparazon', name: 'Caparazón', hp: 95, speed: 1.1, damage: 15, radius: 1.0,
     scrap: 3, height: 0.6,
     blurb: 'Arca de siembra: protege su carga incluso después de muerta.',
   },
   sembrador: {
-    id: 'sembrador', name: 'Sembrador', hp: 26, speed: 2.6, damage: 6, radius: 0.55,
+    id: 'sembrador', name: 'Sembrador', hp: 35, speed: 2.6, damage: 6, radius: 0.55,
     scrap: 5, height: 1.4,
     blurb: 'Jardinero de HELIOS: planta donde más duele.',
   },

@@ -91,14 +91,16 @@
 .h2-reliquias i.si { background: #ffd25a; box-shadow: 0 0 8px rgba(255, 210, 90, 0.7); }
 
 /* Los avisos de ui.ts van debajo de la ficha. */
-#ui .toasts { top: 132px; }
+#ui .toasts { top: 162px; }
 
 /* ------------------------------------------------ Ventana de lanzamiento */
 
 .h2-ventana {
-  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  /* Por encima de los avisos de radio: la barra del jefe no se puede tapar. */
+  position: absolute; z-index: 6; top: 10px; left: 50%; transform: translateX(-50%);
   display: flex; flex-direction: column; align-items: center; width: 380px;
 }
+.h2-reloj-fila { position: relative; display: flex; align-items: center; }
 .h2-reloj { padding: 3px 26px 6px; text-align: center; border-color: var(--h2-borde); border-top: 4px solid #e8632b; }
 .h2-reloj small {
   display: block; font-size: 10px; letter-spacing: 1.6px; text-transform: uppercase; color: #ffb38a;
@@ -137,6 +139,7 @@
 }
 .h2-chip b { font-size: 15px; color: #ffd25a; }
 .h2-chip.bajas b { color: #ff8a6a; }
+.h2-chip.potencia b { color: #ff9a5a; }
 
 .h2-mision {
   margin-top: 6px; max-width: 360px; text-align: center;
@@ -171,6 +174,40 @@
   font-size: 10px; font-weight: 900; text-shadow: 0 1px 2px #000;
 }
 
+/* Carga del pilón: anillo con porcentaje pegado al reloj, como un segundo
+   reloj que se llena. Solo aparece mientras ADA carga. */
+.h2-carga {
+  position: absolute; left: calc(100% + 10px); top: 50%; width: 66px; height: 66px; border-radius: 50%;
+  display: grid; place-items: center; opacity: 0; transform: translateY(-50%) scale(0.5);
+  transition: opacity 0.2s, transform 0.25s cubic-bezier(.2, 1.4, .5, 1);
+  background: conic-gradient(#ffd25a calc(var(--p, 0) * 1%), #2a2238 0);
+  border: 3px solid var(--h2-borde); box-shadow: var(--h2-sombra), 0 0 18px rgba(255, 210, 90, 0.45);
+}
+.h2-carga::before {
+  content: ''; position: absolute; inset: 7px; border-radius: 50%;
+  background: var(--h2-fondo); border: 2px solid var(--h2-borde);
+}
+.h2-carga b { position: relative; font-size: 17px; font-weight: 900; color: #fff; font-variant-numeric: tabular-nums; }
+.h2-carga.on { opacity: 1; transform: translateY(-50%) scale(1); }
+
+/* ------------------------------------------------------- Bendiciones */
+
+.h2-bendiciones {
+  position: absolute; top: 112px; left: 14px; max-width: 320px;
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.h2-bendicion {
+  position: relative; width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center;
+  background: linear-gradient(color-mix(in srgb, var(--c) 45%, #241a33), #1a1326);
+  border: 3px solid var(--h2-borde); box-shadow: var(--h2-sombra), inset 0 0 0 2px color-mix(in srgb, var(--c) 70%, transparent);
+  animation: h2-entra 0.3s ease-out;
+}
+.h2-bendicion svg { width: 28px; height: 28px; }
+.h2-bendicion small {
+  position: absolute; right: -6px; bottom: -6px; padding: 0 4px; border-radius: 7px;
+  font-size: 10px; font-weight: 900; color: #1b1214; background: var(--c); border: 2px solid var(--h2-borde);
+}
+
 /* ---------------------------------------------------------- Minimapa */
 
 .h2-mapa { position: absolute; top: 8px; right: 8px; width: 210px; }
@@ -184,9 +221,18 @@
   opacity: 0; transition: opacity 0.4s;
 }
 .h2-zona.on { opacity: 1; }
+.h2-tecla-mapa {
+  width: max-content; margin: 6px auto 0; padding: 2px 10px 3px 4px; border-radius: 999px;
+  font-size: 11px; font-weight: 800; color: #d9d4e6;
+  background: rgba(24, 18, 36, 0.78); border: 2px solid var(--h2-borde);
+}
+.h2-tecla-mapa kbd {
+  display: inline-grid; place-items: center; min-width: 20px; height: 20px; margin-right: 4px; border-radius: 6px;
+  font: 900 11px/1 inherit; color: #1b1214; background: #f4efe8; border: 2px solid var(--h2-borde);
+}
 
 .h2-balizas {
-  position: absolute; top: 250px; right: 10px; max-width: 220px; padding: 5px 10px;
+  position: absolute; top: 284px; right: 10px; max-width: 220px; padding: 5px 10px;
   font-size: 12px; font-weight: 700; text-align: center; color: #ffd23a;
   background: rgba(40, 20, 10, 0.82); border: 2px solid var(--h2-borde); border-radius: 10px;
   opacity: 0; transition: opacity 0.3s;
@@ -253,6 +299,18 @@
   background: #f4efe8; border: 2px solid var(--h2-borde); box-shadow: 0 3px 0 #a99c8c;
 }
 .h2-interaccion span { font-size: 14px; font-weight: 700; }
+.h2-coste {
+  display: inline-flex; align-items: center; gap: 3px; margin-left: 2px; padding: 1px 9px 1px 4px; border-radius: 999px;
+  font-style: normal; background: rgba(255, 210, 90, 0.16); border: 2px solid rgba(255, 210, 90, 0.5);
+}
+.h2-coste svg { width: 18px; height: 18px; }
+.h2-coste b { font-size: 14px; color: #ffd25a; }
+.h2-interaccion.bloqueado { border-color: #7a1f2a; }
+.h2-interaccion.bloqueado span { color: #ffb0a6; }
+.h2-interaccion.bloqueado .h2-coste { background: rgba(255, 74, 58, 0.16); border-color: rgba(255, 74, 58, 0.6); }
+.h2-interaccion.bloqueado .h2-coste b { color: #ff6a5a; }
+.h2-interaccion.sacude { animation: h2-sacude 0.3s; }
+@keyframes h2-sacude { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
 
 .h2-pista {
   display: none; padding: 6px 14px; border-radius: 10px;
@@ -269,6 +327,11 @@
   border: 3px solid var(--h2-borde); box-shadow: var(--h2-sombra);
 }
 .h2-casilla svg { width: 46px; height: 46px; margin-top: 3px; filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.45)); }
+/* Recarga: una cortina que baja de arriba abajo hasta el siguiente disparo. */
+.h2-recarga {
+  position: absolute; inset: 0; z-index: 1; border-radius: 13px; pointer-events: none;
+  background: rgba(18, 12, 28, 0.42); transform-origin: bottom; transform: scaleY(var(--cd, 0));
+}
 .h2-casilla small {
   position: absolute; top: 3px; left: 0; right: 0; text-align: center;
   font-size: 10px; font-weight: 800; color: #1b1214;
@@ -288,6 +351,61 @@
   position: absolute; inset: 0; display: grid; place-items: center;
   font-size: 10px; font-weight: 800; text-shadow: 0 1px 2px #000;
 }
+
+/* Letrero de peligro de los jefes: entra de golpe y tiembla. */
+.h2-alerta {
+  position: absolute; z-index: 7; left: 50%; top: 30%; display: none; align-items: center; gap: 12px;
+  padding: 8px 22px 9px 9px; border-radius: 999px; transform: translateX(-50%);
+  background: rgba(70, 8, 16, 0.92); border: 4px solid #120c1c; box-shadow: 0 6px 0 rgba(0, 0, 0, 0.4), 0 0 32px rgba(255, 59, 48, 0.55);
+}
+.h2-alerta.on { display: flex; animation: h2-alerta-entra 0.35s cubic-bezier(.2, 1.6, .5, 1), h2-alerta-tiembla 0.5s 0.35s ease-in-out 2; }
+.h2-alerta i {
+  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  font: 900 26px/1 'Rubik', system-ui, sans-serif; font-style: normal; color: #2a0a0a; background: #ffd25a; border: 3px solid #120c1c;
+}
+.h2-alerta b { font-size: 22px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 #7a0f1a; white-space: nowrap; }
+@keyframes h2-alerta-entra { from { opacity: 0; transform: translateX(-50%) scale(1.6); } }
+@keyframes h2-alerta-tiembla { 25% { transform: translateX(calc(-50% - 4px)); } 75% { transform: translateX(calc(-50% + 4px)); } }
+
+/* Mira del Cañón solar: cuatro rayitas y un punto; se cierra al apuntar y se
+   pone roja al acertar. */
+.h2-mira { position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; transform: translate(-50%, -50%); display: none; }
+.h2-mira.on { display: block; }
+.h2-mira i { position: absolute; background: #fff; box-shadow: 0 0 0 1.5px #16111f; border-radius: 2px; transition: transform 0.12s; }
+.h2-mira i:nth-child(1) { left: 15px; top: 0; width: 4px; height: 10px; }
+.h2-mira i:nth-child(2) { left: 15px; bottom: 0; width: 4px; height: 10px; }
+.h2-mira i:nth-child(3) { top: 15px; left: 0; width: 10px; height: 4px; }
+.h2-mira i:nth-child(4) { top: 15px; right: 0; width: 10px; height: 4px; }
+.h2-mira b { position: absolute; left: 14px; top: 14px; width: 6px; height: 6px; border-radius: 50%; background: #ffe066; box-shadow: 0 0 0 1.5px #16111f; }
+.h2-mira.apuntando i:nth-child(1) { transform: translateY(5px); }
+.h2-mira.apuntando i:nth-child(2) { transform: translateY(-5px); }
+.h2-mira.apuntando i:nth-child(3) { transform: translateX(5px); }
+.h2-mira.apuntando i:nth-child(4) { transform: translateX(-5px); }
+.h2-mira.acierto i { background: #ff6a5a; }
+.h2-mira.debil i { background: #ffd25a; transform: scale(1.4); }
+
+/* Ficha del Cañón solar, encima de las herramientas. */
+.h2-canon {
+  position: relative; display: none; align-items: center; gap: 8px; padding: 4px 14px 4px 5px; overflow: hidden;
+  border-radius: 999px; background: var(--h2-fondo); border: 3px solid var(--h2-borde); box-shadow: var(--h2-sombra);
+}
+.h2-canon.on { display: flex; }
+.h2-canon-icono svg { width: 26px; height: 26px; display: block; }
+.h2-canon b { font-size: 13px; color: #ffe066; }
+.h2-canon small { font-size: 11px; color: var(--h2-gris); }
+.h2-canon-recarga {
+  position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: #ffe066;
+  transform-origin: left; transform: scaleX(calc(1 - var(--cd, 0)));
+}
+
+/* Aguante del sprint: barrita bajo la vida, solo mientras no está lleno. */
+.hud2 .hud-aguante {
+  position: absolute; left: 0; top: 0; width: 84px; height: 7px; border-radius: 4px; overflow: hidden;
+  background: rgba(20, 16, 28, 0.85); border: 2px solid var(--h2-borde); opacity: 0; transition: opacity 0.25s;
+}
+.hud2 .hud-aguante.on { opacity: 1; }
+.hud2 .hud-aguante i { display: block; height: 100%; background: linear-gradient(90deg, #5ee0ff, #b8f4ff); }
+.hud2 .hud-aguante.bajo i { background: #ffb347; }
 
 /* ------------------------------------------------------------ Móvil */
 
@@ -311,6 +429,16 @@
   .h2-exposicion { top: 134px; transform: scale(0.75); transform-origin: top right; }
   .h2-abajo { gap: 6px; bottom: 8px; }
   .h2-casilla { width: 56px; height: 60px; border-radius: 13px; }
+  .h2-bendiciones { top: 84px; max-width: 220px; }
+  .h2-bendicion { width: 30px; height: 30px; border-radius: 9px; }
+  .h2-bendicion svg { width: 22px; height: 22px; }
+  .h2-carga { width: 50px; height: 50px; }
+  .h2-carga b { font-size: 13px; }
+  .h2-tecla-mapa { display: none; }
+  .h2-canon small { display: none; }
+  .h2-alerta { top: 26%; padding: 5px 14px 6px 6px; }
+  .h2-alerta i { width: 30px; height: 30px; font-size: 19px; }
+  .h2-alerta b { font-size: 15px; white-space: normal; max-width: 70vw; }
   .h2-casilla small { display: none; }
   .h2-casilla svg { width: 38px; height: 38px; }
   .h2-subtitulo { padding: 6px 12px 7px; }

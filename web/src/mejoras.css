@@ -86,6 +86,16 @@
 }
 .msm-cinta.nueva { background: var(--msm-oro); }
 
+/* Bendiciones: la cinta y el borde llevan el color de la rareza; las épicas y
+   legendarias brillan solas, sin hover. */
+.msm-tarjeta[data-rareza] .msm-cinta { background: var(--r); }
+.msm-tarjeta[data-rareza] { border-color: color-mix(in srgb, var(--r) 55%, var(--msm-borde)); }
+.msm-tarjeta[data-rareza='epica'], .msm-tarjeta[data-rareza='legendaria'] {
+  box-shadow: 0 7px 0 rgba(0, 0, 0, 0.45), 0 0 26px color-mix(in srgb, var(--r) 55%, transparent);
+}
+.msm-tarjeta[data-rareza='legendaria'] .msm-cinta { animation: msm-latir-rareza 1.1s ease-in-out infinite; }
+@keyframes msm-latir-rareza { 50% { filter: brightness(1.35); } }
+
 /* Medallón: el icono sobre una losa del color de la mejora, con rayos. */
 .msm-medallon {
   position: relative; width: 112px; height: 112px; margin: 30px 0 12px; border-radius: 26px; overflow: hidden;

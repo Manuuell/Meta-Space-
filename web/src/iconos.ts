@@ -100,6 +100,59 @@ export const ICONOS: Record<string, string> = {
     `<circle cx="32" cy="38" r="6" fill="#d07bff"/>` + brillo(30, 36, 2, 1.4, -30),
   ),
 
+  /** Lanza solar: el sol en lo alto deja caer una columna de luz sobre un aro. */
+  lanza: svg(
+    `<ellipse cx="32" cy="54" rx="24" ry="7" fill="none" stroke="#ffe066" stroke-width="4"/>` +
+    `<ellipse cx="32" cy="54" rx="24" ry="7" fill="none" stroke-width="1.5"/>` +
+    `<path d="M24 20 L40 20 L45 54 L19 54 Z" fill="#fff1a8" opacity=".85"/>` +
+    `<path d="M29 22 L35 22 L37 52 L27 52 Z" fill="#fffbe8" stroke="none"/>` +
+    `<path d="${estrella(32, 15, 14, 9, 10)}" fill="#ffd25a"/>` +
+    `<circle cx="32" cy="15" r="7" fill="#fff1a8"/>` + brillo(29.5, 12.5, 2, 1.4, -30) +
+    destello(10, 30, 3.5, CREMA) + destello(54, 34, 3, CREMA),
+  ),
+
+  /** Arco de ADA: un rayo en zigzag que une tres chispas. */
+  arco: svg(
+    linea('M8 46 L20 30 L27 38 L39 16 L45 26 L56 10', '#8ad7ff', 6) +
+    `<path d="M8 46 L20 30 L27 38 L39 16 L45 26 L56 10" fill="none" stroke="#f2fbff" stroke-width="2"/>` +
+    `<circle cx="8" cy="46" r="6" fill="${ADA}"/><circle cx="27" cy="38" r="5" fill="${ADA}"/><circle cx="56" cy="10" r="5" fill="${ADA}"/>` +
+    destello(44, 50, 4.5, '#b8f4ff') + destello(16, 14, 3.5, '#b8f4ff') + brillo(6.5, 44, 1.6, 1.1, -30),
+  ),
+
+  /** Mortero de chatarra: la bomba con su núcleo de plasma, saliendo de un estallido. */
+  mortero: svg(
+    `<path d="${estrella(40, 42, 21, 11, 8, -70)}" fill="${NARANJA}"/>` +
+    `<path d="${estrella(40, 42, 12, 6, 8, -70)}" fill="#ffd25a" stroke="none"/>` +
+    `<circle cx="24" cy="26" r="15" fill="#3a2a22"/>` +
+    `<circle cx="24" cy="26" r="6" fill="${NARANJA}" stroke="none"/>` +
+    `<rect x="31" y="8" width="8" height="8" rx="2" fill="${METAL_OSCURO}" transform="rotate(40 35 12)"/>` +
+    linea('M38 9 Q43 3 49 6', '#ffd25a', 2.5) + brillo(18, 19, 3.5, 2.2, -30),
+  ),
+
+  // ------------------------------------------------------- bendiciones
+
+  /** Núcleo caliente: un puño de plasma que estalla. */
+  'b-dano': svg(
+    `<path d="${estrella(32, 32, 27, 15, 9)}" fill="#ff5a4a"/>` +
+    `<path d="${estrella(32, 32, 16, 9, 9, -70)}" fill="#ffb347" stroke="none"/>` +
+    `<circle cx="32" cy="32" r="7" fill="${CREMA}"/>` + brillo(29.5, 29.5, 2, 1.4, -30),
+  ),
+
+  /** Punto débil: la mira sobre un destello. */
+  'b-critico': svg(
+    `<circle cx="32" cy="32" r="21" fill="none" stroke="#ffd25a" stroke-width="6"/>` +
+    `<circle cx="32" cy="32" r="21" fill="none" stroke-width="1.5"/>` +
+    linea('M32 4 V16', '#ffd25a', 4) + linea('M32 48 V60', '#ffd25a', 4) + linea('M4 32 H16', '#ffd25a', 4) + linea('M48 32 H60', '#ffd25a', 4) +
+    `<path d="${estrella(32, 32, 11, 4, 4)}" fill="#fff4d6"/>`,
+  ),
+
+  /** Ojo de chatarrero: el rayo de chatarra con una lupa. */
+  'b-chatarra': svg(
+    `<path d="M30 5 L12 34 H24 L20 58 L42 26 H29 L34 5 Z" fill="#c9a0ff"/>` +
+    `<circle cx="44" cy="40" r="11" fill="#b8f4ff" opacity=".9"/><circle cx="44" cy="40" r="11" fill="none"/>` +
+    linea('M52 48 L59 55', METAL_OSCURO, 5) + brillo(40, 36, 3, 2, -30),
+  ),
+
   // ------------------------------------------------------------ pasivas
 
   /** Servos de pierna: la bota del traje con un servo y rayas de velocidad. */
@@ -259,6 +312,110 @@ export const ICONOS: Record<string, string> = {
   /** Si el juego trae una mejora sin icono propio. */
   generico: svg(`<path d="${estrella(32, 33, 26, 12, 5)}" fill="#ffd25a"/>` + brillo(26, 24, 3, 1.6, -30)),
 };
+
+// ------------------------------------------------------- iconos del menú
+//
+// Los mismos que las mejoras, pero para la pantalla de título: antes eran
+// letras sueltas (▶ ◇ ? ▤…), que se ven distinto en cada fuente. Ahora son
+// piezas del mismo idioma que los modelos: gruesas, con contorno oscuro,
+// dos tonos y brillo blanco. La clave es el id que usa `ui-title.ts`.
+
+export const ICONOS_MENU: Record<string, string> = {
+  /** Jugar: el triángulo gordito del mando, con corazón de plasma. */
+  jugar: svg(
+    `<path d="M22 10 L52 32 L22 54 Z" fill="${PLASMA}"/>` +
+    `<path d="M29 21 L43 32 L29 43 Z" fill="${CREMA}" stroke="none"/>` +
+    destello(12, 10, 4, CREMA) + destello(10, 52, 3, CREMA),
+  ),
+
+  /** Operador: el casco del astronauta, con el visor y los ojos de ADA. */
+  operador: svg(
+    `<rect x="29" y="3" width="6" height="10" rx="3" fill="${METAL_OSCURO}"/>` +
+    `<circle cx="32" cy="14" r="4" fill="${ADA}" stroke-width="2.5"/>` +
+    `<circle cx="32" cy="34" r="23" fill="${BLANCO}"/>` +
+    `<rect x="15" y="17" width="34" height="7" rx="3.5" fill="${NARANJA}"/>` +
+    `<rect x="14" y="26" width="36" height="19" rx="9.5" fill="${VISOR}"/>` +
+    `<rect x="21" y="30" width="7" height="11" rx="3.5" fill="${ADA}" stroke="none"/>` +
+    `<rect x="36" y="30" width="7" height="11" rx="3.5" fill="${ADA}" stroke="none"/>` + brillo(22, 15, 2.5, 5),
+  ),
+
+  /** Cómo jugar: la interrogación dibujada a trazo, sobre una losa oscura. */
+  ayuda: svg(
+    `<rect x="8" y="8" width="48" height="48" rx="14" fill="${OSCURO}"/>` +
+    `<path d="M24 25 Q24 14 34 14 Q44 14 44 24 Q44 32 36 34.5 L36 40" fill="none" stroke="${CREMA}" stroke-width="7"/>` +
+    `<circle cx="36" cy="48" r="4.2" fill="${CREMA}" stroke="none"/>` + brillo(18, 16, 3, 6, -20),
+  ),
+
+  /** Códice: la caja del archivo, con los papeles de la auditoría asomando. */
+  codice: svg(
+    `<rect x="16" y="9" width="32" height="13" rx="2.5" fill="${BLANCO}"/>` +
+    `<rect x="10" y="18" width="44" height="36" rx="6" fill="#c9a0ff"/>` +
+    `<path d="M10 24 Q10 18 16 18 H48 Q54 18 54 24 V30 H10 Z" fill="#a87fe8" stroke="none"/>` +
+    `<rect x="25" y="35" width="14" height="13" rx="2" fill="${OSCURO}"/>` +
+    `<rect x="28" y="38" width="8" height="3" rx="1.5" fill="#c9a0ff" stroke="none"/>` +
+    `<rect x="28" y="42.5" width="8" height="3" rx="1.5" fill="#c9a0ff" stroke="none"/>` + brillo(18, 30, 2.5, 8),
+  ),
+
+  /** Operación activa: la mira sobre el núcleo de ADA (apagar el velo). */
+  operacion: svg(
+    `<circle cx="32" cy="32" r="23" fill="${OSCURO}"/>` +
+    `<circle cx="32" cy="32" r="15" fill="none" stroke="#d98cff" stroke-width="6"/>` +
+    `<circle cx="32" cy="32" r="6.5" fill="${ADA}" stroke="none"/>` + brillo(29.5, 29.5, 2, 1.6),
+  ),
+
+  /** Banco de campo: la caja fuerte con el rayo de la chatarra. */
+  banco: svg(
+    `<rect x="9" y="21" width="46" height="33" rx="7" fill="#c9a84c"/>` +
+    `<path d="M9 28 Q9 21 16 21 H48 Q55 21 55 28 V33 H9 Z" fill="#a8842f" stroke="none"/>` +
+    `<path d="M37 24 L25 37 H31 L29 48 L43 33 H36 L39 24 Z" fill="${CREMA}"/>` +
+    `<circle cx="15" cy="46" r="2" fill="#7a5f1e" stroke="none"/><circle cx="49" cy="46" r="2" fill="#7a5f1e" stroke="none"/>` + brillo(17, 30, 2.5, 8),
+  ),
+
+  /** Reliquia: el rombo de la prueba, con corazón claro. */
+  reliquia: svg(
+    `<path d="M32 6 L54 32 L32 58 L10 32 Z" fill="${ADA}"/>` +
+    `<path d="M32 18 L44 32 L32 46 L20 32 Z" fill="#b8f4ff" stroke="none"/>` +
+    `<path d="M32 18 L44 32 L32 46 L20 32 Z" fill="none"/>` + brillo(26, 21, 2, 5, -30),
+  ),
+
+  /** Chatarra: el rayo suelto que se recoge por el campo. */
+  chatarra: svg(
+    `<path d="M37 5 L17 36 H29 L25 59 L47 26 H34 L40 5 Z" fill="#c9a0ff"/>` +
+    brillo(30, 18, 2, 8, -15) + destello(13, 12, 4) + destello(53, 50, 3),
+  ),
+
+  /** Partidas: el destello de la misión cumplida. */
+  partidas: svg(
+    `<path d="${estrella(32, 32, 27, 10, 4)}" fill="${CREMA}"/>` +
+    `<path d="${estrella(32, 32, 15, 5, 4, -67)}" fill="#ffd9a0" stroke="none"/>` + destello(12, 52, 3.5) + destello(52, 12, 3.5),
+  ),
+
+  /** Récord: la medalla del mejor tiempo, con sus cintas. */
+  record: svg(
+    `<path d="M22 4 H31 L28 26 H19 Z" fill="#ff4a3a"/>` +
+    `<path d="M42 4 H33 L36 26 H45 Z" fill="${NARANJA}"/>` +
+    `<circle cx="32" cy="41" r="16" fill="#ffd25a"/>` +
+    `<path d="${estrella(32, 41, 9, 4, 5)}" fill="#7a5f1e" stroke="none"/>` + brillo(26, 34, 2.5, 5, -30),
+  ),
+
+  /** Señal: ADA emitiendo; la que rastrea HELIOS. */
+  senal: svg(
+    linea(arco(32, 48, 14, -140, -40), ADA, 4.5) + linea(arco(32, 48, 23, -140, -40), '#b8f4ff', 4.5) +
+    `<circle cx="32" cy="48" r="7" fill="${ADA}"/>` + brillo(29.5, 45.5, 2, 1.6),
+  ),
+
+  /** Compañero: la huella de Bruno, que siempre va contigo. */
+  companero: svg(
+    `<ellipse cx="32" cy="41" rx="11" ry="9" fill="${ADA}"/>` +
+    `<circle cx="19" cy="29" r="5" fill="${ADA}"/><circle cx="32" cy="24" r="5" fill="${ADA}"/><circle cx="45" cy="29" r="5" fill="${ADA}"/>` +
+    brillo(28, 37, 2.5, 3),
+  ),
+};
+
+/** El icono del menú por su id (o el genérico). */
+export function iconoMenu(id: string): string {
+  return ICONOS_MENU[id] ?? ICONOS.generico;
+}
 
 /** El icono de una mejora por su id (o el genérico). */
 export function iconoMejora(id: string): string {

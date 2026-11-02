@@ -10,7 +10,7 @@ import { iconoMejora } from './iconos.ts';
 // Es solo la presentación: el juego decide las opciones y los textos (ver
 // MUNDO.md, «Subida de nivel») y recibe el índice de la elegida.
 
-export type TipoMejora = 'herramienta' | 'pasiva' | 'equipo' | 'especial' | 'reparar';
+export type TipoMejora = 'herramienta' | 'pasiva' | 'equipo' | 'especial' | 'reparar' | 'bendicion';
 
 export interface Tarjeta {
   /** Id de la mejora en el juego (WeaponId, PassiveId, GearId, SpecialId o «parche»): elige el icono. */
@@ -26,6 +26,8 @@ export interface Tarjeta {
   nivelMax?: number;
   /** Equipo: cómo se usa («Mantén Espacio en el aire»). */
   control?: string;
+  /** Bendiciones: la rareza pinta la cinta y el brillo de la tarjeta. */
+  rareza?: { id: string; nombre: string; color: string };
 }
 
 export interface OpcionesMejoras {
@@ -33,15 +35,19 @@ export interface OpcionesMejoras {
   root?: HTMLElement;
   /** La frase de debajo del título. */
   frase?: string;
+  /** El título (por defecto, «¡NIVEL n!»). */
+  titulo?: string;
 }
 
 const NOMBRE_TIPO: Record<TipoMejora, string> = {
   herramienta: 'Herramienta', pasiva: 'Mejora del traje', equipo: 'Equipo', especial: 'Especial', reparar: 'Reparación',
+  bendicion: 'Bendición',
 };
 
 /** Lo que dice la cinta de arriba. */
 function cinta(t: Tarjeta): { texto: string; nueva: boolean } {
   if (t.tipo === 'reparar') return { texto: 'REPARAR', nueva: false };
+  if (t.rareza) return { texto: t.rareza.nombre.toUpperCase(), nueva: false };
   if (!t.nivel || t.nivel <= 1) {
     return { texto: t.tipo === 'equipo' ? 'EQUIPO NUEVO' : t.tipo === 'especial' ? 'ESPECIAL NUEVO' : 'NUEVA', nueva: true };
   }
@@ -69,13 +75,14 @@ export function mostrarMejoras(nivel: number, tarjetas: Tarjeta[], elegir: (i: n
   const capa = el('div', 'msm armando');
   capa.setAttribute('role', 'dialog');
   capa.setAttribute('aria-modal', 'true');
-  capa.setAttribute('aria-label', `Nivel ${nivel}: elige una mejora`);
+  const textoTitulo = opciones.titulo ?? `¡NIVEL ${nivel}!`;
+  capa.setAttribute('aria-label', `${textoTitulo}: elige una mejora`);
   capa.appendChild(el('div', 'msm-rayos'));
 
   // Título letra a letra: el número, en oro.
   const titulo = el('h2', 'msm-titulo');
   titulo.setAttribute('aria-hidden', 'true');
-  [...`¡NIVEL ${nivel}!`].forEach((ch, i) => {
+  [...textoTitulo].forEach((ch, i) => {
     const letra = el('span', ch === ' ' ? 'hueco' : /\d/.test(ch) ? 'num' : '', ch === ' ' ? '' : ch);
     letra.style.setProperty('--i', String(i));
     titulo.appendChild(letra);
@@ -89,6 +96,10 @@ export function mostrarMejoras(nivel: number, tarjetas: Tarjeta[], elegir: (i: n
     b.type = 'button';
     b.style.setProperty('--c', t.color);
     b.style.setProperty('--i', String(i));
+    if (t.rareza) {
+      b.dataset.rareza = t.rareza.id;
+      b.style.setProperty('--r', t.rareza.color);
+    }
     const c = cinta(t);
     b.appendChild(el('span', `msm-cinta${c.nueva ? ' nueva' : ''}`, c.texto));
     const medallon = el('span', 'msm-medallon');

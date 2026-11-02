@@ -67,6 +67,11 @@ export const OBJETIVOS_POR_ARMA: Record<WeaponId, number> = {
   pulso: 3,
   dron: 1.2,
   interferencia: 2.5,
+  // Área: la lanza y el mortero pegan a todo el grupo; el arco salta (su
+  // tabla ya cuenta las cadenas en `count`, no los saltos).
+  lanza: 3.5,
+  arco: 4,
+  mortero: 3,
 };
 /** Multitud de referencia: con esta o más enemigos, el factor multiobjetivo
  *  base rinde al completo; con menos, se interpola hacia 1 (duelo). */
@@ -79,6 +84,9 @@ export const TOPE_MULTITUD: Record<WeaponId, number> = {
   pulso: 12,
   dron: 2,
   interferencia: 8,
+  lanza: 9,
+  arco: 7,
+  mortero: 8,
 };
 /** Prima de cobertura: cada herramienta nueva hasta la tercera multiplica su
  *  puntuación (0.3 por hueco libre). El modelo de daño no ve lo que sí ve un
@@ -96,7 +104,7 @@ export const XP_NIVELES_ATRASO = 3;
 
 // ------------------------------------------------------------------- Tipos
 
-export type WeaponId = 'cortador' | 'pulso' | 'dron' | 'interferencia';
+export type WeaponId = 'cortador' | 'pulso' | 'dron' | 'interferencia' | 'lanza' | 'arco' | 'mortero';
 export type PassiveId =
   | 'velocidad'
   | 'iman'

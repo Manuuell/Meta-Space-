@@ -1,5 +1,5 @@
 import './hud.css';
-import { iconoMejora } from './iconos.ts';
+import { iconoMejora, iconoMenu } from './iconos.ts';
 
 // HUD de Meta Space, rehecho para el mapa nuevo. Sustituye a la parte del HUD
 // de ui.ts del juego con las mismas funciones (showHud, hideHud, setMision,
@@ -39,12 +39,15 @@ export function compact(n: number) {
 }
 
 // Las herramientas (los mismos nombres y colores que WEAPONS; los iconos, de iconos.ts).
-export type Herramienta = 'cortador' | 'pulso' | 'dron' | 'interferencia';
+export type Herramienta = 'cortador' | 'pulso' | 'dron' | 'interferencia' | 'lanza' | 'arco' | 'mortero';
 const HERRAMIENTAS: Record<Herramienta, { nombre: string; color: string; icono: string }> = {
   cortador: { nombre: 'Cortador', color: '#ffb347', icono: iconoMejora('cortador') },
   pulso: { nombre: 'Pulso', color: '#5ee0ff', icono: iconoMejora('pulso') },
   dron: { nombre: 'Dron', color: '#c9f27a', icono: iconoMejora('dron') },
   interferencia: { nombre: 'Interferencia', color: '#d07bff', icono: iconoMejora('interferencia') },
+  lanza: { nombre: 'Lanza solar', color: '#ffe066', icono: iconoMejora('lanza') },
+  arco: { nombre: 'Arco', color: '#8ad7ff', icono: iconoMejora('arco') },
+  mortero: { nombre: 'Mortero', color: '#ff7a45', icono: iconoMejora('mortero') },
 };
 const NIVEL_MAX = 6;
 
@@ -79,8 +82,20 @@ export interface HudState {
   jefes?: { minuto: number; nombre: string; vencido?: boolean }[];
   /** Jefe que está combatiendo ahora: alimenta su barra de vida. */
   jefeActivo?: { nombre: string; vida?: number; vidaMax?: number };
-  /** Aviso de interacción cerca de algo («Mantén V», «Hablar con Tali»). */
-  interaccion?: { tecla: string; texto: string } | null;
+  /** Aviso de interacción cerca de algo («Mantén V», «F · Abrir cofre · 20»). */
+  interaccion?: { tecla: string; texto: string; coste?: number; bloqueado?: boolean } | null;
+  /** Carga del pilón en el que está el jugador (0..1): el anillo junto al reloj. */
+  carga?: number | null;
+  /** Recarga que le queda a cada herramienta (1 = recién disparada), en el orden de `weapons`. */
+  recargas?: number[];
+  /** Multiplicador de daño total (bendiciones, potencia de las mejoras y héroe). */
+  potencia?: number;
+  /** Aguante del sprint (0..1): la barrita bajo la vida, solo si no está lleno. */
+  aguante?: number;
+  /** Cañón solar: nivel (0 = no lo tienes), recarga (0..1) y si estás apuntando. */
+  canon?: { nivel: number; recarga: number; apuntando: boolean; mira: boolean };
+  /** Bendiciones que llevas: icono, color de la mejor rareza y cuántas. */
+  bendiciones?: { id: string; icono: string; color: string; n: number; titulo: string }[];
   /** Nombre de la zona en la que está el jugador. */
   zona?: string;
 }
@@ -95,9 +110,11 @@ export interface MinimapState {
   /** La nave de ARES-IX posada junto a la salida (World.nave): se queda en el borde si está lejos. */
   nave?: { x: number; z: number; giro: number };
   /** Lo que hay en el mapa: lagos, montañas, barrios y el contenido. */
-  lugares?: { tipo: 'lago' | 'montaña' | 'barrio' | 'altar' | 'ara' | 'caja' | 'torre' | 'refugio' | 'npc'; x: number; z: number; r?: number; hecho?: boolean }[];
+  lugares?: { tipo: 'lago' | 'montaña' | 'barrio' | 'altar' | 'ara' | 'caja' | 'torre' | 'refugio' | 'npc' | 'pilon' | 'duelo' | 'dragon'; x: number; z: number; r?: number; hecho?: boolean }[];
   /** Lo que ha marcado la vigía: pulsa en el minimapa. */
   marca?: { x: number; z: number } | null;
+  /** Puntos que el jugador ha puesto en el mapa grande (M). */
+  puntos?: { x: number; z: number }[];
   /** Metros que abarca el minimapa desde el centro (55 por defecto). */
   alcance?: number;
   /**
@@ -111,6 +128,7 @@ let hud: HTMLElement | null = null;
 let minimap: CanvasRenderingContext2D | null = null;
 let ultimas = '';
 let ultimasReliquias = -1;
+let ultimasBendiciones = '';
 
 export function showHud() {
   hud?.remove();
@@ -128,13 +146,18 @@ export function showHud() {
           <div class="h2-reliquias"></div>
         </div>
       </div>
+      <div class="h2-bendiciones" aria-label="Bendiciones"></div>
 
       <div class="h2-ventana">
-        <div class="h2-reloj h2-panel"><small>Ventana de lanzamiento</small><b class="h2-tiempo"></b></div>
+        <div class="h2-reloj-fila">
+          <div class="h2-reloj h2-panel"><small>Ventana de lanzamiento</small><b class="h2-tiempo"></b></div>
+          <div class="h2-carga" role="progressbar" aria-label="Carga del pilón" aria-valuemin="0" aria-valuemax="100"><b></b></div>
+        </div>
         <div class="h2-barra"><div class="h2-barra-relleno"></div><div class="h2-barra-marcas"></div><span class="h2-cohete">🚀</span></div>
         <div class="h2-chips">
           <span class="h2-chip bajas"><b class="h2-bajas"></b> bajas</span>
           <span class="h2-chip chatarra"><b class="h2-chatarra"></b> chatarra</span>
+          <span class="h2-chip potencia" title="Potencia: multiplica el daño de todas las herramientas"><b class="h2-potencia"></b> daño</span>
         </div>
         <div class="h2-mision"><b class="h2-mision-nombre">Operación en curso…</b><span class="h2-operador"></span></div>
         <div class="h2-jefe h2-panel">
@@ -146,6 +169,7 @@ export function showHud() {
       <div class="h2-mapa">
         <canvas class="h2-minimapa" width="440" height="440"></canvas>
         <div class="h2-zona h2-panel"></div>
+        <div class="h2-tecla-mapa"><kbd>M</kbd> Mapa</div>
       </div>
 
       <div class="h2-exposicion h2-panel">
@@ -157,17 +181,22 @@ export function showHud() {
 
       <div class="h2-abajo">
         <div class="h2-subtitulo"><span class="h2-quien"></span><p></p></div>
-        <div class="h2-interaccion"><kbd></kbd><span></span></div>
+        <div class="h2-interaccion"><kbd></kbd><span></span><em class="h2-coste"></em></div>
         <div class="h2-pista">Haz clic para girar la cámara con el ratón · <b>Q</b>/<b>E</b> también giran</div>
+        <div class="h2-canon"><span class="h2-canon-icono">${iconoMejora('b-critico')}</span><b>Cañón solar</b><small></small><i class="h2-canon-recarga"></i></div>
         <div class="h2-herramientas"></div>
       </div>
 
+      <div class="h2-alerta" role="alert"><i>!</i><b></b></div>
+      <div class="h2-mira" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></div>
       <div class="hud-hp"><div class="hud-hp-fill"></div><span class="hud-hp-text"></span></div>
+      <div class="hud-aguante"><i></i></div>
     </div>`);
   root.appendChild(hud);
   minimap = (hud.querySelector('.h2-minimapa') as HTMLCanvasElement).getContext('2d');
   ultimas = '';
   ultimasReliquias = -1;
+  ultimasBendiciones = '';
 }
 
 export function hideHud() {
@@ -198,6 +227,37 @@ export function decir(quien: 'ada' | 'helios' | 'operador' | 'npc', nombre: stri
   el.classList.add('on');
   const fin = (finSubtitulo = performance.now() + segundos * 1000);
   setTimeout(() => { if (finSubtitulo === fin) el.classList.remove('on'); }, segundos * 1000);
+}
+
+let finAlerta = 0;
+
+/**
+ * Letrero grande de peligro (un jefe va a atacar): entra de golpe en el
+ * centro de la pantalla y se va solo. Texto plano.
+ */
+export function alerta(texto: string, segundos = 1.8) {
+  if (!hud) return;
+  const el = hud.querySelector('.h2-alerta') as HTMLElement;
+  (el.querySelector('b') as HTMLElement).textContent = texto;
+  el.classList.remove('on');
+  void el.offsetWidth; // reinicia la animación de entrada
+  el.classList.add('on');
+  const fin = (finAlerta = performance.now() + segundos * 1000);
+  setTimeout(() => { if (finAlerta === fin) el.classList.remove('on'); }, segundos * 1000);
+}
+
+let finAcierto = 0;
+
+/** La mira se pone roja un instante al acertar (más fuerte si es punto débil). */
+export function marcarAcierto(debil: boolean) {
+  if (!hud) return;
+  const mira = hud.querySelector('.h2-mira') as HTMLElement;
+  mira.classList.remove('acierto', 'debil');
+  void mira.offsetWidth;
+  mira.classList.add('acierto');
+  mira.classList.toggle('debil', debil);
+  const fin = (finAcierto = performance.now() + 180);
+  setTimeout(() => { if (finAcierto === fin) mira.classList.remove('acierto', 'debil'); }, 180);
 }
 
 const NIVELES_EXPOSICION = [[0.25, 'Baja'], [0.55, 'Media'], [0.8, 'Alta'], [1.01, 'Crítica']] as const;
@@ -233,6 +293,7 @@ export function updateHud(s: HudState) {
   }
   q('.h2-bajas').textContent = compact(s.kills);
   q('.h2-chatarra').textContent = compact(s.scrap);
+  q('.h2-potencia').textContent = `×${(s.potencia ?? 1).toFixed(2)}`;
 
   // El jefe activo tiene una barra propia; los vencidos siguen marcados en
   // la cronología de lanzamiento.
@@ -267,12 +328,52 @@ export function updateHud(s: HudState) {
   q('.h2-vineta.acido').classList.toggle('on', (s.acido ?? 0) > 0);
   q('.h2-vineta.herido').classList.toggle('on', vida < 0.3);
 
-  // Aviso de interacción.
+  // Aviso de interacción (con precio si lo tiene).
   const inter = q('.h2-interaccion');
   inter.classList.toggle('on', !!s.interaccion);
   if (s.interaccion) {
     (inter.querySelector('kbd') as HTMLElement).textContent = s.interaccion.tecla;
     (inter.querySelector('span') as HTMLElement).textContent = s.interaccion.texto;
+    const coste = inter.querySelector('.h2-coste') as HTMLElement;
+    const conCoste = s.interaccion.coste !== undefined;
+    coste.style.display = conCoste ? '' : 'none';
+    if (conCoste && coste.dataset.v !== String(s.interaccion.coste)) {
+      coste.dataset.v = String(s.interaccion.coste);
+      coste.innerHTML = `${iconoMenu('chatarra')}<b></b>`;
+      (coste.querySelector('b') as HTMLElement).textContent = String(s.interaccion.coste);
+    }
+    inter.classList.toggle('bloqueado', !!s.interaccion.bloqueado);
+  }
+
+  // Cañón solar: la mira en el centro y su ficha encima de las herramientas.
+  const canon = s.canon;
+  const mira = q('.h2-mira');
+  mira.classList.toggle('on', !!canon && canon.nivel > 0 && canon.mira);
+  mira.classList.toggle('apuntando', !!canon?.apuntando);
+  const fichaCanon = q('.h2-canon');
+  fichaCanon.classList.toggle('on', !!canon && canon.nivel > 0);
+  if (canon && canon.nivel > 0) {
+    (fichaCanon.querySelector('small') as HTMLElement).textContent = `Nv. ${canon.nivel} · clic derecho apunta, izquierdo dispara`;
+    (fichaCanon.querySelector('.h2-canon-recarga') as HTMLElement).style.setProperty('--cd', canon.recarga.toFixed(3));
+  }
+
+  // Carga del pilón: anillo con porcentaje junto al reloj.
+  const carga = q('.h2-carga');
+  const cargando = s.carga !== null && s.carga !== undefined;
+  carga.classList.toggle('on', cargando);
+  if (cargando) {
+    const pct = Math.floor(Math.min(1, s.carga!) * 100);
+    carga.style.setProperty('--p', String(pct));
+    carga.setAttribute('aria-valuenow', String(pct));
+    (carga.querySelector('b') as HTMLElement).textContent = `${pct}%`;
+  }
+
+  // Bendiciones: una ficha por tipo, con el color de la mejor rareza.
+  const claveB = JSON.stringify(s.bendiciones ?? []);
+  if (claveB !== ultimasBendiciones) {
+    ultimasBendiciones = claveB;
+    q('.h2-bendiciones').innerHTML = (s.bendiciones ?? []).map((b) =>
+      `<span class="h2-bendicion" style="--c:${b.color}" title="${b.titulo}">${iconoMejora(b.icono)}${b.n > 1 ? `<small>×${b.n}</small>` : ''}</span>`).join('');
   }
   q('.h2-pista').classList.toggle('on', !s.locked && s.time < 30);
 
@@ -280,6 +381,12 @@ export function updateHud(s: HudState) {
   q('.hud-hp').style.transform = `translate(${s.anchor.x}px, ${s.anchor.y + 10}px) translateX(-50%)`;
   q('.hud-hp-fill').style.width = `${vida * 100}%`;
   q('.hud-hp-text').textContent = `${Math.ceil(Math.max(0, s.hp))}`;
+  const aguante = q('.hud-aguante');
+  const a = s.aguante ?? 1;
+  aguante.classList.toggle('on', a < 0.999);
+  aguante.classList.toggle('bajo', a < 0.3);
+  aguante.style.transform = `translate(${s.anchor.x}px, ${s.anchor.y + 27}px) translateX(-50%)`;
+  (aguante.firstElementChild as HTMLElement).style.width = `${a * 100}%`;
 
   // Herramientas: casillas con el nivel en pastillas.
   const clave = JSON.stringify(s.weapons);
@@ -288,8 +395,13 @@ export function updateHud(s: HudState) {
     q('.h2-herramientas').innerHTML = s.weapons.map(([id, nivel]) => {
       const hta = HERRAMIENTAS[id];
       const pips = Array.from({ length: NIVEL_MAX }, (_, k) => `<i class="${k < nivel ? 'si' : ''}"></i>`).join('');
-      return `<div class="h2-casilla" style="--c:${hta.color}">${hta.icono}<small>${hta.nombre}</small><div class="h2-pips">${pips}</div></div>`;
+      return `<div class="h2-casilla" style="--c:${hta.color}"><i class="h2-recarga"></i>${hta.icono}<small>${hta.nombre}</small><div class="h2-pips">${pips}</div></div>`;
     }).join('') + '<div class="h2-casilla vacia"></div>'.repeat(Math.max(0, 4 - s.weapons.length));
+  }
+  // La recarga baja como una cortina oscura sobre cada casilla.
+  if (s.recargas) {
+    const cortinas = hud.querySelectorAll<HTMLElement>('.h2-recarga');
+    s.recargas.forEach((r, k) => cortinas[k]?.style.setProperty('--cd', r.toFixed(3)));
   }
 }
 
@@ -361,9 +473,15 @@ export function drawMinimap(s: MinimapState) {
     const d = Math.hypot(mx, mz), max = c - 30;
     return d > max ? [mx * max / d, mz * max / d] as const : [mx, mz] as const;
   };
+  for (const p of s.puntos ?? []) {
+    const [mx, mz] = alBorde(...enMapa(p.x, p.z));
+    ctx.save(); ctx.translate(mx, mz); ctx.rotate(-s.yaw);
+    puntoJugador(ctx);
+    ctx.restore();
+  }
   for (const l of s.lugares ?? []) {
     if (l.tipo === 'lago' || l.tipo === 'montaña' || l.tipo === 'barrio') continue;
-    const fijo = l.tipo === 'altar' || l.tipo === 'refugio';
+    const fijo = l.tipo === 'altar' || l.tipo === 'refugio' || l.tipo === 'dragon';
     let [mx, mz] = enMapa(l.x, l.z);
     if (fijo) [mx, mz] = alBorde(mx, mz);
     else if (mx * mx + mz * mz > (c - 20) ** 2) continue;
@@ -424,7 +542,17 @@ export function drawMinimap(s: MinimapState) {
   ctx.fillText('N', nx, nz + 1);
 }
 
-function icono(ctx: CanvasRenderingContext2D, tipo: string, hecho: boolean) {
+/** Banderín de un punto que ha puesto el jugador en el mapa grande. */
+export function puntoJugador(ctx: CanvasRenderingContext2D, escala = 1) {
+  ctx.save();
+  ctx.scale(escala, escala);
+  ctx.lineWidth = 2.5; ctx.strokeStyle = '#16111f'; ctx.lineJoin = 'round';
+  ctx.fillStyle = '#7fffd0';
+  ctx.beginPath(); ctx.moveTo(-1.5, 12); ctx.lineTo(-1.5, -12); ctx.lineTo(11, -7); ctx.lineTo(-1.5, -1); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+
+export function icono(ctx: CanvasRenderingContext2D, tipo: string, hecho: boolean) {
   ctx.lineWidth = 2.5;
   ctx.strokeStyle = '#16111f';
   if (tipo === 'altar') {
@@ -446,5 +574,20 @@ function icono(ctx: CanvasRenderingContext2D, tipo: string, hecho: boolean) {
   } else if (tipo === 'npc') {
     ctx.fillStyle = '#7fffd0';
     ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  } else if (tipo === 'duelo') {
+    // Dos espadas cruzadas sobre un rombo rojo.
+    ctx.fillStyle = hecho ? '#6a6070' : '#ff6a3d';
+    ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(11, 0); ctx.lineTo(0, 11); ctx.lineTo(-11, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#fff4d6'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(-5, -5); ctx.lineTo(5, 5); ctx.moveTo(5, -5); ctx.lineTo(-5, 5); ctx.stroke();
+  } else if (tipo === 'dragon') {
+    // Silueta de alas abiertas.
+    ctx.fillStyle = '#5ee0ff';
+    ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(14, -2); ctx.lineTo(4, 2); ctx.lineTo(0, 10); ctx.lineTo(-4, 2); ctx.lineTo(-14, -2); ctx.closePath(); ctx.fill(); ctx.stroke();
+  } else if (tipo === 'pilon') {
+    // Cristal del pilón: rombo alto, dorado si aún carga y gris si está gastado.
+    ctx.fillStyle = hecho ? '#6a6478' : '#ffe066';
+    ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(7, 0); ctx.lineTo(0, 12); ctx.lineTo(-7, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+    if (!hecho) { ctx.fillStyle = '#fff'; ctx.fillRect(-1.5, -6, 3, 6); }
   }
 }

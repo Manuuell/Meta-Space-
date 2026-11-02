@@ -268,7 +268,7 @@ export const RUN = {
   maxHp: 100,
   speed: 5.2,             // velocidad de referencia de los héroes (×MOVE.speedMul en juego)
   pickupRadius: 5.2,
-  arena: 90,              // medio lado del mapa jugable
+  arena: 130,             // medio lado del mapa jugable
   // Experiencia para pasar del nivel n al n+1 (curva de progresión:
   // arranque menos regalado, tramo tardío más barato; mismo total).
   xpFor: (level: number) => xpForProgresion(level),

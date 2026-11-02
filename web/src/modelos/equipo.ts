@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import {
   PALETA, animacion, barril, brillo, caja, ciclo, cono, esc, esfera, mov, nodo, pieza, rot, toon, toro,
   type Modelo,
-} from './kit';
-import { crearAstronauta } from './astronauta';
+} from './kit.ts';
+import { crearAstronauta } from './astronauta.ts';
 
 // Equipo de movilidad del especialista: lo que ADA arma con la chatarra para
 // cruzar Meta más deprisa. Mismo lenguaje que el traje: blanco, naranja y metal

@@ -3,6 +3,7 @@ import { WEAPONS, WeaponId } from './data';
 import { Enemies } from './enemies';
 import { World } from './world';
 import { sfx } from './audio';
+import type { ObjetivoCombate } from './contenido-juego';
 
 const MAX_SHOTS = 200;
 const SHOT_SPEED = 24;
@@ -47,7 +48,12 @@ export class Weapons {
   private one = new THREE.Vector3(1, 1, 1);
   private targets = new Set<number>();
 
-  constructor(private scene: THREE.Scene, private enemies: Enemies, private world: World) {
+  constructor(
+    private scene: THREE.Scene,
+    private enemies: Enemies,
+    private world: World,
+    private objetivosExtra: () => ObjetivoCombate[] = () => [],
+  ) {
     this.shotMesh = new THREE.InstancedMesh(
       new THREE.BoxGeometry(0.14, 0.14, 0.9),
       new THREE.MeshBasicMaterial({ color: WEAPONS.cortador.color }),
@@ -90,6 +96,11 @@ export class Weapons {
     this.damageDealt[id] += Math.min(scaled, before);
   }
 
+  private dealExtra(id: WeaponId, objetivo: ObjetivoCombate, amount: number) {
+    const causado = objetivo.golpear(amount * this.damageMul);
+    this.damageDealt[id] += causado;
+  }
+
   update(dt: number, px: number, pz: number, mods: Modifiers) {
     for (const [id] of this.levels) {
       const s = this.stats(id);
@@ -115,9 +126,21 @@ export class Weapons {
         let fired = 0;
         for (let n = 0; n < s.count; n++) {
           const target = this.enemies.nearest(px, pz, s.area * mods.area, this.targets);
-          if (target < 0) break;
-          this.targets.add(target);
-          this.spawnShot(px, pz, this.enemies.x[target], this.enemies.z[target], s.damage, s.area * mods.area);
+          let tx = target >= 0 ? this.enemies.x[target] : 0;
+          let tz = target >= 0 ? this.enemies.z[target] : 0;
+          let mejor = target >= 0 ? Math.hypot(tx - px, tz - pz) : s.area * mods.area + 1;
+          for (const extra of this.objetivosExtra()) {
+            if (!extra.activo) continue;
+            const d = Math.hypot(extra.x - px, extra.z - pz);
+            if (d <= s.area * mods.area && d < mejor) {
+              mejor = d;
+              tx = extra.x;
+              tz = extra.z;
+            }
+          }
+          if (mejor > s.area * mods.area) break;
+          if (target >= 0 && tx === this.enemies.x[target] && tz === this.enemies.z[target]) this.targets.add(target);
+          this.spawnShot(px, pz, tx, tz, s.damage, s.area * mods.area);
           fired++;
         }
         if (fired) sfx('shot');
@@ -126,6 +149,11 @@ export class Weapons {
       case 'pulso': {
         const radius = s.area * mods.area;
         this.enemies.forEachInRadius(px, pz, radius, (i) => this.deal('pulso', i, s.damage, px, pz, 0.9));
+        for (const extra of this.objetivosExtra()) {
+          if (extra.activo && Math.hypot(extra.x - px, extra.z - pz) <= radius + extra.radio) {
+            this.dealExtra('pulso', extra, s.damage);
+          }
+        }
         const mesh = new THREE.Mesh(
           this.pulseGeometry,
           new THREE.MeshBasicMaterial({
@@ -144,6 +172,11 @@ export class Weapons {
         for (const drone of this.drones) {
           const dx = drone.position.x, dz = drone.position.z;
           this.enemies.forEachInRadius(dx, dz, 0.9, (i) => this.deal('dron', i, s.damage, dx, dz, 0.35));
+          for (const extra of this.objetivosExtra()) {
+            if (extra.activo && Math.hypot(extra.x - dx, extra.z - dz) <= 0.9 + extra.radio) {
+              this.dealExtra('dron', extra, s.damage);
+            }
+          }
         }
         break;
       }
@@ -154,6 +187,11 @@ export class Weapons {
           this.enemies.slow[i] = s.slowTime ?? 0.6;
           this.enemies.slowFactor[i] = s.slowFactor ?? 0.5;
         });
+        for (const extra of this.objetivosExtra()) {
+          if (extra.activo && Math.hypot(extra.x - px, extra.z - pz) <= radius + extra.radio) {
+            this.dealExtra('interferencia', extra, s.damage);
+          }
+        }
         break;
       }
     }
@@ -179,15 +217,26 @@ export class Weapons {
       this.shotLife[i] -= dt;
 
       let hit = -1;
+      let hitExtra: ObjetivoCombate | null = null;
       this.enemies.forEachInRadius(this.shotX[i], this.shotZ[i], 0.25, (j) => {
         if (hit < 0) hit = j;
       });
       if (hit >= 0) {
         this.deal('cortador', hit, this.shotDamage[i], this.shotX[i] - this.shotVX[i] * 0.05, this.shotZ[i] - this.shotVZ[i] * 0.05);
         sfx('hit');
+      } else {
+        for (const extra of this.objetivosExtra()) {
+          if (!extra.activo) continue;
+          if (Math.hypot(extra.x - this.shotX[i], extra.z - this.shotZ[i]) <= extra.radio + 0.25) {
+            hitExtra = extra;
+            this.dealExtra('cortador', extra, this.shotDamage[i]);
+            sfx('hit');
+            break;
+          }
+        }
       }
 
-      if (hit >= 0 || this.shotLife[i] <= 0) {
+      if (hit >= 0 || hitExtra || this.shotLife[i] <= 0) {
         const last = --this.shotCount;
         this.shotX[i] = this.shotX[last];
         this.shotZ[i] = this.shotZ[last];

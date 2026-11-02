@@ -1,7 +1,8 @@
 import { ENEMIES, EnemyId, GEAR, GearId, PASSIVES, PassiveId, RELICS, RelicDef, WEAPONS, WeaponId } from './data';
 import { NUEVO_ENEMY_ICON } from './enemies-nuevos';
+import { mostrarMejoras, type Tarjeta } from './mejoras.ts';
 import { SPECIALS, type SpecialId } from './creator/stats';
-import { describirEspecial } from './progression';
+import { describirEspecial, ESPECIALES_HEROE } from './progression';
 
 // Interfaz en HTML sobre el canvas. Nada de framework: unas pocas pantallas
 // que se reconstruyen enteras cuando cambian.
@@ -37,190 +38,17 @@ const ASTRONAUT_ICON = `<svg viewBox="0 0 16 16" shape-rendering="crispEdges"><r
 
 // ------------------------------------------------------------------ HUD
 
-export interface HudState {
-  time: number;
-  hp: number;
-  maxHp: number;
-  level: number;
-  xp: number;
-  xpNext: number;
-  kills: number;
-  scrap: number;
-  weapons: [WeaponId, number][];
-  signal: number; // balizas vivas
-  anchor: { x: number; y: number }; // pies del astronauta, en pantalla
-  locked: boolean;
-}
-
-let hud: HTMLElement | null = null;
-let minimap: CanvasRenderingContext2D | null = null;
-
-export function showHud() {
-  hud?.remove();
-  hud = h(`
-    <div class="hud">
-      <div class="hud-portrait">
-        <div class="avatar small">${ASTRONAUT_ICON}<span class="hud-level"></span></div>
-        <div class="hud-name">
-          <b>Especialista</b><small>ARES-IX · con ADA</small>
-          <div class="hud-xp"><div class="hud-xp-fill"></div></div>
-        </div>
-      </div>
-
-      <div class="hud-center">
-        <div class="hud-zone"><b>Sector Delta</b><small>Zona 1 · <i>NORMAL</i></small></div>
-        <div class="hud-time"></div>
-        <div class="hud-chips">
-          <span class="chip kills"><b class="hud-kills"></b> bajas</span>
-          <span class="chip scrap"><b class="hud-scrap"></b> chatarra</span>
-        </div>
-        <div class="hud-mission"><b class="hud-mision">Operación en curso…</b><span class="hud-operador"></span></div>
-      </div>
-
-      <canvas class="hud-minimap" width="200" height="200"></canvas>
-      <div class="hud-signal"></div>
-      <div class="hud-hint">Haz clic para girar la cámara con el ratón · <b>Q</b>/<b>E</b> también giran</div>
-
-      <div class="hud-hp"><div class="hud-hp-fill"></div><span class="hud-hp-text"></span></div>
-      <div class="hud-weapons"></div>
-    </div>`);
-  root.appendChild(hud);
-  minimap = (hud.querySelector('.hud-minimap') as HTMLCanvasElement).getContext('2d');
-  lastWeapons = '';
-}
-
-export function hideHud() {
-  hud?.remove();
-  hud = null;
-  minimap = null;
-}
-
-let lastWeapons = '';
-
-/** Muestra la misión y el operador del brief en el HUD (NPCs de la partida). */
-export function setMision(mision: string, operador: string) {
-  if (!hud) return;
-  const m = hud.querySelector('.hud-mision') as HTMLElement | null;
-  const o = hud.querySelector('.hud-operador') as HTMLElement | null;
-  if (m) m.textContent = mision;
-  if (o) o.textContent = operador ? `📻 ${operador}` : '';
-}
-
-export function updateHud(s: HudState) {
-  if (!hud) return;
-  const q = (sel: string) => hud!.querySelector(sel) as HTMLElement;
-  q('.hud-xp-fill').style.width = `${(s.xp / s.xpNext) * 100}%`;
-  q('.hud-level').textContent = `Nv ${s.level}`;
-  q('.hud-time').textContent = formatTime(s.time);
-  q('.hud-kills').textContent = compact(s.kills);
-  q('.hud-scrap').textContent = compact(s.scrap);
-
-  const bar = q('.hud-hp');
-  bar.style.transform = `translate(${s.anchor.x}px, ${s.anchor.y + 10}px) translateX(-50%)`;
-  q('.hud-hp-fill').style.width = `${Math.max(0, s.hp / s.maxHp) * 100}%`;
-  q('.hud-hp-text').textContent = `${Math.ceil(Math.max(0, s.hp))}`;
-
-  q('.hud-hint').classList.toggle('on', !s.locked && s.time < 30);
-
-  const signal = q('.hud-signal');
-  signal.textContent = s.signal > 0 ? `⚠ ${s.signal} baliza${s.signal > 1 ? 's' : ''} triangulando la señal de ADA` : '';
-  signal.classList.toggle('on', s.signal > 0);
-
-  const key = JSON.stringify(s.weapons);
-  if (key !== lastWeapons) {
-    lastWeapons = key;
-    q('.hud-weapons').innerHTML = s.weapons
-      .map(([id, lvl]) => `<div class="slot" style="--c:${WEAPONS[id].color}" title="${WEAPONS[id].name}">
-          <small>${WEAPONS[id].name.split(' ')[0]}</small>${WEAPON_ICON[id]}<b>${lvl}</b></div>`)
-      .join('') + '<div class="slot empty"></div>'.repeat(Math.max(0, 4 - s.weapons.length));
-  }
-}
-
-// Iconos de las herramientas para las casillas del HUD.
-const WEAPON_ICON: Record<WeaponId, string> = {
-  cortador: `<svg viewBox="0 0 24 24"><path d="M4 20 L14 10" stroke="#fff3" stroke-width="5" stroke-linecap="round"/><path d="M4 20 L14 10" stroke="#ffb347" stroke-width="3" stroke-linecap="round"/><circle cx="17" cy="7" r="4" fill="#ffe2a8"/></svg>`,
-  pulso: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="#5ee0ff" stroke-width="2.5"/><circle cx="12" cy="12" r="4.5" fill="none" stroke="#b8f4ff" stroke-width="2"/><circle cx="12" cy="12" r="1.8" fill="#fff"/></svg>`,
-  dron: `<svg viewBox="0 0 24 24"><rect x="8" y="10" width="8" height="5" rx="1" fill="#d8d2c4"/><ellipse cx="12" cy="8" rx="8" ry="2" fill="none" stroke="#c9f27a" stroke-width="2"/><circle cx="12" cy="12.5" r="1.4" fill="#c9f27a"/></svg>`,
-  interferencia: `<svg viewBox="0 0 24 24"><path d="M3 12 q3-6 6 0 t6 0 t6 0" fill="none" stroke="#d07bff" stroke-width="2.5"/><path d="M3 17 q3-4 6 0 t6 0 t6 0" fill="none" stroke="#d07bff88" stroke-width="2"/></svg>`,
-};
-
-export interface MinimapState {
-  px: number;
-  pz: number;
-  yaw: number;
-  enemies: { count: number; x: Float32Array; z: Float32Array; type: Uint8Array };
-  relics: { x: number; z: number }[];
-  pad: { x: number; z: number };
-}
-
-/**
- * Minimapa circular que gira con la cámara: arriba es siempre hacia donde se
- * mira. Recolectores en rojo, balizas en amarillo, Segadores grandes.
- */
-export function drawMinimap(s: MinimapState) {
-  const ctx = minimap;
-  if (!ctx) return;
-  const size = 200, c = size / 2, range = 45, scale = (c - 10) / range;
-  ctx.clearRect(0, 0, size, size);
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(c, c, c - 4, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(30, 20, 34, 0.82)';
-  ctx.fill();
-  ctx.clip();
-
-  ctx.translate(c, c);
-  ctx.rotate(s.yaw);
-  const toMap = (x: number, z: number) => [(x - s.px) * scale, (z - s.pz) * scale] as const;
-
-  // Anillos de distancia.
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-  for (const r of [15, 30]) { ctx.beginPath(); ctx.arc(0, 0, r * scale, 0, Math.PI * 2); ctx.stroke(); }
-
-  // Orden = TYPES de enemies.ts: recolector, baliza, segador, saltador,
-  // avispa, caparazón, sembrador.
-  const colors = ['#ff5a4a', '#ffd23a', '#ff9a3c', '#a8e04a', '#b07bff', '#e0c8a8', '#7fe08a'];
-  const radii = [2.2, 3.2, 5.5, 2.6, 2.4, 4.2, 2.8];
-  for (let i = 0; i < s.enemies.count; i++) {
-    const [mx, mz] = toMap(s.enemies.x[i], s.enemies.z[i]);
-    if (mx * mx + mz * mz > (c - 6) ** 2) continue;
-    const t = s.enemies.type[i];
-    ctx.fillStyle = colors[t];
-    ctx.beginPath();
-    ctx.arc(mx, mz, radii[t], 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  for (const r of s.relics) {
-    const [mx, mz] = toMap(r.x, r.z);
-    ctx.fillStyle = '#ffe9a8';
-    ctx.fillRect(mx - 4, mz - 4, 8, 8);
-  }
-
-  // El cohete, pegado al borde si queda fuera.
-  let [rx, rz] = toMap(s.pad.x, s.pad.z);
-  const rd = Math.hypot(rx, rz), maxR = c - 14;
-  if (rd > maxR) { rx *= maxR / rd; rz *= maxR / rd; }
-  ctx.fillStyle = '#efe8de';
-  ctx.beginPath();
-  ctx.moveTo(rx, rz - 8); ctx.lineTo(rx + 4, rz + 5); ctx.lineTo(rx - 4, rz + 5);
-  ctx.fill();
-  ctx.restore();
-
-  // El jugador en el centro, apuntando arriba.
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  ctx.moveTo(c, c - 8); ctx.lineTo(c + 6, c + 6); ctx.lineTo(c, c + 3); ctx.lineTo(c - 6, c + 6);
-  ctx.fill();
-
-  ctx.lineWidth = 4;
-  ctx.strokeStyle = '#ff6a4a';
-  ctx.beginPath();
-  ctx.arc(c, c, c - 4, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.lineWidth = 1;
-}
+// ui.ts sigue siendo la fachada pública del juego; el HUD nuevo vive aislado
+// para que sus estilos y su estado opcional no afecten a las demás pantallas.
+export {
+  decir,
+  drawMinimap,
+  hideHud,
+  setMision,
+  showHud,
+  updateHud,
+} from './hud.ts';
+export type { HudState, MinimapState } from './hud.ts';
 
 // ---------------------------------------------------------- Avisos
 
@@ -265,71 +93,48 @@ export type Choice =
   | { kind: 'heal' };
 
 export function showLevelUp(level: number, choices: Choice[], pick: (c: Choice) => void) {
-  const cards = choices.map((c, i) => {
-    let title = '', tag = '', blurb = '', color = '#ffd25a';
-    if (c.kind === 'weapon') {
-      const w = WEAPONS[c.id];
-      title = w.name;
-      color = w.color;
-      tag = c.level === 1 ? 'NUEVA' : `Nv. ${c.level}`;
-      blurb = c.level === 1 ? w.blurb : describeWeaponStep(c.id, c.level);
-    } else if (c.kind === 'passive') {
-      const p = PASSIVES[c.id];
-      title = p.name;
-      tag = `Nv. ${c.level}`;
-      blurb = p.blurb;
-      color = '#9fb4ff';
-    } else if (c.kind === 'gear') {
-      const g = GEAR[c.id];
-      title = g.name;
-      color = g.color;
-      tag = c.level === 1 ? 'EQUIPO NUEVO' : `EQUIPO · Nv. ${c.level}`;
-      blurb = c.level === 1
-        ? `${g.blurb} <em class="card-control">${g.control}</em>`
-        : g.levels[c.level - 1].mejora;
-    } else if (c.kind === 'special') {
-      const special = SPECIALS[c.id];
-      title = special.name;
-      tag = `ESPECIAL · Nv. ${c.level}`;
-      blurb = describirEspecial(c.id, c.level);
-      color = '#56e5ee';
-    } else {
-      title = 'Parche de emergencia';
-      tag = 'REPARAR';
-      blurb = 'Restaura 40 de integridad del traje.';
-      color = '#7ef0a0';
-    }
-    return `<button class="card" data-i="${i}" style="--c:${color}">
-      <span class="card-key">${i + 1}</span>
-      <span class="card-tag">${tag}</span>
-      <b>${title}</b>
-      <p>${blurb}</p>
-    </button>`;
-  });
+  mostrarMejoras(level, choices.map(tarjetaDe), (i) => {
+    const elegida = choices[i];
+    if (elegida) pick(elegida);
+  }, { root });
+}
 
-  const el = h(`
-    <div class="overlay levelup">
-      <div class="levelup-box">
-        <h2>¡Nivel ${level}!</h2>
-        <p class="sub">ADA ha encontrado algo útil entre la chatarra. Elige una mejora.</p>
-        <div class="cards">${cards.join('')}</div>
-      </div>
-    </div>`);
-
-  const choose = (i: number) => {
-    if (!choices[i]) return;
-    window.removeEventListener('keydown', onKey);
-    el.remove();
-    pick(choices[i]);
+function tarjetaDe(c: Choice): Tarjeta {
+  if (c.kind === 'weapon') {
+    const w = WEAPONS[c.id];
+    return {
+      id: c.id, tipo: 'herramienta', titulo: w.name,
+      texto: c.level === 1 ? w.blurb : describeWeaponStep(c.id, c.level),
+      color: w.color, nivel: c.level, nivelMax: w.levels.length,
+    };
+  }
+  if (c.kind === 'passive') {
+    const p = PASSIVES[c.id];
+    return {
+      id: c.id, tipo: 'pasiva', titulo: p.name, texto: p.blurb,
+      color: '#9fb4ff', nivel: c.level, nivelMax: p.max,
+    };
+  }
+  if (c.kind === 'gear') {
+    const g = GEAR[c.id];
+    return {
+      id: c.id, tipo: 'equipo', titulo: g.name,
+      texto: c.level === 1 ? g.blurb : (g.levels[c.level - 1]?.mejora ?? g.blurb),
+      color: g.color, nivel: c.level, nivelMax: g.levels.length, control: g.control,
+    };
+  }
+  if (c.kind === 'special') {
+    const special = SPECIALS[c.id];
+    return {
+      id: c.id, tipo: 'especial', titulo: special.name,
+      texto: describirEspecial(c.id, c.level), color: '#56e5ee',
+      nivel: c.level, nivelMax: ESPECIALES_HEROE[c.id].max,
+    };
+  }
+  return {
+    id: 'parche', tipo: 'reparar', titulo: 'Parche de emergencia',
+    texto: 'Restaura 40 de integridad del traje.', color: '#7ef0a0',
   };
-  const onKey = (e: KeyboardEvent) => {
-    const n = Number(e.key);
-    if (n >= 1 && n <= choices.length) choose(n - 1);
-  };
-  el.querySelectorAll<HTMLButtonElement>('.card').forEach((b) =>
-    b.addEventListener('click', () => choose(Number(b.dataset.i))));
-  window.addEventListener('keydown', onKey);
-  root.appendChild(el);
 }
 
 function describeWeaponStep(id: WeaponId, level: number) {

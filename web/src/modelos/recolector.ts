@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {
   PALETA, animacion, barril, brillo, caja, capsula, ciclo, cono, esc, esfera, mov, nodo, ojo, parpadeo, pieza, poses,
   rot, toon, toro, type Modelo,
-} from './kit';
+} from './kit.ts';
 
 // Recolector: un cubo de basura blindado con patitas, un ojo enorme de pupila
 // roja medio tapado por un párpado de chapa, sonrisa de dientes, cristales

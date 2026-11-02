@@ -12,8 +12,34 @@
 
 import { postIa } from './ia';
 import { briefLocal, lineaLocal, normalizarBrief, type EventoNpc, type Hablante, type RunBrief } from './guion';
+import type { Intencion, NpcMapa } from './contenido/mapa';
 
 export type { EventoNpc, Hablante, NpcDef, RunBrief } from './guion';
+
+/**
+ * Una línea de la gente del refugio. El juego ya resolvió coste, límite y
+ * efecto antes de llamar: la IA solo redacta y el respaldo siempre gana si
+ * no hay red, clave o cupo.
+ */
+export async function lineaNpcMapa(
+  npc: NpcMapa,
+  intencion: Intencion | null,
+  textoJugador: string,
+  respaldo: string,
+): Promise<string> {
+  const r = await postIa<{ ok: boolean; linea?: string }>(
+    '/api/map-npc-line',
+    {
+      npc: npc.id,
+      intencion: intencion?.id ?? null,
+      texto: textoJugador,
+      respaldo,
+      seed: Date.now() % 100000,
+    },
+    8000,
+  );
+  return r?.ok && r.linea?.trim() ? r.linea.trim() : respaldo;
+}
 
 /** Líneas recientes que se mandan al modelo para que no se repita. */
 const RECIENTES = 4;

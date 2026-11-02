@@ -76,7 +76,8 @@ const contornos = new Map<number, THREE.MeshBasicMaterial>();
  * Contorno por casco invertido: la misma geometría, empujada a lo largo de
  * sus normales y pintada solo por detrás. Grosor fijo en unidades del modelo,
  * así todas las piezas tienen la misma línea, como en un dibujo. Los modelos
- * pequeños (el perro) piden uno más fino para que la línea no se los coma.
+ * pequeños (el perro del juego) piden uno más fino para que la línea no se
+ * los coma; es la misma firma que el kit de la rama main-ygerl4 del juego.
  */
 export function contorno(grosor = 0.032): THREE.MeshBasicMaterial {
   let m = contornos.get(grosor);
@@ -159,6 +160,22 @@ export function cono(radio: number, alto: number): THREE.BufferGeometry {
   return barril(0.02, radio, alto, Math.min(0.06, radio / 2));
 }
 
+/**
+ * Punta afilada y barata: pinchos, cristales, dientes, garras y cuchillas.
+ * Vertical, centrada en el origen y con la punta hacia +y. Pocos lados: de
+ * lejos se lee como un cono y cuesta la séptima parte (en la horda, donde
+ * cada enemigo lleva muchas, es lo que más se nota).
+ */
+export function punta(radio: number, alto: number, lados = 6): THREE.BufferGeometry {
+  const pts = [
+    new THREE.Vector2(0, -alto / 2),
+    new THREE.Vector2(radio * 0.8, -alto / 2),
+    new THREE.Vector2(radio, -alto / 2 + alto * 0.2),
+    new THREE.Vector2(0, alto / 2),
+  ];
+  return new THREE.LatheGeometry(pts, seg(lados, 5));
+}
+
 // ------------------------------------------------------------------ piezas
 
 /** Nodo vacío con nombre: una articulación que las animaciones mueven. */
@@ -188,6 +205,23 @@ export function pieza(
     c.userData.contorno = true;
     m.add(c);
   }
+  return m;
+}
+
+/**
+ * Cápsula de `desde` a `hasta` (en coordenadas de `padre`): patas, raíces,
+ * tubos y brazos sin calcular giros a mano. Sobresale `radio` por cada
+ * punta, así tapa la articulación.
+ */
+export function barra(
+  padre: THREE.Object3D,
+  desde: readonly [number, number, number], hasta: readonly [number, number, number],
+  radio: number, material: THREE.Material,
+  opciones: { nombre?: string; contorno?: boolean; sombra?: boolean } = {},
+): THREE.Mesh {
+  const a = new THREE.Vector3(...desde), b = new THREE.Vector3(...hasta);
+  const m = pieza(padre, capsula(radio, Math.max(0.001, a.distanceTo(b))), material, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2, opciones);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.sub(a).normalize());
   return m;
 }
 
@@ -282,6 +316,70 @@ export function poses(claves: readonly Clave[], fps = 30): Clave[] {
   return salida;
 }
 
+/**
+ * Curva de un solo valor por poses clave [tiempo, valor], con la misma
+ * aceleración y frenada que `poses`. Antes de la primera clave vale lo que
+ * la primera; después de la última, lo que la última.
+ */
+export function curva(t: number, claves: readonly (readonly [number, number])[]): number {
+  if (t <= claves[0][0]) return claves[0][1];
+  for (let k = 0; k < claves.length - 1; k++) {
+    const [ta, va] = claves[k], [tb, vb] = claves[k + 1];
+    if (t <= tb) return tb > ta ? va + (vb - va) * suave((t - ta) / (tb - ta)) : vb;
+  }
+  return claves[claves.length - 1][1];
+}
+
+/**
+ * El mismo modelo a otra escala sin engordar el contorno: agranda la
+ * geometría, las posiciones de los nodos y las pistas `mov`, en vez de
+ * escalar la raíz (que haría la línea `k` veces más gruesa que la del resto).
+ * Para piezas hechas a medida de personaje que en el mapa van mucho mayores.
+ */
+export function agrandar(modelo: Modelo, k: number): Modelo {
+  const hechas = new Set<THREE.BufferGeometry>();
+  modelo.raiz.traverse((o) => {
+    if (o !== modelo.raiz) o.position.multiplyScalar(k);
+    if (o instanceof THREE.Mesh && !hechas.has(o.geometry)) {
+      hechas.add(o.geometry);
+      o.geometry.scale(k, k, k);
+    }
+  });
+  for (const a of modelo.animaciones) {
+    for (const pista of a.clip.tracks) {
+      if (!pista.name.endsWith('.position')) continue;
+      for (let i = 0; i < pista.values.length; i++) pista.values[i] *= k;
+    }
+  }
+  return modelo;
+}
+
+/** Pose entera de un instante: cómo rota, se mueve y se escala cada nodo. */
+export interface Pose {
+  rot?: Record<string, readonly [number, number, number]>;
+  mov?: Record<string, readonly [number, number, number]>;
+  esc?: Record<string, readonly [number, number, number]>;
+}
+
+/**
+ * Muestrea a 30 fps una pose escrita en función del tiempo y devuelve una
+ * pista por nodo y propiedad (las que salen en la pose del instante 0).
+ * Para movimientos coordinados (patas que no resbalan, ciclos que van en
+ * fase con el juego) es más claro que una pista suelta por nodo.
+ */
+export function porFotograma(modelo: THREE.Object3D, duracion: number, fn: (t: number) => Pose, fps = 30): THREE.KeyframeTrack[] {
+  const n = Math.max(2, Math.round(duracion * fps));
+  const muestras = Array.from({ length: n + 1 }, (_, i) => fn((i / n) * duracion));
+  const claves = (tipo: keyof Pose, nombre: string): Clave[] =>
+    muestras.map((p, i) => [(i / n) * duracion, ...p[tipo]![nombre]] as const);
+  const pistas: THREE.KeyframeTrack[] = [];
+  const primera = muestras[0];
+  for (const nombre of Object.keys(primera.rot ?? {})) pistas.push(rot(nombre, claves('rot', nombre)));
+  for (const nombre of Object.keys(primera.mov ?? {})) pistas.push(mov(modelo, nombre, claves('mov', nombre)));
+  for (const nombre of Object.keys(primera.esc ?? {})) pistas.push(esc(nombre, claves('esc', nombre)));
+  return pistas;
+}
+
 /** Parpadeo dentro de un ciclo: abierto, cerrado en `en` y abierto otra vez. */
 export function parpadeo(duracion: number, en: number): Clave[] {
   return [[0, 1, 1, 1], [en - 0.06, 1, 1, 1], [en, 1, 0.1, 1], [en + 0.07, 1, 1, 1], [duracion, 1, 1, 1]];
@@ -294,15 +392,23 @@ export function animacion(
   return { clip: new THREE.AnimationClip(nombre, duracion, pistas), bucle, grupo, descripcion };
 }
 
-/** Mallas y triángulos del modelo (sin contar los contornos). */
+/**
+ * Mallas y triángulos del modelo (sin contar los contornos). El alto es el
+ * de lo que se ve: no cuenta las piezas escondidas a escala casi 0 (avisos de
+ * ataque, chispas…), que están en el modelo pero solo salen en su clip.
+ */
 export function medir(raiz: THREE.Object3D): { mallas: number; triangulos: number; alto: number } {
   let mallas = 0, triangulos = 0;
+  const caja3 = new THREE.Box3();
+  const escala = new THREE.Vector3();
+  raiz.updateMatrixWorld(true);
   raiz.traverse((o) => {
     if (!(o instanceof THREE.Mesh) || o.userData.contorno) return;
     mallas++;
     const g = o.geometry as THREE.BufferGeometry;
     triangulos += (g.index ? g.index.count : g.attributes.position.count) / 3;
+    escala.setFromMatrixScale(o.matrixWorld);
+    if (Math.min(escala.x, escala.y, escala.z) >= 0.01) caja3.union(new THREE.Box3().setFromObject(o));
   });
-  const caja3 = new THREE.Box3().setFromObject(raiz);
   return { mallas, triangulos: Math.round(triangulos), alto: caja3.max.y - caja3.min.y };
 }

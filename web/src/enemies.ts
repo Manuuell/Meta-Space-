@@ -9,6 +9,11 @@ import {
 import { Tropa } from './modelos/tropa';
 import { crearRecolector } from './modelos/recolector';
 import { crearBaliza } from './modelos/baliza';
+import { crearSegador } from './modelos/segador';
+import { crearSaltador } from './modelos/saltador';
+import { crearAvispa } from './modelos/avispa';
+import { crearCaparazon } from './modelos/caparazon';
+import { crearSembrador } from './modelos/sembrador';
 import type { Modelo } from './modelos/kit';
 
 const TYPES: EnemyId[] = ['recolector', 'baliza', 'segador', 'saltador', 'avispa', 'caparazon', 'sembrador'];
@@ -100,11 +105,42 @@ const MODELADOS: Partial<Record<EnemyId, Modelado>> = {
     crear: crearBaliza, mover: 'Flotar', cerca: 'Triangular', distCerca: 14,
     golpe: 'Golpe recibido', muerte: 'Derrota', escala: 1.1, altura: 1.0,
   },
+  segador: {
+    crear: crearSegador, mover: 'Avanzar', cerca: 'Embestir', distCerca: 4.5,
+    golpe: 'Golpe recibido', muerte: 'Derrota', escala: 1.1, altura: 0,
+  },
+  saltador: {
+    crear: crearSaltador, mover: 'Acechar', cerca: 'Saltar', distCerca: 6,
+    golpe: 'Golpe recibido', muerte: 'Derrota', escala: 1.15, altura: 0,
+  },
+  avispa: {
+    crear: crearAvispa, mover: 'Volar', cerca: 'Picar', distCerca: 12,
+    golpe: 'Golpe recibido', muerte: 'Derrota', escala: 1, altura: 0,
+  },
+  caparazon: {
+    crear: crearCaparazon, mover: 'Caminar', cerca: 'Embestir', distCerca: 3,
+    golpe: 'Golpe recibido', muerte: 'Derrota', escala: 1, altura: 0,
+  },
+  sembrador: {
+    crear: crearSembrador, mover: 'Caminar', cerca: 'Disparar', distCerca: 20,
+    golpe: 'Golpe recibido', muerte: 'Derrota', escala: 1, altura: 0,
+  },
 };
 
 /** Restos animados: el enemigo muerto reproduce su caída antes de desaparecer. */
 interface Resto { tipo: EnemyId; x: number; z: number; heading: number; escala: number; t: number }
 const MAX_RESTOS = 160;
+const CAPACIDAD_TROPA: Record<EnemyId, number> = {
+  // Recolectores pueden llenar todo el cupo; los demás tienen cupos de juego
+  // pequeños, más margen para los restos que aún reproducen su derrota.
+  recolector: CAPACITY + MAX_RESTOS,
+  baliza: 200,
+  segador: 200,
+  saltador: 180,
+  avispa: 180,
+  caparazon: 170,
+  sembrador: 170,
+};
 
 /** Modificadores de élite (FOCO 5): adorno sobre el tipo base. */
 export type EliteMod = 'rapido' | 'blindado' | 'simbionte';
@@ -166,7 +202,7 @@ export class Enemies {
     for (const type of TYPES) {
       const modelado = MODELADOS[type];
       if (modelado) {
-        this.tropas.set(type, new Tropa(scene, modelado.crear, CAPACITY,
+        this.tropas.set(type, new Tropa(scene, modelado.crear, CAPACIDAD_TROPA[type],
           [modelado.mover, modelado.cerca, modelado.golpe, modelado.muerte]));
         continue;
       }
@@ -443,7 +479,11 @@ export class Enemies {
       const em = this.elite[i];
       const escala = modelado.escala * (em >= 0 ? ELITE_ESCALA[em] : 1);
       this.quat.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, this.heading[i]);
-      this.pos.set(this.x[i], this.world.heightAt(this.x[i], this.z[i]) + modelado.altura, this.z[i]);
+      const lift = esNuevo(type) ? liftDe(type, i, this, this.time) : 0;
+      // El clip del Saltador ya comprime las patas durante la telegrafía: la
+      // parte negativa del lift era solo para el cuerpo provisional.
+      const extra = type === 'saltador' ? Math.max(0, lift) : lift;
+      this.pos.set(this.x[i], this.world.heightAt(this.x[i], this.z[i]) + modelado.altura + extra, this.z[i]);
       this.scale.setScalar(escala);
       this.matrix.compose(this.pos, this.quat, this.scale);
 

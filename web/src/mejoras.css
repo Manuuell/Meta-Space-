@@ -1,0 +1,181 @@
+/* Subida de nivel (mejoras.ts): el título rebota letra a letra, como el de la
+   intro, y las tarjetas se reparten desde abajo. Paneles gruesos de contorno
+   oscuro, la misma letra y los mismos colores que el HUD. Todo cuelga de
+   .msm para no pisar nada del juego. */
+
+.msm {
+  --msm-borde: #120c1c;
+  --msm-panel: #1d1830;
+  --msm-panel-2: #141022;
+  --msm-tinta: #f4efe8;
+  --msm-gris: #c9c3d8;
+  --msm-oro: #ffd25a;
+  position: fixed; inset: 0; z-index: 40; overflow: hidden auto;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  padding: 24px 16px;
+  color: var(--msm-tinta);
+  font-family: 'Rubik', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif;
+  background: radial-gradient(ellipse at 50% 55%, rgba(30, 20, 50, 0.55), rgba(10, 6, 20, 0.88) 70%);
+  animation: msm-fundido 0.25s ease-out;
+  pointer-events: auto;
+}
+.msm * { box-sizing: border-box; }
+
+/* Rayos que giran detrás de todo: la celebración. */
+.msm-rayos {
+  position: absolute; left: 50%; top: 50%; width: 160vmax; height: 160vmax; margin: -80vmax 0 0 -80vmax;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 210, 90, 0.09) 0 8deg, transparent 8deg 22deg);
+  -webkit-mask-image: radial-gradient(circle, #000 0, transparent 55%);
+  mask-image: radial-gradient(circle, #000 0, transparent 55%);
+  animation: msm-girar 40s linear infinite; pointer-events: none;
+}
+
+/* ------------------------------------------------------------ título */
+
+.msm-titulo {
+  position: relative; margin: 0; display: flex; align-items: baseline; line-height: 1;
+  font-size: clamp(40px, min(9vw, 11vh), 84px); font-weight: 900; letter-spacing: -0.01em;
+}
+.msm-titulo span {
+  display: inline-block; color: #fff;
+  -webkit-text-stroke: 0.075em #16111f; paint-order: stroke fill; text-shadow: 0.05em 0.07em 0 #25245f;
+  animation: msm-letra 0.7s cubic-bezier(.2, 1.6, .4, 1) backwards, msm-ola 2.6s ease-in-out 0.9s infinite;
+  animation-delay: calc(var(--i) * 45ms), calc(0.9s + var(--i) * 90ms);
+}
+.msm-titulo span.num { color: var(--msm-oro); }
+.msm-titulo span.hueco { width: 0.28em; }
+.msm-frase {
+  position: relative; margin: 0; padding: 8px 16px; border-radius: 12px; max-width: 560px; text-align: center;
+  background: rgba(24, 18, 36, 0.86); border: 3px solid var(--msm-borde); box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35);
+  font-size: 15px; font-weight: 600; color: var(--msm-gris);
+  animation: msm-sube 0.4s ease-out 0.25s both;
+}
+.msm-frase b { color: #5ee0ff; font-weight: 800; }
+
+/* ---------------------------------------------------------- tarjetas */
+
+.msm-tarjetas { position: relative; display: flex; gap: 18px; justify-content: center; align-items: stretch; flex-wrap: wrap; }
+.msm-tarjeta {
+  --c: #ffd25a;
+  position: relative; width: 232px; min-height: 340px; padding: 0 0 46px; border-radius: 22px;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  font: inherit; color: inherit; cursor: pointer;
+  background: linear-gradient(color-mix(in srgb, var(--c) 30%, var(--msm-panel)) 0, var(--msm-panel) 150px, var(--msm-panel-2));
+  border: 4px solid var(--msm-borde);
+  box-shadow: 0 7px 0 rgba(0, 0, 0, 0.45), inset 0 2px 0 rgba(255, 255, 255, 0.12);
+  transition: transform 0.14s ease, box-shadow 0.14s ease, filter 0.14s ease;
+  /* «backwards», no «both»: al acabar suelta el transform y el hover funciona. */
+  animation: msm-reparte 0.6s cubic-bezier(.2, 1.3, .45, 1) backwards;
+  animation-delay: calc(0.15s + var(--i) * 0.09s);
+}
+.msm-tarjeta:nth-child(odd) { --giro: -7deg; }
+.msm-tarjeta:nth-child(even) { --giro: 7deg; }
+.msm-tarjeta:hover, .msm-tarjeta:focus-visible {
+  transform: translateY(-10px) rotate(-1deg);
+  box-shadow: 0 14px 0 rgba(0, 0, 0, 0.4), 0 0 0 3px var(--c), 0 0 34px color-mix(in srgb, var(--c) 60%, transparent);
+  outline: none;
+}
+.msm-tarjeta:active { transform: translateY(-4px) scale(0.98); }
+.msm.armando .msm-tarjeta { pointer-events: none; }
+
+/* Cinta con lo que es: nueva, de nivel a nivel, equipo, especial, reparar. */
+.msm-cinta {
+  position: absolute; top: -14px; left: 50%; transform: translateX(-50%) rotate(-2deg); white-space: nowrap;
+  padding: 5px 13px 4px; border-radius: 10px; font-size: 12px; font-weight: 900; letter-spacing: 0.08em;
+  color: #1b1214; background: var(--c); border: 3px solid var(--msm-borde); box-shadow: 0 3px 0 rgba(0, 0, 0, 0.4);
+}
+.msm-cinta.nueva { background: var(--msm-oro); }
+
+/* Medallón: el icono sobre una losa del color de la mejora, con rayos. */
+.msm-medallon {
+  position: relative; width: 112px; height: 112px; margin: 30px 0 12px; border-radius: 26px; overflow: hidden;
+  display: grid; place-items: center;
+  background: linear-gradient(color-mix(in srgb, var(--c) 82%, #fff), color-mix(in srgb, var(--c) 48%, #000));
+  border: 4px solid var(--msm-borde);
+  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.4), inset 0 3px 0 rgba(255, 255, 255, 0.35), inset 0 -6px 0 rgba(0, 0, 0, 0.18);
+}
+.msm-medallon::before {
+  content: ''; position: absolute; inset: -40%;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 255, 255, 0.22) 0 10deg, transparent 10deg 30deg);
+  animation: msm-girar 9s linear infinite;
+}
+.msm-tarjeta:hover .msm-medallon::before { animation-duration: 2.5s; }
+.msm-medallon .icono {
+  position: relative; width: 80px; height: 80px; filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.45));
+  animation: msm-pop 0.5s cubic-bezier(.2, 1.8, .4, 1) backwards, msm-flota 2.4s ease-in-out infinite;
+  animation-delay: calc(0.45s + var(--i) * 0.09s), calc(1s + var(--i) * 0.3s);
+}
+
+.msm-tipo { font-size: 11px; font-weight: 900; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c); }
+.msm-tarjeta h3 { margin: 4px 14px 0; font-size: 21px; line-height: 1.1; font-weight: 900; }
+.msm-tarjeta p { margin: 8px 16px 0; font-size: 14px; line-height: 1.35; font-weight: 500; color: var(--msm-gris); }
+.msm-control {
+  margin: 10px 14px 0; padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 800;
+  color: #1b1214; background: #f4efe8; border: 2px solid var(--msm-borde); box-shadow: 0 3px 0 #a99c8c;
+}
+
+/* Pastillas de nivel: las que ya tienes en blanco, la nueva late en su color. */
+.msm-pips { position: absolute; left: 0; right: 0; bottom: 16px; display: flex; justify-content: center; gap: 5px; }
+.msm-pips i { width: 14px; height: 14px; border-radius: 4px; background: rgba(255, 255, 255, 0.12); border: 2px solid var(--msm-borde); }
+.msm-pips i.si { background: #fff; }
+.msm-pips i.nueva { background: var(--c); animation: msm-late 0.9s ease-in-out infinite; }
+.msm-tecla {
+  position: absolute; right: 10px; bottom: 10px; width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center;
+  font-size: 14px; font-weight: 900; color: #1b1214; background: #f4efe8; border: 2px solid var(--msm-borde); box-shadow: 0 3px 0 #a99c8c;
+}
+
+/* Al elegir: la elegida salta y brilla; las demás caen. */
+.msm.eligiendo .msm-tarjeta { animation: msm-cae 0.35s ease-in forwards; }
+.msm.eligiendo .msm-tarjeta.elegida { animation: msm-elegida 0.4s cubic-bezier(.2, 1.6, .4, 1) forwards; }
+.msm.eligiendo { animation: msm-sale 0.25s ease-in 0.2s forwards; }
+
+/* ----------------------------------------------------- animaciones */
+
+@keyframes msm-fundido { from { opacity: 0; } }
+@keyframes msm-girar { to { transform: rotate(360deg); } }
+@keyframes msm-sube { from { opacity: 0; transform: translateY(12px); } }
+@keyframes msm-letra {
+  0% { opacity: 0; transform: translateY(-1.2em) rotate(-25deg) scale(0.3); }
+  60% { opacity: 1; transform: translateY(0.08em) rotate(6deg) scale(1.15, 0.85); }
+}
+@keyframes msm-ola { 0%, 60%, 100% { transform: none; } 30% { transform: translateY(-0.08em) rotate(-3deg); } }
+@keyframes msm-reparte {
+  0% { opacity: 0; transform: translateY(160px) rotate(var(--giro)) scale(0.75); }
+  70% { opacity: 1; transform: translateY(-12px) rotate(calc(var(--giro) * -0.3)) scale(1.03); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes msm-pop { 0% { transform: scale(0) rotate(-40deg); } }
+@keyframes msm-flota { 50% { translate: 0 -5px; rotate: -4deg; } }
+@keyframes msm-late { 50% { transform: scale(1.25); box-shadow: 0 0 10px var(--c); } }
+@keyframes msm-cae { to { opacity: 0; transform: translateY(120px) rotate(var(--giro)) scale(0.85); } }
+@keyframes msm-elegida {
+  40% { transform: translateY(-24px) scale(1.12); filter: brightness(1.35); }
+  100% { opacity: 0; transform: translateY(-60px) scale(1.2); filter: brightness(1.8); }
+}
+@keyframes msm-sale { to { opacity: 0; } }
+
+/* ------------------------------------------------- pantallas pequeñas */
+
+@media (max-width: 760px), (max-height: 560px) {
+  .msm { justify-content: flex-start; gap: 10px; padding-top: 18px; }
+  .msm-frase { font-size: 13px; padding: 6px 12px; }
+  .msm-tarjetas { flex-direction: column; flex-wrap: nowrap; gap: 14px; width: min(460px, 100%); }
+  /* En fila: el medallón a la izquierda y el texto a la derecha. */
+  .msm-tarjeta {
+    width: 100%; min-height: 0; padding: 22px 44px 30px 120px; text-align: left; align-items: flex-start;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--c) 30%, var(--msm-panel)) 0, var(--msm-panel) 120px, var(--msm-panel-2));
+  }
+  .msm-medallon { position: absolute; left: 12px; top: 50%; width: 92px; height: 92px; margin: -46px 0 0; border-radius: 22px; }
+  .msm-medallon .icono { width: 64px; height: 64px; }
+  .msm-cinta { left: 120px; transform: rotate(-2deg); top: -12px; font-size: 11px; }
+  .msm-tarjeta h3 { margin: 4px 0 0; font-size: 18px; }
+  .msm-tarjeta p { margin: 4px 0 0; font-size: 13px; }
+  .msm-control { margin: 6px 0 0; }
+  .msm-pips { left: 120px; right: auto; bottom: 9px; }
+  .msm-pips i { width: 11px; height: 11px; }
+  .msm-tecla { top: 50%; bottom: auto; margin-top: -14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .msm, .msm *, .msm *::before { animation: none !important; transition: none !important; }
+}

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {
   PALETA, animacion, barril, brillo, caja, capsula, ciclo, cono, esc, esfera, mov, nodo, pieza, poses, rot, toon,
   toro, type Modelo,
-} from './kit';
+} from './kit.ts';
 
 // Baliza: un dron acorazado con pinchos púrpura, dos hélices, una pantalla
 // con un ojo rojo que barre bajo dos cejas de chapa y una antena parabólica

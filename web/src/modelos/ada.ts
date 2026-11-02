@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {
   PALETA, animacion, barril, brillo, caja, capsula, ciclo, cono, esc, esfera, mov, nodo, parpadeo, pieza, poses, rot,
   toon, toro, type Modelo,
-} from './kit';
+} from './kit.ts';
 
 // Cuatro formas posibles para ADA, la compañera. Todas llevan el núcleo cyan
 // del módulo de auditoría y comparten los nombres de animación que usa el

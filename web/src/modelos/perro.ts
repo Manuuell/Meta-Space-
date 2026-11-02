@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {
   animacion, barril, brillo, caja, capsula, ciclo, contorno, esc, esfera, mov, nodo, parpadeo, pieza, poses, rot, toon,
   type Clave, type Modelo,
-} from './kit';
+} from './kit.ts';
 
 // Bruno, el perro del operador: un bichón blanco de pelo de nube, cabeza
 // redonda, orejas caídas color albaricoque, nariz negra y la lengua siempre

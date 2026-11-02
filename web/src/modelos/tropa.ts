@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { conDetalle, contorno, type Modelo } from './kit';
+import { conDetalle, contorno, type Modelo } from './kit.ts';
 
 // Tropa: cientos de copias animadas de un modelo con pocas llamadas de dibujo.
 //
@@ -72,8 +72,9 @@ export class Tropa {
       return malla;
     };
     for (const { nodo, material, geos } of porGrupo.values()) {
-      const esBrillo = material instanceof THREE.MeshBasicMaterial;
-      const malla = crearMalla(fusionar(geos), material, !esBrillo);
+      // Cientos de unidades ya tienen lectura toon y contorno. Sombras
+      // dinámicas por cada pieza multiplicaban las pasadas de dibujo en móvil.
+      const malla = crearMalla(fusionar(geos), material, false);
       malla.setColorAt(0, new THREE.Color(1, 1, 1));
       this.grupos.push({ nodo, k: 0, malla, tinte: true });
     }
@@ -140,8 +141,15 @@ export class Tropa {
   terminar() {
     for (const g of this.grupos) {
       g.malla.count = this.cuenta;
+      if (this.cuenta === 0) continue;
+      g.malla.instanceMatrix.clearUpdateRanges();
+      g.malla.instanceMatrix.addUpdateRange(0, this.cuenta * 16);
       g.malla.instanceMatrix.needsUpdate = true;
-      if (g.malla.instanceColor) g.malla.instanceColor.needsUpdate = true;
+      if (g.malla.instanceColor) {
+        g.malla.instanceColor.clearUpdateRanges();
+        g.malla.instanceColor.addUpdateRange(0, this.cuenta * 3);
+        g.malla.instanceColor.needsUpdate = true;
+      }
     }
   }
 }

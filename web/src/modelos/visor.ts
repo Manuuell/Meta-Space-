@@ -25,8 +25,8 @@ camara.position.set(2.3, 2.4, 5.9);
 const controles = new OrbitControls(camara, lienzo);
 controles.target.set(0, 1.1, 0);
 controles.enableDamping = true;
-controles.minDistance = 1;
-controles.maxDistance = 14;
+controles.minDistance = 2;
+controles.maxDistance = 30;
 
 escena.add(new THREE.HemisphereLight('#e4ecff', '#4b4252', 1.4));
 const sol = new THREE.DirectionalLight('#fff3df', 2.6);
@@ -57,15 +57,24 @@ let velocidad = 1;
 let pausa = false;
 const reloj = new THREE.Clock();
 
-/** Acerca la cámara a lo que mide el modelo: el perro no mide lo que el astronauta. */
+/**
+ * Cámara a la medida de lo que realmente se ve. Ignora avisos y efectos
+ * escondidos a escala casi cero, que si no alejan la cámara de los jefes.
+ */
 function encuadrar(raiz: THREE.Object3D) {
-  const caja = new THREE.Box3().setFromObject(raiz);
+  raiz.updateMatrixWorld(true);
+  const caja = new THREE.Box3();
+  const escala = new THREE.Vector3();
+  raiz.traverse((o) => {
+    if (!(o instanceof THREE.Mesh) || o.userData.contorno) return;
+    escala.setFromMatrixScale(o.matrixWorld);
+    if (Math.min(escala.x, escala.y, escala.z) >= 0.01) caja.union(new THREE.Box3().setFromObject(o));
+  });
   const tam = caja.getSize(new THREE.Vector3());
   const centro = caja.getCenter(new THREE.Vector3());
-  const lado = Math.max(tam.x, tam.y, tam.z, 0.8);
-  const dir = new THREE.Vector3(2.3, 1.3, 5.9).normalize();
-  controles.target.copy(centro);
-  camara.position.copy(centro).addScaledVector(dir, lado * 2.6 + 0.8);
+  const k = Math.max(1, Math.max(tam.x, tam.y, tam.z) / 2.9);
+  controles.target.set(centro.x, Math.max(1.1, centro.y), centro.z);
+  camara.position.copy(controles.target).add(new THREE.Vector3(2.3, 1.3, 5.9).multiplyScalar(k));
   controles.update();
 }
 
@@ -192,7 +201,9 @@ function exportar() {
   }, { binary: true, animations: m.animaciones.map((a) => a.clip) });
 }
 
-for (const c of CATALOGO) {
+// El chatarrero se mantiene fuera del taller hasta que tenga un nombre que no
+// colisione con Bruno, el perro compañero.
+for (const c of CATALOGO.filter((entrada) => entrada.id !== 'npc-chatarrero')) {
   const b = document.createElement('button');
   b.className = 'modelo';
   b.dataset.id = c.id;

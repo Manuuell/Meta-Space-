@@ -23,6 +23,7 @@
 //   GET  /api/health            → { ok, meta, modelos, servicio }
 //   POST /api/run-brief         → { ok, brief, source }  (misión + NPCs únicos por partida)
 //   POST /api/npc-line          → { ok, linea, source }  (una línea de un NPC ante un evento)
+//   POST /api/map-npc-line      → { ok, linea, source }  (gente del refugio, con respaldo)
 //   POST /api/generate-image    → { ok, pngDataUrl?, semilla, source, aviso? }
 //   POST /api/analyze-drawing   → { ok, opinion, rasgos?, stats?, source }
 //   POST /api/stats             → { ok, stats, source }
@@ -45,6 +46,10 @@ import {
   LORE, REGLAS, VOCES, briefLocal, esEvento, esHablante, limpiarDato, limpiarTexto, lineaLocal, normalizarBrief,
 } from './src/guion.ts';
 import type { EventoNpc, Hablante, RunBrief } from './src/guion.ts';
+import {
+  NPCS as NPCS_MAPA, aQuienHabla, contextoVoz, detectarIntencion, frase as fraseNpcMapa,
+} from './src/contenido/mapa.ts';
+import type { Intencion as IntencionMapa, NpcMapa } from './src/contenido/mapa.ts';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const ES_PRINCIPAL = /(^|[/\\])(creator-)?server\.ts$/.test(process.argv[1] ?? '');
@@ -429,6 +434,26 @@ async function metaNpcLine(speaker: Hablante, evento: EventoNpc, contexto: strin
   return linea;
 }
 
+/** La IA solo redacta: intención, coste y efecto ya los decidió el juego. */
+async function metaMapaNpcLine(
+  npc: NpcMapa,
+  intencion: IntencionMapa | null,
+  textoJugador: string,
+  resultadoObligatorio: string,
+): Promise<string> {
+  const t = await metaChat(
+    contextoVoz(npc, intencion) + ' ' +
+      'El resultado ya fue resuelto por el juego: conserva exactamente su sentido, sin regalar, cobrar ni aplicar nada distinto. ' +
+      AVISO_DATOS,
+    '<datos>El jugador dijo: ' + textoJugador + '\nResultado obligatorio: ' + resultadoObligatorio + '</datos>\n' +
+      'Redacta la respuesta del NPC en una sola frase, máximo 160 caracteres.',
+    200,
+  );
+  const linea = limpiarTexto(t.split('\n')[0], 180);
+  if (!linea) throw new Error('Línea de NPC vacía.');
+  return linea;
+}
+
 /** Visión de Muse Spark: una frase en español, con la voz de ADA. */
 async function metaVisionOpinion(pngDataUrl: string): Promise<string> {
   const cuerpo = await llamarMeta<RespuestaChat>('/chat/completions', JSON.stringify({
@@ -555,6 +580,7 @@ async function servirJuego(req: IncomingMessage, res: ServerResponse, pathname: 
 const CLASES: Record<string, Clase> = {
   '/api/run-brief': 'texto',
   '/api/npc-line': 'texto',
+  '/api/map-npc-line': 'texto',
   '/api/stats': 'texto',
   '/api/generate-image': 'imagen',
   '/api/analyze-drawing': 'vision',
@@ -646,6 +672,40 @@ async function atenderApi(req: IncomingMessage, res: ServerResponse, ruta: strin
       }
     }
     json(res, 200, { ok: true, linea: lineaLocal(speaker, evento, seed), source: 'local' });
+    return;
+  }
+
+  // ---- POST /api/map-npc-line { npc, texto, intencion?, respaldo, seed? }
+  if (ruta === '/api/map-npc-line') {
+    const npcId = limpiarDato(cuerpo.npc, 40);
+    const npc = NPCS_MAPA.find((n) => n.id === npcId);
+    if (!npc) {
+      json(res, 400, { ok: false, error: 'NPC desconocido.' });
+      return;
+    }
+    const textoJugador = limpiarDato(cuerpo.texto, 220);
+    // Repite el enrutado y la detección en el servidor: el texto del jugador
+    // sigue siendo dato y nunca decide efectos por medio del modelo.
+    const destino = aQuienHabla(textoJugador, [npc.id]);
+    const detectada = destino === npc.id ? detectarIntencion(npc, textoJugador) : null;
+    const intencionPedida = limpiarDato(cuerpo.intencion, 50);
+    const intencion = detectada?.id === intencionPedida ? detectada : null;
+    const seed = semillaDe(cuerpo.seed);
+    const respaldo = limpiarDato(cuerpo.respaldo, 180)
+      || (intencion ? fraseNpcMapa(npc, intencion, seed) : fraseNpcMapa(npc, 'noEntiendo', seed));
+    if (conIa()) {
+      try {
+        json(res, 200, {
+          ok: true,
+          linea: await metaMapaNpcLine(npc, intencion, textoJugador, respaldo),
+          source: 'meta-spark',
+        });
+        return;
+      } catch {
+        // Cae a la frase local ya resuelta por el juego.
+      }
+    }
+    json(res, 200, { ok: true, linea: respaldo, source: 'local' });
     return;
   }
 

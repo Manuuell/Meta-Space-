@@ -43,6 +43,9 @@ import {
   CUPO, NubeEsporas, angulosDePatron, criasAlMorir, oleadaEspecial, quiereDisparar, tasaEspecial,
 } from './enemies-nuevos';
 import { multChatarraElite, type EliteMod } from './enemies';
+import { ContenidoJuego, type RespuestaNpc } from './contenido-juego';
+import type { Efecto } from './contenido/mapa';
+import { lineaNpcMapa } from './npcs';
 
 type State = 'title' | 'playing' | 'levelup' | 'paused' | 'results';
 
@@ -59,6 +62,7 @@ export class Game {
   private camera = new THREE.PerspectiveCamera(60, 1, 0.3, 1200);
   private world: World;
   private enemies: Enemies;
+  private contenido: ContenidoJuego;
   private pickups: Pickups;
   private weapons!: Weapons;
   private relicDrops: RelicDrop[] = [];
@@ -99,6 +103,7 @@ export class Game {
   // Enemigos nuevos (FOCO 4): esporas, goteo especial y oleadas con intención.
   private esporas!: NubeEsporas;
   private deudaEsp: Record<string, number> = { saltador: 0, avispa: 0, caparazon: 0, sembrador: 0 };
+  private criasPendientes: { cuando: number; tipo: EnemyId; n: number; x: number; z: number }[] = [];
   private oleadaEspecialHecha = new Set<number>();
   private lastHpScale = 1;
   private elitesVivas = 0;
@@ -119,6 +124,9 @@ export class Game {
   private swarmHealTimer = 0;
   private ecoCooldown = 0;
   private noDamageTime = 0;
+  private acidoAcumulado = 0;
+  private usosNpc = new Map<string, number>();
+  private temporales = new Map<string, { hasta: number; factor: number }>();
   private spawnDebt = 0;
   private nextSegador = 120;
   private nextSwarm = 60;
@@ -132,6 +140,7 @@ export class Game {
   private companero!: Companero;
   private micBtn: HTMLButtonElement | null = null;
   private grabando: (() => void) | null = null;
+  private vozConV = false;
   private vozApagada = false;
   private explorando = false;
   private brief: RunBrief | null = null;
@@ -204,6 +213,11 @@ export class Game {
     });
     this.enemies = new Enemies(this.scene, this.world);
     this.enemies.onDeath = (i) => this.onEnemyDeath(i);
+    this.contenido = new ContenidoJuego(this.scene, this.world, {
+      toast: (quien, texto, segundos) => ui.toast(quien, texto, 'info', segundos ?? 4),
+      aplicar: (efectos) => this.aplicarEfectos(efectos),
+      curar: (cantidad) => { this.hp = Math.min(this.maxHp, this.hp + cantidad); },
+    });
     this.pickups = new Pickups(this.scene, this.world);
     this.companero = new Companero(this.scene, this.enemies, this.pickups, this.world, this.dron);
     // Antes había dos perros: el «de paseo» llevaba gorra, gafas y pajarita verde.
@@ -536,6 +550,11 @@ export class Game {
       this.decible('ADA', 'De vuelta en línea.');
       return;
     }
+    const respuestaNpc = this.contenido.responderVoz(texto, this.player.position.x, this.player.position.z);
+    if (respuestaNpc.destino && respuestaNpc.destino !== 'dron') {
+      void this.responderNpc(respuestaNpc, texto);
+      return;
+    }
     const cmd = parsearComando(texto);
     if (cmd === 'seguir') {
       this.dron.setModo('seguir');
@@ -558,14 +577,42 @@ export class Game {
     }
   }
 
+  /** La intención decide el efecto; Muse solo redacta la respuesta del NPC. */
+  private async responderNpc(respuesta: RespuestaNpc, texto: string) {
+    const npc = respuesta.npc;
+    if (!npc) return;
+    const intencion = respuesta.intencion ?? null;
+    let respaldo = respuesta.respaldo ?? npc.lineas.noEntiendo[0];
+    if (intencion) {
+      const clave = npc.id + ':' + intencion.id;
+      const usadas = this.usosNpc.get(clave) ?? 0;
+      if (intencion.coste && this.scrap < intencion.coste) {
+        respaldo = npc.lineas.sinChatarra[usadas % npc.lineas.sinChatarra.length];
+      } else if (intencion.veces !== undefined && usadas >= intencion.veces) {
+        respaldo = npc.lineas.yaNoQueda[usadas % npc.lineas.yaNoQueda.length];
+      } else {
+        if (intencion.coste) this.scrap -= intencion.coste;
+        this.usosNpc.set(clave, usadas + 1);
+        this.aplicarEfectos(intencion.efecto);
+      }
+    }
+    const linea = await lineaNpcMapa(npc, intencion, texto, respaldo);
+    if (this.state === 'playing') this.decible(npc.nombre, linea);
+  }
+
   /** El dron informa por voz y texto (respeta "silencio"). */
   private decible(quien: string, texto: string) {
     ui.toast(quien, texto, 'info', 4);
+    const mayus = quien.toUpperCase();
+    const tipo = mayus === 'ADA' ? 'ada' : mayus === 'HELIOS' ? 'helios'
+      : mayus === 'OPERADOR' || mayus === this.radio.nombreOperador(this.brief).toUpperCase() ? 'operador' : 'npc';
+    ui.decir(tipo, quien, texto, 4);
     if (!this.vozApagada) hablar(texto);
   }
 
   /** Aplica daño al traje y resuelve los especiales que reaccionan al golpe. */
   private receiveDamage(amount: number) {
+    amount *= this.factorTemporal('escudo');
     if (amount <= 0) return;
     if (this.heroSpecial === 'caparazon' && this.shieldReady) {
       this.shieldReady = false;
@@ -744,13 +791,15 @@ export class Game {
 
   private resetRun() {
     this.weapons?.dispose();
-    this.weapons = new Weapons(this.scene, this.enemies, this.world);
+    this.weapons = new Weapons(this.scene, this.enemies, this.world, () => this.contenido.objetivoJefe);
     this.weapons.damageMul = this.heroDamageMul;
     this.enemies.clear();
+    this.contenido.reset();
     this.pickups.clear();
     this.esporas?.dispose();
     this.esporas = new NubeEsporas(this.scene, this.world);
     this.deudaEsp = { saltador: 0, avispa: 0, caparazon: 0, sembrador: 0 };
+    this.criasPendientes = [];
     this.oleadaEspecialHecha.clear();
     this.elitesVivas = 0;
     for (const r of this.relicDrops) this.scene.remove(r.group);
@@ -785,6 +834,9 @@ export class Game {
     this.swarmHealTimer = 0;
     this.ecoCooldown = 0;
     this.noDamageTime = 0;
+    this.acidoAcumulado = 0;
+    this.usosNpc.clear();
+    this.temporales.clear();
     this.spawnDebt = 0;
     this.nextSegador = 120;
     this.nextSwarm = 60;
@@ -828,6 +880,7 @@ export class Game {
     if (this.micBtn) this.micBtn.style.display = 'block';
     lockPointer(this.canvas);
     ui.toast('ADA', 'HELIOS ha detectado mi señal. Aguanta 10 minutos: el cohete subirá la orden de apagado del velo.', 'info', 6);
+    ui.decir('ada', 'ADA', 'HELIOS ha detectado mi señal. Aguanta diez minutos hasta la ventana de lanzamiento.', 6);
     if (this.heroSpecial) {
       const sp = SPECIALS[this.heroSpecial];
       ui.toast('ADA', `Especial listo: ${sp.name}. ${sp.blurb}`, 'info', 6);
@@ -844,13 +897,22 @@ export class Game {
     const operador = brief.npcs.find((n) => n.id === 'operador');
     ui.setMision(brief.mision, operador?.nombre ?? '');
     ui.toast('ADA', `${brief.mision}: ${brief.bioma}. ${brief.giro}`, 'info', 7);
+    ui.decir('ada', 'ADA', brief.mision + ': ' + brief.bioma + '. ' + brief.giro, 7);
     const heli = brief.npcs.find((n) => n.id === 'helios');
     const op = brief.npcs.find((n) => n.id === 'operador');
     if (heli && this.state === 'playing') {
-      setTimeout(() => { if (this.state === 'playing') ui.toast('HELIOS', heli.linea, 'info', 5); }, 4500);
+      setTimeout(() => {
+        if (this.state !== 'playing') return;
+        ui.toast('HELIOS', heli.linea, 'info', 5);
+        ui.decir('helios', 'HELIOS', heli.linea, 5);
+      }, 4500);
     }
     if (op && this.state === 'playing') {
-      setTimeout(() => { if (this.state === 'playing') ui.toast(op.nombre.toUpperCase(), op.linea, 'info', 5); }, 9000);
+      setTimeout(() => {
+        if (this.state !== 'playing') return;
+        ui.toast(op.nombre.toUpperCase(), op.linea, 'info', 5);
+        ui.decir('operador', op.nombre, op.linea, 5);
+      }, 9000);
     }
   }
 
@@ -868,18 +930,65 @@ export class Game {
       if (!r || this.state !== 'playing') return;
       const quien = hablante === 'operador' ? this.radio.nombreOperador(this.brief).toUpperCase() : r.quien;
       ui.toast(quien, r.texto, 'info', 5);
+      ui.decir(hablante, quien, r.texto, 5);
     });
   }
 
   private get mods(): Modifiers {
     return {
-      cooldown: Math.pow(0.92, this.passive('enfriamiento')) * this.heroCooldownMul,
+      cooldown: Math.pow(0.92, this.passive('enfriamiento')) * this.heroCooldownMul / this.factorTemporal('recarga'),
       area: 1 + 0.1 * this.passive('area'),
     };
   }
 
   private passive(id: PassiveId) {
     return this.passives.get(id) ?? 0;
+  }
+
+  private factorTemporal(id: string) {
+    const temporal = this.temporales.get(id);
+    if (!temporal || temporal.hasta <= this.time) {
+      if (temporal) this.temporales.delete(id);
+      return 1;
+    }
+    return temporal.factor;
+  }
+
+  /** Traduce los efectos puros de mapa a los sistemas reales de la partida. */
+  private aplicarEfectos(efectos: Efecto[]) {
+    for (const efecto of efectos) {
+      if (efecto.tipo === 'chatarra') {
+        this.scrap = Math.max(0, this.scrap + efecto.cantidad);
+      } else if (efecto.tipo === 'integridad') {
+        this.hp = Math.min(this.maxHp, this.hp + efecto.cantidad);
+      } else if (efecto.tipo === 'exposicion') {
+        this.contenido.cambiarExposicion(efecto.cantidad);
+      } else if (efecto.tipo === 'reliquia') {
+        const pendiente = RELICS.find((r) => !this.save.relics.includes(r.id) && !this.relicsFound.includes(r.id));
+        if (pendiente) {
+          this.relicsFound.push(pendiente.id);
+          this.companero.alReliquia();
+          ui.toast('Reliquia: ' + pendiente.name, pendiente.lore + ' ' + pendiente.fact, 'relic', 8);
+        }
+      } else if (efecto.tipo === 'mejora') {
+        this.pendingLevels++;
+      } else if (efecto.tipo === 'nivel') {
+        const ids = (Object.keys(WEAPONS) as WeaponId[])
+          .filter((id) => this.weapons.level(id) < WEAPONS[id].levels.length)
+          .sort((a, b) => this.weapons.level(a) - this.weapons.level(b));
+        const id = efecto.herramienta === 'cualquiera' ? ids[0] : efecto.herramienta;
+        if (id && this.weapons.level(id) < WEAPONS[id].levels.length) this.weapons.upgrade(id);
+      } else if (efecto.tipo === 'temporal') {
+        this.temporales.set(efecto.cual, { hasta: this.time + efecto.segundos, factor: efecto.factor });
+      } else if (efecto.tipo === 'marcar') {
+        this.contenido.marcar(efecto.que, this.player.position.x, this.player.position.z);
+      } else if (efecto.tipo === 'informar') {
+        const texto = efecto.que === 'oleada'
+          ? 'La vigía marca la dirección de la próxima oleada.'
+          : 'Lis reconoce la última reliquia recuperada.';
+        ui.toast('ADA', texto, 'info', 4);
+      }
+    }
   }
 
   // -------------------------------------------------------------- Bucle
@@ -947,6 +1056,14 @@ export class Game {
     if (wasPressed('KeyT') && !(document.activeElement instanceof HTMLInputElement)) {
       this.abrirLineaVoz();
     }
+    if (wasPressed('KeyV') && !this.vozConV) {
+      this.vozConV = true;
+      void this.hablarAlDron();
+    }
+    if (this.vozConV && !isHeld('KeyV')) {
+      this.vozConV = false;
+      this.grabando?.();
+    }
 
     const look = consumeLook(dt);
     this.yaw -= look.x * LOOK_SPEED;
@@ -972,9 +1089,42 @@ export class Game {
 
     const px = this.player.position.x, pz = this.player.position.z;
     this.noDamageTime += dt;
+    const profundidadAcido = this.world.acidoEn(px, pz);
+    if (profundidadAcido > 0) {
+      // Pulsos de medio segundo: conserva los 6 DPS (12 en lo hondo) sin
+      // repetir el sonido y la sacudida de daño treinta veces por segundo.
+      this.acidoAcumulado += dt;
+      const pulsos = Math.floor(this.acidoAcumulado / 0.5);
+      if (pulsos > 0) {
+        this.acidoAcumulado -= pulsos * 0.5;
+        this.receiveDamage((profundidadAcido > 1 ? 12 : 6) * pulsos * 0.5);
+      }
+    } else {
+      this.acidoAcumulado = 0;
+    }
     this.updateHeroSpecial(dt, px, pz);
+    this.actualizarCrias();
     const contact = this.enemies.update(dt, px, pz, PLAYER_RADIUS);
     this.receiveDamage(contact * this.factorContacto());
+    const danoContenido = this.contenido.update({
+      tiempo: this.time,
+      dt,
+      px,
+      pz,
+      bajas: this.kills,
+      danoRecibido: this.hpLost,
+      balizas: this.enemies.countOf('baliza'),
+      enemigosEn: (x, z, radio) => {
+        let n = 0;
+        this.enemies.forEachInRadius(x, z, radio, () => { n++; });
+        return n;
+      },
+      crearBaliza: (x, z) => {
+        const p = this.world.resolve(x, z, ENEMIES.baliza.radius, { x: 0, z: 0 });
+        this.enemies.spawn('baliza', p.x, p.z, this.lastHpScale);
+      },
+    });
+    this.receiveDamage(danoContenido * (this.intocable() ? 0 : 1));
     this.hp = Math.min(this.maxHp, this.hp + this.passive('reparacion') * 0.7 * dt);
     if (!this.heridoAvisado && this.hp < this.maxHp * 0.7) {
       this.heridoAvisado = true;
@@ -1005,7 +1155,8 @@ export class Game {
     this.enemies.sweep();
     this.enemies.render();
 
-    const radius = RUN.pickupRadius * (1 + 0.35 * this.passive('iman')) * (this.dron.luz ? 1.25 : 1);
+    const radius = RUN.pickupRadius * (1 + 0.35 * this.passive('iman')) * (this.dron.luz ? 1.25 : 1)
+      * this.factorTemporal('iman');
     const got = this.pickups.update(dt, px, pz, radius);
     if (got > 0) {
       this.scrap += got;
@@ -1018,6 +1169,7 @@ export class Game {
     }
     this.updateRelics(dt, px, pz);
 
+    this.world.update(dt);
     this.world.follow(this.player.position);
     this.updateCamera(dt);
 
@@ -1029,10 +1181,25 @@ export class Game {
       weapons: [...this.weapons.levels.entries()], signal: this.enemies.countOf('baliza'),
       anchor: { x: (feet.x + 1) / 2 * window.innerWidth, y: (1 - feet.y) / 2 * window.innerHeight },
       locked: isLocked(),
+      duracion: RUN.length,
+      reliquias: this.save.relics.length + this.relicsFound.length,
+      exposicion: this.contenido.exposicion,
+      acido: this.world.acidoEn(px, pz),
+      jefes: this.contenido.jefesHud,
+      jefeActivo: this.contenido.jefesHud.find((j) => j.vida !== undefined),
+      interaccion: this.contenido.interaccionNpc(px, pz),
+      zona: this.contenido.zonaDe(px, pz),
     });
     ui.drawMinimap({
       px: this.player.position.x, pz: this.player.position.z, yaw: this.yaw,
       enemies: this.enemies, relics: this.relicDrops.map((r) => r.group.position), pad: this.world.padPosition,
+      nave: this.world.nave,
+      lugares: [
+        ...this.world.lugares,
+        ...this.contenido.marcas,
+      ],
+      marca: this.contenido.marca,
+      carta: this.world.carta(),
     });
 
     if (this.hp <= 0) return this.endRun(false);
@@ -1066,7 +1233,9 @@ export class Game {
     }
     if (this.propulsando && mochilaNv >= 3) equipo *= 1.25;
 
-    const maxSpeed = this.heroSpeed * MOVE.speedMul * (1 + 0.1 * this.passive('velocidad')) * overdrive * equipo;
+    const vadeo = this.world.acidoEn(p.x, p.z) > 0 ? 0.6 : 1;
+    const maxSpeed = this.heroSpeed * MOVE.speedMul * (1 + 0.1 * this.passive('velocidad')) * overdrive * equipo
+      * vadeo * this.factorTemporal('velocidad');
     // W avanza hacia donde mira la cámara; A y D van de lado.
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
@@ -1270,7 +1439,7 @@ export class Game {
     // Director elástico (FOCO 2): alivia si vas por detrás, aprieta si vas
     // por delante, siempre dentro de la banda [0,8–1,2].
     const dp = directorParams(this.time, this.level, this.dpsActual(), balizas);
-    const rate = dp.ritmo;
+    const rate = dp.ritmo * (1 + this.contenido.exposicion * 0.35);
     const hpScale = dp.escalaVida;
     this.lastHpScale = hpScale;
 
@@ -1385,12 +1554,9 @@ export class Game {
       this.pickups.drop(x, z, value);
     }
 
-    // El Caparazón se divide al morir: suelta 3 Recolectores.
+    // La concha muestra primero las cúpulas; las crías salen a los 0,6 s.
     for (const cria of criasAlMorir(def.id)) {
-      for (let k = 0; k < cria.n; k++) {
-        const a = Math.random() * Math.PI * 2;
-        this.enemies.spawn(cria.tipo as EnemyId, x + Math.cos(a) * 1.5, z + Math.sin(a) * 1.5, this.lastHpScale);
-      }
+      this.criasPendientes.push({ cuando: this.time + 0.6, tipo: cria.tipo as EnemyId, n: cria.n, x, z });
     }
 
     if (def.id === 'segador') {
@@ -1399,6 +1565,23 @@ export class Game {
         !this.save.relics.includes(r.id) && !this.relicsFound.includes(r.id) &&
         !this.relicDrops.some((d) => d.relicId === r.id));
       if (pending.length) this.relicDrops.push(new RelicDrop(this.scene, pending[0].id, x, this.world.heightAt(x, z), z));
+    }
+  }
+
+  private actualizarCrias() {
+    for (let i = this.criasPendientes.length - 1; i >= 0; i--) {
+      const pendiente = this.criasPendientes[i];
+      if (this.time < pendiente.cuando) continue;
+      for (let k = 0; k < pendiente.n; k++) {
+        const a = Math.random() * Math.PI * 2;
+        this.enemies.spawn(
+          pendiente.tipo,
+          pendiente.x + Math.cos(a) * 1.5,
+          pendiente.z + Math.sin(a) * 1.5,
+          this.lastHpScale,
+        );
+      }
+      this.criasPendientes.splice(i, 1);
     }
   }
 

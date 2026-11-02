@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {
   PALETA, animacion, brillo, caja, capsula, ciclo, esc, esfera, mov, nodo, parpadeo, pieza, poses, rot, toon, toro,
   type Modelo,
-} from './kit';
+} from './kit.ts';
 
 // El especialista de ARES-IX: proporciones chibi (casco enorme), ojos que
 // brillan en el visor y ADA latiendo en la mochila. Mira hacia +z; su

@@ -33,115 +33,6 @@ html, body {
 
 b, h1, h2, h3, h4 { font-weight: 800; }
 
-/* ------------------------------------------------------------- HUD */
-
-.hud { position: absolute; inset: 0; }
-
-.hud-portrait {
-  position: absolute; top: 14px; left: 14px; display: flex; align-items: center;
-}
-.avatar.small { width: 84px; height: 84px; z-index: 1; background: #ffd8b0; }
-.avatar.small svg { width: 56px; height: 56px; }
-.hud-name {
-  margin-left: -16px; padding: 10px 22px 10px 28px; border-radius: 0 16px 16px 0;
-  background: linear-gradient(100deg, rgba(28, 24, 40, 0.92), rgba(28, 24, 40, 0.75));
-  border-bottom: 4px solid #e8632b; min-width: 210px;
-}
-.hud-name b { font-size: 22px; display: block; line-height: 1.1; }
-.hud-name small { color: var(--muted); font-size: 12px; font-weight: 700; }
-.hud-xp { height: 8px; border-radius: 4px; background: #3a3550; margin-top: 7px; overflow: hidden; }
-.hud-xp-fill { height: 100%; width: 0; background: linear-gradient(90deg, #5ee0ff, #7fffd0); transition: width 0.15s; }
-
-.hud-center {
-  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
-  display: flex; flex-direction: column; align-items: center;
-}
-.hud-zone {
-  background: rgba(28, 24, 40, 0.85); border-radius: 14px 14px 0 0; padding: 6px 18px 4px;
-  display: flex; gap: 12px; align-items: baseline; border-top: 3px solid #e8632b;
-}
-.hud-zone b { font-size: 16px; }
-.hud-zone small { color: var(--muted); font-size: 12px; font-weight: 700; }
-.hud-zone i { font-style: normal; background: #3fbf5a; color: #10301a; padding: 1px 6px; border-radius: 5px; font-size: 10px; }
-.hud-time {
-  font-size: 44px; font-weight: 900; letter-spacing: 1px; line-height: 1;
-  background: rgba(28, 24, 40, 0.92); padding: 6px 26px 8px; border-radius: 18px;
-  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3); min-width: 150px; text-align: center;
-}
-.hud-chips { display: flex; gap: 6px; margin-top: 6px; }
-.chip {
-  background: rgba(28, 24, 40, 0.85); border-radius: 999px; padding: 4px 12px;
-  font-size: 12px; font-weight: 700; color: var(--muted);
-}
-.chip b { color: #ffd25a; font-size: 15px; }
-.chip.kills b { color: #ff8a6a; }
-.hud-mission {
-  margin-top: 6px; max-width: 340px; text-align: center;
-  background: rgba(28, 24, 40, 0.85); border-radius: 12px; padding: 5px 14px;
-  border-bottom: 3px solid #5ee0ff;
-}
-.hud-mission b { display: block; font-size: 13px; color: #fff; }
-.hud-mission span { font-size: 11px; font-weight: 700; color: #5ee0ff; }
-
-.hud-minimap {
-  position: absolute; top: 12px; right: 12px; width: 170px; height: 170px;
-}
-
-.hud-signal {
-  position: absolute; top: 196px; right: 12px; max-width: 230px; text-align: center;
-  font-size: 12px; font-weight: 700; color: #ffd23a; opacity: 0;
-  background: rgba(40, 20, 10, 0.75); padding: 5px 10px; border-radius: 10px;
-  transition: opacity 0.3s;
-}
-.hud-signal.on { opacity: 1; animation: blink 1.2s infinite; }
-@keyframes blink { 50% { opacity: 0.55; } }
-
-.hud-hint {
-  position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%);
-  background: rgba(28, 24, 40, 0.8); padding: 7px 14px; border-radius: 10px;
-  font-size: 13px; color: #d9d4e6; opacity: 0; transition: opacity 0.4s;
-}
-.hud-hint.on { opacity: 1; }
-
-/* Barra de vida bajo los pies: la posición la pone el juego cada fotograma. */
-.hud-hp {
-  position: absolute; left: 0; top: 0; width: 120px; height: 16px; border-radius: 8px;
-  background: rgba(20, 16, 28, 0.8); overflow: hidden; border: 2px solid rgba(255, 255, 255, 0.85);
-  will-change: transform;
-}
-.hud-hp-fill { height: 100%; background: linear-gradient(#7ef08a, #3fbf5a); transition: width 0.1s; }
-.hud-hp-text {
-  position: absolute; inset: 0; display: grid; place-items: center;
-  font-size: 11px; font-weight: 800; text-shadow: 0 1px 2px #000;
-}
-
-.hud-weapons { position: absolute; left: 14px; bottom: 14px; display: flex; gap: 8px; }
-.slot {
-  position: relative; width: 74px; height: 74px; border-radius: 16px;
-  background: linear-gradient(var(--c), color-mix(in srgb, var(--c) 55%, #000));
-  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35); display: grid; place-items: center;
-}
-.slot svg { width: 38px; height: 38px; margin-top: 8px; filter: drop-shadow(0 2px 0 rgba(0,0,0,.35)); }
-.slot small {
-  position: absolute; top: 4px; left: 0; right: 0; text-align: center;
-  font-size: 10px; font-weight: 800; color: #1b1214;
-}
-.slot b {
-  position: absolute; right: 6px; bottom: 2px; font-size: 15px; color: #fff;
-  text-shadow: 0 1px 2px #000;
-}
-.slot.empty { background: rgba(255, 255, 255, 0.12); border: 2px solid rgba(255, 255, 255, 0.25); }
-
-@media (max-width: 700px) {
-  .hud-name { display: none; }
-  .hud-zone { display: none; }
-  .hud-time { font-size: 30px; min-width: 100px; }
-  .hud-minimap { width: 110px; height: 110px; }
-  .hud-signal { top: 130px; }
-  .slot { width: 54px; height: 54px; }
-  .slot small { display: none; }
-}
-
 /* ---------------------------------------------------------- Avisos */
 
 .toasts {
@@ -203,27 +94,6 @@ b, h1, h2, h3, h4 { font-weight: 800; }
   padding: 26px; max-width: 900px; width: 100%;
 }
 .levelup-box h2 { font-size: 38px; margin: 0 0 4px; color: var(--gold); }
-.levelup-box .sub { color: var(--muted); margin: 0 0 20px; }
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
-.card {
-  position: relative; font: inherit; color: var(--ink); text-align: left; cursor: pointer;
-  background: var(--panel-2); border: 3px solid var(--c); border-radius: 18px; padding: 18px 16px 16px;
-  transition: transform 0.1s, background 0.1s;
-}
-.card:hover { transform: translateY(-3px); background: #30354d; }
-.card b { display: block; font-size: 19px; margin: 6px 0; color: var(--c); }
-.card p { margin: 0; color: #d9d4e6; font-size: 14px; line-height: 1.4; }
-.card-control { display: block; margin-top: 8px; font-style: normal; font-weight: 700; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--c); }
-.card-tag {
-  font-size: 11px; font-weight: 800; letter-spacing: 1px; padding: 3px 8px; border-radius: 999px;
-  background: var(--c); color: #1b1214;
-}
-.card-key {
-  position: absolute; top: 10px; right: 12px; width: 24px; height: 24px; border-radius: 6px;
-  display: grid; place-items: center; font-size: 13px; font-weight: 800;
-  background: rgba(255, 255, 255, 0.08); color: var(--muted);
-}
-
 /* ------------------------------------------------------ Resultados */
 
 .results-box {
@@ -348,7 +218,6 @@ footer {
 }
 
 @media (max-width: 600px) {
-  .hud-time { font-size: 30px; min-width: 90px; }
   .title-stats { grid-template-columns: repeat(2, 1fr); }
   .tiles div { min-width: 0; flex: 1; padding: 8px; }
   .tiles b { font-size: 22px; }

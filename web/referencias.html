@@ -6,13 +6,16 @@
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; background: #e4e7ef; font: 700 15px system-ui, sans-serif; color: #3b4054; }
       canvas { display: block; }
-      #etiquetas { position: fixed; left: 0; right: 0; bottom: 14px; display: flex; pointer-events: none; }
-      #etiquetas span { flex: 1; text-align: center; letter-spacing: .14em; }
+      #titulo { position:fixed; z-index:2; left:0; right:0; top:20px; text-align:center; font-size:26px; letter-spacing:.2em; color:#202439; text-shadow:0 2px 0 #fff; pointer-events:none; }
+      #etiquetas { position: fixed; left: 0; right: 0; bottom: 18px; display: flex; pointer-events: none; }
+      #etiquetas span { flex: 1; text-align: center; letter-spacing: .1em; font-size:13px; }
+      .descarga { position:fixed; right:18px; top:18px; z-index:3; color:#fff; background:#292d42; padding:9px 14px; border-radius:9px; text-decoration:none; font-size:12px; letter-spacing:.08em; }
       pre { display: none; }
     </style>
   </head>
   <body>
     <canvas id="lienzo"></canvas>
+    <div id="titulo"></div>
     <div id="etiquetas"></div>
     <script type="module" src="/src/modelos/referencias.ts"></script>
   </body>

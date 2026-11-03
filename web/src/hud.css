@@ -457,3 +457,38 @@
   .h2-balizas { top: 168px; right: auto; left: 50%; transform: translateX(-50%); width: max-content; }
   .h2-casilla { width: 50px; height: 54px; }
 }
+
+/* ---- Personaje jugable: retrato en la ficha y casilla de la habilidad (R) ---- */
+.h2-retrato > img {
+  position: absolute; inset: 3px; z-index: 1; width: calc(100% - 6px); height: calc(100% - 6px);
+  object-fit: cover; border-radius: 50%;
+}
+.h2-retrato > svg { display: none; }
+.h2-retrato { border-color: var(--personaje, #5ee0ff) !important; }
+.h2-retrato .h2-nivel { z-index: 2; }
+
+/* `--lista` va de 0 a 1 con la recarga: llena el anillo cónico. */
+.h2-habilidad {
+  --c: #7566f5; --lista: 0;
+  position: fixed; left: 20px; bottom: 22px; z-index: 35; display: none; align-items: center; gap: 10px;
+  color: #fff; filter: drop-shadow(0 4px 10px #0008); pointer-events: none;
+}
+.h2-habilidad.on { display: flex; }
+.h2-habilidad > i {
+  position: relative; width: 68px; height: 68px; display: grid; place-items: center; border-radius: 50%;
+  background: conic-gradient(var(--c) calc(var(--lista) * 1turn), #25263b 0); box-shadow: 0 0 0 3px #16111f;
+}
+.h2-habilidad > i::after { content: ''; position: absolute; inset: 7px; background: #17182a; border: 2px solid #ffffff22; border-radius: 50%; }
+.h2-habilidad-icono { position: relative; z-index: 1; width: 40px; height: 40px; }
+.h2-habilidad-icono .icono { width: 100%; height: 100%; display: block; }
+.h2-habilidad:not(.lista) .h2-habilidad-icono { filter: grayscale(.7) brightness(.75); }
+/* Insignia de la tecla, abajo a la derecha del círculo. */
+.h2-habilidad > i b {
+  position: absolute; right: -4px; bottom: -4px; z-index: 2; width: 24px; height: 24px; display: grid; place-items: center;
+  color: #17182a; font: 900 14px Rubik, system-ui; background: var(--c); border: 2px solid #16111f; border-radius: 50%;
+}
+.h2-habilidad.lista > i { box-shadow: 0 0 0 3px #16111f, 0 0 20px color-mix(in srgb, var(--c) 70%, transparent); animation: h2-habilidad-lista 1.2s ease-in-out infinite; }
+.h2-habilidad span { display: flex; flex-direction: column; padding: 7px 11px; background: #17182ad9; border-left: 3px solid var(--c); border-radius: 9px; }
+.h2-habilidad strong { font-size: 13px; }
+.h2-habilidad small { color: #b8bdd1; font-size: 10px; text-transform: uppercase; }
+@keyframes h2-habilidad-lista { 50% { transform: scale(1.06); } }

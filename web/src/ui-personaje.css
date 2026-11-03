@@ -1,0 +1,57 @@
+/* Selector de personaje jugable: tarjetas con retrato, barras de estadísticas,
+ * herramienta inicial, habilidad (R) y pasiva. Cada tarjeta toma el color de
+ * acento de su operador en `--c`. */
+
+.sel-personaje {
+  position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 24px;
+  color: #fff; font-family: Rubik, system-ui, sans-serif; background: rgba(10, 9, 20, .82); backdrop-filter: blur(12px);
+}
+.sel-personaje section {
+  width: min(1240px, 96vw); max-height: 92vh; overflow: auto;
+  background: linear-gradient(145deg, #24243d, #151526); border: 2px solid #5ee0ff; border-radius: 24px; box-shadow: 0 24px 80px #000;
+}
+.sel-personaje header {
+  position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; align-items: start;
+  padding: 22px 26px; background: #1b1b30; border-bottom: 1px solid #ffffff26;
+}
+.sel-personaje h2 { margin: 2px 0; font-size: 32px; text-transform: uppercase; }
+.sel-personaje header p, .sel-personaje header small { margin: 0; color: #bec3db; }
+.sel-cerrar { width: 46px; height: 46px; color: #fff; font-size: 30px; background: #ffffff12; border: 0; border-radius: 50%; }
+
+.sel-lista { display: grid; grid-template-columns: repeat(3, minmax(260px, 1fr)); gap: 14px; padding: 20px; }
+.sel-tarjeta {
+  --c: #5ee0ff;
+  display: grid; grid-template-columns: 84px 1fr; gap: 10px; padding: 14px; text-align: left; color: #fff;
+  background: #111222; border: 2px solid #ffffff18; border-radius: 18px; cursor: pointer; transition: .15s;
+}
+.sel-tarjeta:hover, .sel-tarjeta:focus-visible, .sel-tarjeta.activa {
+  outline: none; border-color: var(--c); transform: translateY(-2px);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--c) 25%, transparent);
+}
+.sel-tarjeta img { grid-row: span 2; width: 84px; height: 84px; object-fit: cover; border: 3px solid var(--c); border-radius: 15px; }
+
+.sel-info { display: flex; flex-direction: column; }
+.sel-info strong { font-size: 20px; }
+.sel-info small, .sel-info em { color: #b9bfd4; font-style: normal; }
+.sel-info em { margin-top: 4px; color: var(--c); font-weight: 800; }
+
+/* Barras: `--p` es cuánto llena, calculado en ui-personaje.ts. */
+.sel-stats { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.sel-stats label { color: #c9cde0; font-size: 11px; text-transform: uppercase; }
+.sel-stats i {
+  display: block; height: 5px; margin-top: 3px; border-radius: 5px;
+  background: linear-gradient(90deg, var(--c) var(--p), #ffffff17 var(--p));
+}
+
+.sel-poder, .sel-pasiva { grid-column: 1 / -1; display: flex; flex-direction: column; padding: 9px 10px; background: #ffffff09; border-radius: 10px; }
+.sel-poder b { color: var(--c); }
+.sel-poder small, .sel-pasiva small { color: #c2c6d8; line-height: 1.3; }
+
+@media (max-width: 900px) {
+  .sel-lista { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 620px) {
+  .sel-personaje { padding: 8px; }
+  .sel-personaje header { padding: 16px; }
+  .sel-lista { grid-template-columns: 1fr; }
+}

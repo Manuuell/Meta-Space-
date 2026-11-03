@@ -5,6 +5,15 @@ Cinco personajes nuevos, cada uno con su **arma inicial propia**, una
 operadores que ya tienen retrato en el menú de perfil
 (`web/public/art/profiles/`); Sol Vega sigue siendo la voz de la radio.
 
+> **Estado (03/11/2026): hechos los cinco.** Modelos en `web/src/modelos/<id>.ts`
+> (cada uno desde cero), armas exclusivas en `web/src/armas-personaje.ts`,
+> habilidades en `web/src/habilidades.ts` y sus efectos en
+> `web/src/fx-operadores.ts`. Para verlos: `/referencias.html?vista=personajes`
+> (los seis en fila; `&clip=Correr&t=0.2` los posa en un instante de un clip)
+> y `/?demo=jefes&personaje=<id>` (la demo con ese operador; el piloto usa la
+> R). Única diferencia con lo de abajo: Bruno no tiene vida propia, así que el
+> Jardín de sol solo cura a Amara.
+
 Este documento tiene tres partes:
 
 1. [Cómo se hacen los personajes](#1-cómo-se-hacen-los-personajes) en este proyecto.
@@ -42,26 +51,39 @@ poco, se ven todos de la misma familia y las pruebas pueden revisarlos en Node.
   velocidades y descarga GLB) y en `/referencias.html?modelo=<id>&vista=hoja`
   (frente, lado, espalda y 3/4).
 
-### El esqueleto del jugador
+### Lo que comparten los personajes (y lo que no)
 
-El juego anima al jugador por **nombre de nodo y de clip**, y le cuelga el
-equipo (mochila cohete y botas) de nodos concretos. Para que un personaje
-nuevo funcione con todo lo que ya hay, tiene que usar **el mismo esqueleto que
-`web/src/modelos/astronauta.ts`**, a la misma altura (2,6 m) y mirando hacia +z:
+**Cada personaje es un modelo totalmente distinto**: otra silueta, otras
+proporciones, otra cabeza, otra ropa, otras piezas y otra forma de moverse.
+**No son astronautas repintados.** Ninguno parte de `astronauta.ts` ni de un
+cuerpo común: cada archivo construye su cuerpo desde cero con las piezas del
+kit. Si al ponerlos en fila (`/referencias.html`) se reconoce el mismo muñeco
+con otro color, está mal.
 
-| Nodo | Para qué |
+Lo único que tienen en común es un **contrato de nombres**, porque el juego
+anima por nombre de clip y engancha el equipo por nombre de nodo:
+
+| Nodo obligatorio | Para qué |
 |---|---|
-| `cuerpo` → `cadera` → `pecho` → `cabeza` | Tronco y cabeza; la mochila cohete cuelga de `pecho` |
-| `hombro_i`, `hombro_d` | Brazos (sin codo) |
-| `pierna_i`, `pierna_d` | Piernas; las botas de impulso cuelgan de aquí: cadera a 0,85 m del suelo |
-| `ada` | El orbe de ADA en la espalda (late en `Reposo` y `Esprintar`) |
-| `ojo_i`, `ojo_d` | Los ojos del visor (parpadean) |
-| `antena` | Pieza móvil con retraso (opcional, pero se nota) |
+| `cuerpo` (hijo de la raíz) | Lo que el juego aplasta al aterrizar |
+| `pecho` y `cabeza` | Tronco y cabeza, sean como sean |
+| `pierna_i`, `pierna_d` | Las piernas (o lo que haga de piernas) |
+| `enganche_mochila` | Centro de la espalda: ahí cuelga la mochila cohete (está modelada alrededor de ese punto; un cuerpo más grande escala su enganche) |
+| `enganche_bota_i`, `enganche_bota_d` | Centro de cada pie, a la altura del tobillo: ahí cuelgan las botas de impulso (también se escalan) |
+| `ada` | Dónde lleva cada uno a ADA (mochila, hombro, colgante, casco…): un orbe cian que late |
 
-Clips que el juego llama por su nombre: `Reposo`, `Caminar`, `Correr`,
-`Esprintar`, `Saltar`, `Surfear`, `Volar`, `Impulso`, `Golpe recibido`,
-`Victoria` y `Derrota`. Los personajes nuevos añaden **`Habilidad`** (una vez,
-≤ 1,2 s) para cuando se usa la R.
+Libres: la altura (de 2,2 a 3,0 m), la forma, tener o no casco, brazos con
+o sin codo, colas, capas, pelo, nodos extra. Mira hacia +z.
+
+Clips que el juego llama por su nombre (cada personaje los anima a su manera,
+con su carácter): `Reposo`, `Caminar`, `Correr`, `Esprintar`, `Saltar`,
+`Surfear`, `Volar`, `Impulso`, `Golpe recibido`, `Victoria` y `Derrota`. Los
+personajes nuevos añaden **`Habilidad`** (una vez, ≤ 1,2 s) para cuando se usa
+la R.
+
+**Referencia de cada uno:** su retrato en `web/public/art/profiles/<id>.webp`
+(cara, pelo, colores y ropa). El modelo tiene que reconocerse como esa
+persona.
 
 ---
 
@@ -102,8 +124,17 @@ misma densidad de comentarios que el código que lo rodea.
 
 Reglas:
 - Los modelos se construyen en código con web/src/modelos/kit.ts y
-  web/src/modelos/brillo.ts (mira astronauta.ts, sabueso.ts y golem.ts).
-  Nada de archivos 3D ni texturas descargadas.
+  web/src/modelos/brillo.ts (mira astronauta.ts, sabueso.ts y golem.ts para
+  el estilo). Nada de archivos 3D ni texturas descargadas.
+- Cada personaje es un modelo TOTALMENTE DISTINTO: otra silueta, otras
+  proporciones, otra cabeza y otra ropa. Prohibido partir de
+  crearAstronauta() o de un cuerpo base común y repintarlo o añadirle
+  accesorios. Cada archivo de modelo construye su cuerpo desde cero. Solo se
+  comparten los nombres de nodo y de clip del contrato (ver «Lo que comparten
+  los personajes» en prompts-personajes-jugables.md).
+- Usa como referencia el retrato del personaje en
+  web/public/art/profiles/<id>.webp: el modelo tiene que reconocerse como
+  esa persona.
 - Diseños originales: nada que copie personajes de otros juegos.
 - Datos puros en archivos sin THREE (como contenido/mapa.ts) para que los
   tests los carguen en Node. En archivos que cargan los tests, nada de
@@ -158,7 +189,10 @@ uno por uno.
 6. game.ts: en vez de `crearAstronauta()` fijo, monta el modelo del personaje
    elegido al empezar la partida (rehaciendo el mezclador, las acciones y el
    equipo de montarEquipo), aplica sus stats como applyCustomHero, le da su
-   arma inicial en vez del cortador y su pasiva. El héroe del creador de
+   arma inicial en vez del cortador y su pasiva. Como cada personaje tiene un
+   cuerpo distinto, montarEquipo cuelga la mochila de `enganche_mochila` y
+   las botas de `enganche_bota_i`/`_d` (añade esos tres nodos también a
+   astronauta.ts, en el sitio donde cuelgan ahora). El héroe del creador de
    personaje sigue funcionando como hasta ahora.
 
 7. demo.ts: SalidaPiloto gana `habilidad: boolean`; el piloto la usa cuando
@@ -177,13 +211,16 @@ uno por uno.
 Añade a Mara Ilyin (id 'mara-ilyin'), ingeniera de sistemas. Juega a
 desplegar: llena el campo de torretas y acelera todo el equipo.
 
-Aspecto (web/src/modelos/mara.ts, esqueleto del astronauta, 2,6 m):
-traje blanco con paneles violeta (#7566f5); casco con visor rectangular con
-líneas de HUD encendidas (brillo cian) y unas gafas de soldar subidas en la
-frente; mochila con una antena parabólica plegada y dos brazos-grúa pequeños
-a los lados; una torreta en miniatura enganchada al cinturón. Clip
-`Habilidad`: clava una rodilla, golpea el suelo con la palma y la antena se
-despliega.
+Aspecto (web/src/modelos/mara.ts, construido desde cero, 2,6 m): NO es un
+astronauta. Mara va dentro de un exotraje de carga pequeño, casi un mech:
+cuerpo ancho y cuadrado de placas violeta (#7566f5) y grafito con franjas de
+peligro amarillas; en el pecho, una cabina de cristal donde se le ve la cara
+(gafas de soldar, moño, como en su retrato); dos brazos mecánicos enormes con
+pinzas de tres dedos y codo; piernas cortas de pistón con pies de bloque; a
+la espalda, una antena parabólica plegada y una torreta en miniatura. ADA va
+en una cápsula sobre el hombro. Se mueve como una máquina pesada: pasos que
+hacen temblar el cuerpo, pinzas que se abren y cierran en `Reposo`. Clip
+`Habilidad`: clava los dos puños en el suelo y la antena se despliega.
 
 Stats: vida 95, velocidad 5,2, daño ×1,0, recarga ×0,92.
 
@@ -213,11 +250,15 @@ Pasiva «Presupuesto ajustado»: los cofres de HELIOS le cuestan un 20 % menos.
 Añade a Idris Okafor (id 'idris-okafor'), mecánico de campo. Es el tanque:
 cuerpo a cuerpo, empujones y un muro de chatarra.
 
-Aspecto (web/src/modelos/idris.ts, esqueleto del astronauta, 2,6 m, más
-ancho de hombros): traje naranja (#ffad35) reforzado, hombreras de chapa
-atornillada, casco con rejilla delante del visor, cinturón de herramientas,
-guantes enormes y una llave de impacto gigante colgada a la espalda. Clip
-`Habilidad`: levanta los dos brazos y golpea el suelo con los puños.
+Aspecto (web/src/modelos/idris.ts, construido desde cero, 2,8 m): NO es un
+astronauta. Un hombretón con silueta de triángulo invertido: hombros y
+brazos enormes, piernas cortas y fuertes. Sin casco: cara al aire con barba,
+y una máscara de soldar subida sobre la frente (como en su retrato). Mono
+naranja (#ffad35) con las mangas remangadas, delantal de cuero marrón,
+cinturón de herramientas lleno, botas de trabajo con puntera de acero y una
+llave de impacto gigante al hombro. ADA cuelga de su cuello en un colgante
+de chatarra. Anda pesado y balanceando los brazos. Clip `Habilidad`: levanta
+los dos brazos y golpea el suelo con los puños.
 
 Stats: vida 140, velocidad 4,8, daño ×1,05, recarga ×1,05.
 
@@ -248,13 +289,17 @@ empujan la mitad.
 Añade a Noa Herrera (id 'noa-herrera'), auditora de HELIOS: conoce sus
 máquinas por dentro. Frágil, pero marca a sus enemigos y los apaga.
 
-Aspecto (web/src/modelos/noa.ts, esqueleto del astronauta, 2,6 m, más
-esbelta): traje blanco con detalles magenta (#e151a5), una estola de datos
-corta que cuelga de los hombros, visor con un monóculo de lente de auditoría
-en el ojo derecho (brillo magenta con halo) y tres sellos hexagonales que
-orbitan alrededor de su cintura (nodo propio que gira en `Reposo`, que cierra
-el bucle). Una credencial de HELIOS tachada en el pecho. Clip `Habilidad`:
-alza la mano y los tres sellos salen disparados hacia fuera.
+Aspecto (web/src/modelos/noa.ts, construido desde cero, 3,0 m): NO es un
+astronauta. Alta y delgada, silueta vertical: un abrigo largo de auditora
+hasta las rodillas, blanco con forro magenta (#e151a5), cuello alto y faldones
+que se mueven al andar (nodos propios). Cara visible con una banda-visor
+oscura sobre los ojos y un monóculo de lente de auditoría en el derecho
+(brillo magenta con halo), y el pelo largo en coleta (como en su retrato).
+Guantes negros, una credencial de HELIOS tachada en la solapa y tres sellos
+hexagonales que orbitan a su alrededor (nodo que gira en `Reposo`, cerrando
+el bucle). ADA flota junto a su hombro como un orbe pequeño. Camina
+elegante y recta. Clip `Habilidad`: alza la mano y los tres sellos salen
+disparados hacia fuera.
 
 Stats: vida 80, velocidad 5,4, daño ×1,2, recarga ×0,95.
 
@@ -284,12 +329,15 @@ Pasiva «Auditora»: +5 % de crítico y sus críticos hacen ×2,5 en vez de ×2.
 Añade a Taro Sato (id 'taro-sato'), explorador de señales. El más rápido:
 pega y se va, y salta de un sitio a otro dejando señuelos.
 
-Aspecto (web/src/modelos/taro.ts, esqueleto del astronauta, 2,6 m, más
-ligero): traje verde lima (#9bdc3c) con rodilleras, casco con una antena
-larga doblada hacia atrás (usa el nodo `antena` con mucho retraso), un disco
-de antena parabólica colgado a la espalda, una bufanda que ondea (nodo que se
-mueve en `Correr` y `Esprintar`) y botas de corredor. Clip `Habilidad`: se
-agacha, se envuelve en estática y desaparece.
+Aspecto (web/src/modelos/taro.ts, construido desde cero, 2,2 m): NO es un
+astronauta. Bajito, ágil y siempre algo inclinado hacia delante. Sudadera
+con capucha verde lima (#9bdc3c), unas gafas grandes de cristal sobre la
+capucha, una bufanda que le tapa la boca con dos colas largas que ondean
+(nodos que se mueven en `Correr` y `Esprintar`), pantalón oscuro y zapatillas
+gordas. A la espalda, una antena parabólica casera más grande que él, con
+una varilla larga doblada que se queda atrás al correr. ADA va metida en el
+centro del disco de la antena. Se mueve a saltitos, rebotando. Clip
+`Habilidad`: se agacha, se envuelve en estática y desaparece.
 
 Stats: vida 85, velocidad 6,2, daño ×0,95, recarga ×0,95.
 
@@ -321,12 +369,16 @@ Pasiva «Explorador»: el mapa (M) descubre lo que hay al doble de distancia, y
 Añade a Amara Keita (id 'amara-keita'), botánica planetaria: la del apoyo.
 Planta zarzas que frenan y un jardín que cura.
 
-Aspecto (web/src/modelos/amara.ts, esqueleto del astronauta, 2,6 m): traje
-verde salvia (#53cc8c) con hojas en las hombreras, un casco-invernadero (la
-cúpula del visor es transparente con un brote dentro que se mueve al
-caminar), mochila con dos macetas y una regadera colgada, guantes de
-jardinería. Clip `Habilidad`: se arrodilla y hunde las manos en la tierra;
-le salen hojas alrededor.
+Aspecto (web/src/modelos/amara.ts, construido desde cero, 2,5 m): NO es un
+astronauta. Silueta redonda y baja: un poncho de hojas verde salvia
+(#53cc8c) que le llega a las rodillas, un casco-invernadero de cúpula
+transparente donde se le ve la cara (como en su retrato) con plantas
+creciendo dentro, alrededor de la cabeza; una mochila que es una jardinera de
+madera con brotes y flores, una regadera colgada de la cadera, guantes de
+jardinería enormes y botas de goma. ADA brilla dentro de la cúpula, entre
+las hojas. Se mece al andar y las hojas del poncho se mueven. Clip
+`Habilidad`: se arrodilla y hunde las manos en la tierra; le salen hojas
+alrededor.
 
 Stats: vida 115, velocidad 5,0, daño ×0,95, recarga ×1,0.
 

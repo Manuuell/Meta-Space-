@@ -9,6 +9,8 @@ import { CATALOGO, type Modelo } from './index';
 //   ?modelo=recolector&vista=frente|tres-cuartos|lado|espalda
 //   ?modelo=recolector&vista=hoja        → frente, lado, espalda y 3/4 en una fila
 //   ?vista=grupo                         → los tres juntos (referencia de estilo)
+//   ?vista=personajes[&angulo=frente]    → los seis operadores jugables en fila
+//   …&clip=Correr&t=0.2                  → todos posados en ese instante del clip
 //   ?glb=recolector                      → GLB en base64 dentro de <pre id="glb">
 //
 // Al terminar, el título de la página pasa a «listo».
@@ -16,6 +18,7 @@ import { CATALOGO, type Modelo } from './index';
 const params = new URLSearchParams(location.search);
 const lienzo = document.getElementById('lienzo') as HTMLCanvasElement;
 const etiquetas = document.getElementById('etiquetas')!;
+const titulo = document.getElementById('titulo')!;
 
 const VISTAS: Record<string, { az: number; el: number; nombre: string }> = {
   frente: { az: 0, el: 6, nombre: 'FRENTE' },
@@ -33,7 +36,17 @@ function posar(modelo: Modelo) {
 
 function crear(id: string): Modelo {
   const m = CATALOGO.find((c) => c.id === id)!.crear();
-  posar(m);
+  const clip = params.get('clip');
+  const a = clip ? m.animaciones.find((x) => x.clip.name === clip) : undefined;
+  if (a) {
+    // Congela el modelo en un instante del clip (para revisar poses).
+    const mezclador = new THREE.AnimationMixer(m.raiz);
+    const accion = mezclador.clipAction(a.clip);
+    accion.setLoop(THREE.LoopOnce, 1);
+    accion.clampWhenFinished = true;
+    accion.play();
+    mezclador.setTime(Math.min(a.clip.duration, Number(params.get('t') ?? 0)));
+  } else posar(m);
   m.raiz.updateMatrixWorld(true);
   return m;
 }
@@ -95,6 +108,33 @@ async function principal() {
   const glb = params.get('glb');
   if (glb) {
     await exportarGlb(glb);
+  } else if (params.get('vista') === 'personajes') {
+    // Los seis operadores en fila, a la misma escala y en 3/4: si dos se
+    // parecen, se ve aquí. Celdas fijas (no dependen de la ventana al cargar).
+    const ids = ['astronauta', 'mara', 'idris', 'noa', 'taro', 'amara'];
+    const modelos = ids.map(crear);
+    const ancho = 420, alto = 760;
+    for (const m of modelos) escena.add(m.raiz);
+    const cajas = modelos.map((m) => new THREE.Box3().setFromObject(m.raiz));
+    const altoMax = Math.max(...cajas.map((c) => c.max.y - c.min.y));
+    const vista = VISTAS[params.get('angulo') ?? 'tres-cuartos'] ?? VISTAS['tres-cuartos'];
+    renderer.setSize(ancho * modelos.length, alto, false);
+    lienzo.style.width = `${ancho * modelos.length}px`;
+    lienzo.style.height = `${alto}px`;
+    modelos.forEach((m, i) => {
+      for (const o of modelos) o.raiz.visible = o === m;
+      const caja = cajas[i].clone();
+      caja.max.y = caja.min.y + altoMax;
+      renderer.setViewport(i * ancho, 0, ancho, alto);
+      renderer.setScissor(i * ancho, 0, ancho, alto);
+      renderer.render(escena, camaraPara(caja, vista.az, vista.el, ancho / alto));
+    });
+    titulo.textContent = 'OPERADORES DE META SPACE';
+    etiquetar(modelos.map((m) => m.nombre.toUpperCase()));
+    const descarga = Object.assign(document.createElement('a'), {
+      className: 'descarga', textContent: 'DESCARGAR PNG', download: 'operadores-meta-space.png', href: lienzo.toDataURL('image/png'),
+    });
+    document.body.append(descarga);
   } else if (params.get('vista') === 'grupo') {
     const modelos = CATALOGO.map((c) => crear(c.id));
     const ancho = 520, alto = 760;

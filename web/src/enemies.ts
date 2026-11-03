@@ -170,6 +170,9 @@ export class Enemies {
   readonly squash = new Float32Array(CAPACITY);
   readonly slow = new Float32Array(CAPACITY);
   readonly slowFactor = new Float32Array(CAPACITY).fill(0.5);
+  /** Marca de auditoría y aturdimiento, ambos en segundos. */
+  readonly marca = new Float32Array(CAPACITY);
+  readonly aturdido = new Float32Array(CAPACITY);
   readonly pushX = new Float32Array(CAPACITY);
   readonly pushZ = new Float32Array(CAPACITY);
   readonly seed = new Float32Array(CAPACITY);
@@ -194,6 +197,9 @@ export class Enemies {
   private tint = new THREE.Color();
   private tmp = { x: 0, z: 0 };
   private time = 0;
+  private senalX = 0;
+  private senalZ = 0;
+  private senalHasta = 0;
 
   /** Se llama justo antes de quitar un enemigo muerto. */
   onDeath: (i: number) => void = () => {};
@@ -242,6 +248,8 @@ export class Enemies {
     this.squash[i] = 0;
     this.slow[i] = 0;
     this.slowFactor[i] = 0.5;
+    this.marca[i] = 0;
+    this.aturdido[i] = 0;
     this.pushX[i] = this.pushZ[i] = 0;
     this.seed[i] = Math.random() * 100;
     return true;
@@ -265,7 +273,7 @@ export class Enemies {
   /** Aplica daño. La muerte se procesa al final del fotograma, en `sweep`. */
   hit(i: number, amount: number, fromX: number, fromZ: number, knockback = 0.25) {
     if (this.hp[i] <= 0) return false;
-    this.hp[i] -= amount;
+    this.hp[i] -= amount * (this.marca[i] > 0 ? 1.2 : 1);
     this.flash[i] = 0.12;
     this.squash[i] = 0.14;
     if (knockback > 0 && !inmuneAlEmpuje(TYPES[this.type[i]])) {
@@ -293,8 +301,11 @@ export class Enemies {
     for (let i = 0; i < this.count; i++) {
       const type = TYPES[this.type[i]];
       const def = ENEMIES[type];
-      let dx = px - this.x[i];
-      let dz = pz - this.z[i];
+      this.marca[i] = Math.max(0, this.marca[i] - dt);
+      this.aturdido[i] = Math.max(0, this.aturdido[i] - dt);
+      const atraido = this.time < this.senalHasta;
+      let dx = (atraido ? this.senalX : px) - this.x[i];
+      let dz = (atraido ? this.senalZ : pz) - this.z[i];
       const dist = Math.hypot(dx, dz) || 1;
 
       let vx: number, vz: number;
@@ -313,6 +324,8 @@ export class Enemies {
         vx = (dx / dist) * def.speed;
         vz = (dz / dist) * def.speed;
       }
+
+      if (this.aturdido[i] > 0) vx = vz = 0;
 
       if (this.slow[i] > 0) {
         this.slow[i] -= dt;
@@ -352,7 +365,8 @@ export class Enemies {
       dx = px - this.x[i];
       dz = pz - this.z[i];
       const multDano = this.elite[i] >= 0 ? ELITE_DANO[this.elite[i]] : 1;
-      if (def.damage > 0 && dx * dx + dz * dz < (def.radius + playerRadius) ** 2) contact += def.damage * multDano * dt;
+      // Aturdido (la Orden de apagado de Noa) no muerde.
+      if (def.damage > 0 && this.aturdido[i] <= 0 && dx * dx + dz * dz < (def.radius + playerRadius) ** 2) contact += def.damage * multDano * dt;
     }
     return contact;
   }
@@ -442,6 +456,14 @@ export class Enemies {
   clear() {
     this.count = 0;
     this.restos = [];
+    this.senalHasta = 0;
+  }
+
+  /** Durante unos segundos la horda persigue una señal falsa. */
+  atraer(x: number, z: number, segundos: number) {
+    this.senalX = x;
+    this.senalZ = z;
+    this.senalHasta = this.time + segundos;
   }
 
   private copy(from: number, to: number) {
@@ -455,6 +477,8 @@ export class Enemies {
     this.squash[to] = this.squash[from];
     this.slow[to] = this.slow[from];
     this.slowFactor[to] = this.slowFactor[from];
+    this.marca[to] = this.marca[from];
+    this.aturdido[to] = this.aturdido[from];
     this.pushX[to] = this.pushX[from];
     this.pushZ[to] = this.pushZ[from];
     this.seed[to] = this.seed[from];
@@ -498,6 +522,8 @@ export class Enemies {
       }
       this.color.setRGB(1, 1, 1);
       if (em >= 0) this.color.lerp(this.tint.set(ELITE_TINTE[em]), 0.55);
+      if (this.marca[i] > 0) this.color.lerp(this.tint.set('#e151a5'), .48);
+      if (this.aturdido[i] > 0) this.color.lerp(this.tint.set('#9fb4ff'), .35 + .25 * Math.sin(this.time * 30 + i));
       if (this.flash[i] > 0) this.color.setRGB(2.4, 2.4, 2.4);
       tropa.poner(this.matrix, clip, t, this.color);
     }
@@ -549,6 +575,8 @@ export class Enemies {
       body.setMatrixAt(n, this.matrix);
       this.color.copy(BASE_COLOR[type]);
       if (em >= 0) this.color.lerp(this.tint.set(ELITE_TINTE[em]), 0.55);
+      if (this.marca[i] > 0) this.color.lerp(this.tint.set('#e151a5'), .48);
+      if (this.aturdido[i] > 0) this.color.lerp(this.tint.set('#9fb4ff'), .35 + .25 * Math.sin(this.time * 30 + i));
       if (this.flash[i] > 0) this.color.lerp(WHITE, 0.85);
       body.setColorAt(n, this.color);
 

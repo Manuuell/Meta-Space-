@@ -81,6 +81,27 @@ El jugador **no es un soldado**: sus herramientas son material de misión usado
 para algo para lo que no se diseñó (cortador de plasma, pulso EMP de ADA, dron de
 mantenimiento, campo de interferencia).
 
+### Operadores jugables
+
+Antes de despegar se elige quién entra al sector (tecla **J** en el título).
+Cada operador tiene su propio cuerpo —Mara pilota un exotraje de carga, Idris
+va a cara descubierta con su llave de impacto, Noa lleva el abrigo de
+auditora, Taro la antena casera a la espalda y Amara su casco-invernadero—,
+sus estadísticas, una herramienta exclusiva, una pasiva y una habilidad
+característica que se activa con **R**. Todos pueden llevar la mochila cohete
+y las botas de impulso que arma ADA.
+
+| Operador | Función | Herramienta exclusiva | Habilidad R |
+|---|---|---|---|
+| **Especialista de ARES-IX** | Equilibrio | Cortador de plasma | Configuración estándar |
+| **Mara Ilyin** | Ingeniera de despliegue | Torreta de despliegue | Sobrecarga de red |
+| **Idris Okafor** | Mecánico y tanque | Llave de impacto | Muro de chatarra |
+| **Noa Herrera** | Auditoría, daño y control | Sello de auditoría | Orden de apagado |
+| **Taro Sato** | Exploración y movilidad | Disco de antena | Salto de señal |
+| **Amara Keita** | Botánica y apoyo | Semillero solar | Jardín de sol |
+
+Sol Vega permanece en la radio: guía la expedición, pero no baja al sector.
+
 ### Cómo se salva Meta
 
 - **Cada partida es un sector.** Diez minutos hasta la ventana de lanzamiento.

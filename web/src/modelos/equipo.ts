@@ -8,10 +8,14 @@ import { crearAstronauta } from './astronauta.ts';
 // Equipo de movilidad del especialista: lo que ADA arma con la chatarra para
 // cruzar Meta más deprisa. Mismo lenguaje que el traje: blanco, naranja y metal
 // con luces de plasma. Cada pieza se puede ver sola en el taller y, en el
-// juego, se cuelga del astronauta por los nodos con nombre:
-//   · mochila cohete → nodo `mochila_cohete`, va dentro de `pecho`
-//   · botas de impulso → nodos `bota_i` y `bota_d`, van dentro de `pierna_i/d`
+// juego, se cuelga de cualquier operador por sus nodos de enganche:
+//   · mochila cohete → nodo `mochila_cohete`, va dentro de `enganche_mochila`
+//     (el centro de la espalda)
+//   · botas de impulso → nodos `bota_i` y `bota_d`, van dentro de
+//     `enganche_bota_i/d` (el centro del pie, a la altura del tobillo)
 //   · aerotabla → modelo suelto bajo los pies
+// Cada pieza está modelada alrededor de su enganche, así que un operador más
+// grande solo tiene que escalar su enganche.
 // Las llamas tienen dos niveles: `chorro_*` lo escala el juego según el empuje
 // y `llama_*` parpadea con la animación.
 
@@ -37,22 +41,23 @@ const parpadeoLlama = (d: number, fase = 0) =>
 // ------------------------------------------------------------ Mochila cohete
 
 /**
- * Mochila cohete: dos depósitos a los lados de la mochila de ADA (que sigue
- * viéndose en el centro) con toberas hacia abajo. Coordenadas del nodo `pecho`.
+ * Mochila cohete: dos depósitos a los lados de la espalda (ADA o lo que lleve
+ * cada uno sigue viéndose en el centro) con toberas hacia abajo. Coordenadas
+ * del enganche `enganche_mochila`.
  */
 export function crearMochilaCohete(): Modelo {
   const raiz = new THREE.Group();
   raiz.name = 'mochila-cohete';
-  // En el taller se ve a la altura del pecho; en el juego el nodo se mueve
-  // dentro del pecho del astronauta y esta posición se anula.
-  const m = nodo('mochila_cohete', raiz, 0, 0.85, 0);
+  // En el taller se ve a la espalda del astronauta; en el juego el nodo se
+  // mueve dentro del enganche del operador y esta posición se anula.
+  const m = nodo('mochila_cohete', raiz, 0, 1.29, -0.62);
 
   // Arnés: una barra que une los dos depósitos por detrás de ADA.
-  pieza(m, caja(1.06, 0.12, 0.12, 0.05), toon(PALETA.metalOscuro), 0, 0.66, -0.62);
-  pieza(m, caja(1.0, 0.1, 0.1, 0.04), toon(PALETA.metalOscuro), 0, 0.2, -0.6);
+  pieza(m, caja(1.06, 0.12, 0.12, 0.05), toon(PALETA.metalOscuro), 0, 0.22, 0);
+  pieza(m, caja(1.0, 0.1, 0.1, 0.04), toon(PALETA.metalOscuro), 0, -0.24, 0.02);
 
   for (const [lado, s] of [['i', 1], ['d', -1]] as const) {
-    const tanque = nodo(`tanque_${lado}`, m, 0.46 * s, 0.42, -0.62);
+    const tanque = nodo(`tanque_${lado}`, m, 0.46 * s, -0.02, 0);
     pieza(tanque, barril(0.17, 0.17, 0.66, 0.12), toon(PALETA.traje));
     pieza(tanque, esfera(0.15), toon(PALETA.naranja), 0, 0.34, 0);
     pieza(tanque, toro(0.175, 0.03), toon(PALETA.naranja), 0, 0.12, 0);
@@ -83,30 +88,30 @@ export function crearMochilaCohete(): Modelo {
 
 /**
  * Botas de impulso: un tobillero con un propulsor en el talón que empuja
- * hacia atrás. Coordenadas del nodo `pierna_*` (el pie está en y = −0.72).
+ * hacia atrás. Coordenadas del enganche `enganche_bota_*` (el centro del pie).
  */
 export function crearBotasImpulso(): Modelo {
   const raiz = new THREE.Group();
   raiz.name = 'botas-impulso';
 
   for (const [lado, s] of [['i', 1], ['d', -1]] as const) {
-    const b = nodo(`bota_${lado}`, raiz, 0.24 * s, 0.83, 0);
+    const b = nodo(`bota_${lado}`, raiz, 0.24 * s, 0.11, 0);
     // Carcasa que envuelve la bota del traje (algo mayor en todo, así la
     // tapa sin parpadeos), con puntera naranja y suela gruesa.
-    pieza(b, caja(0.42, 0.3, 0.56, 0.11), toon(PALETA.traje), 0, -0.7, 0.05);
-    pieza(b, caja(0.44, 0.16, 0.2, 0.07), toon(PALETA.naranja), 0, -0.76, 0.24);
-    pieza(b, caja(0.46, 0.07, 0.6, 0.03), toon(PALETA.metalOscuro), 0, -0.83, 0.05);
-    pieza(b, toro(0.2, 0.05), toon(PALETA.naranja), 0, -0.54, 0);
-    pieza(b, caja(0.06, 0.06, 0.22, 0.02), brillo(PALETA.ada), 0.215 * s, -0.68, 0.06, { contorno: false });
+    pieza(b, caja(0.42, 0.3, 0.56, 0.11), toon(PALETA.traje), 0, 0.02, 0.05);
+    pieza(b, caja(0.44, 0.16, 0.2, 0.07), toon(PALETA.naranja), 0, -0.04, 0.24);
+    pieza(b, caja(0.46, 0.07, 0.6, 0.03), toon(PALETA.metalOscuro), 0, -0.11, 0.05);
+    pieza(b, toro(0.2, 0.05), toon(PALETA.naranja), 0, 0.18, 0);
+    pieza(b, caja(0.06, 0.06, 0.22, 0.02), brillo(PALETA.ada), 0.215 * s, 0.04, 0.06, { contorno: false });
     // Propulsor del talón, mirando hacia atrás (−z).
-    const propulsor = nodo(`propulsor_${lado}`, b, 0, -0.66, -0.24);
+    const propulsor = nodo(`propulsor_${lado}`, b, 0, 0.06, -0.24);
     propulsor.rotation.x = Math.PI / 2; // su −y apunta hacia atrás (−z)
     pieza(propulsor, barril(0.09, 0.12, 0.2, 0.04), toon(PALETA.metal), 0, 0, 0);
     pieza(propulsor, toro(0.12, 0.022), toon(PALETA.naranja), 0, -0.1, 0);
     const chorro = llama(propulsor, `bota_${lado}`, 0.09, 0.55);
     chorro.position.y = -0.12;
     // Alas de talón: un guiño a la velocidad.
-    const ala = pieza(b, caja(0.03, 0.14, 0.26, 0.015), toon(PALETA.naranja), 0.23 * s, -0.56, -0.14);
+    const ala = pieza(b, caja(0.03, 0.14, 0.26, 0.015), toon(PALETA.naranja), 0.23 * s, 0.16, -0.14);
     ala.rotation.x = -0.5;
   }
 

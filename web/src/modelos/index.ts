@@ -1,6 +1,11 @@
 import { crearAltarDesafio } from './altar-desafio.ts';
 import { crearAltarJefe } from './altar-jefe.ts';
 import { crearAstronauta } from './astronauta.ts';
+import { crearMara } from './mara.ts';
+import { crearIdris } from './idris.ts';
+import { crearNoa } from './noa.ts';
+import { crearTaro } from './taro.ts';
+import { crearAmara } from './amara.ts';
 import { crearAvispa } from './avispa.ts';
 import { crearAdaDron, crearAdaMedusa, crearAdaNoa, crearAdaOrbe, crearAdaZorro } from './ada.ts';
 import { crearBaliza } from './baliza.ts';
@@ -46,6 +51,11 @@ export type Tipo =
 /** Todo lo modelado, conservando compañeros y equipo de main-ygerl4. */
 export const CATALOGO: { id: string; nombre: string; tipo: Tipo; crear: () => Modelo }[] = [
   { id: 'astronauta', nombre: 'Especialista de ARES-IX', tipo: 'jugador', crear: crearAstronauta },
+  { id: 'mara', nombre: 'Mara Ilyin', tipo: 'jugador', crear: crearMara },
+  { id: 'idris', nombre: 'Idris Okafor', tipo: 'jugador', crear: crearIdris },
+  { id: 'noa', nombre: 'Noa Herrera', tipo: 'jugador', crear: crearNoa },
+  { id: 'taro', nombre: 'Taro Sato', tipo: 'jugador', crear: crearTaro },
+  { id: 'amara', nombre: 'Amara Keita', tipo: 'jugador', crear: crearAmara },
   { id: 'recolector', nombre: 'Recolector', tipo: 'horda', crear: crearRecolector },
   { id: 'baliza', nombre: 'Baliza', tipo: 'horda', crear: crearBaliza },
   { id: 'segador', nombre: 'Segador', tipo: 'horda', crear: crearSegador },

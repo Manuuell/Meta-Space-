@@ -28,6 +28,8 @@ export function crearAstronauta(): Modelo {
   pieza(pecho, new THREE.TorusGeometry(0.19, 0.035, 8, 24), toon(PALETA.oscuro), 0, 0.44, -0.66);
   const ada = nodo('ada', pecho, 0, 0.44, -0.66);
   pieza(ada, esfera(0.15), brillo(PALETA.ada), 0, 0, 0, { contorno: false });
+  // Donde el juego cuelga la mochila cohete: el centro de la espalda.
+  nodo('enganche_mochila', pecho, 0, 0.44, -0.62);
 
   // Cabeza: casco grande, visor oscuro con dos ojos de luz y antena.
   const cabeza = nodo('cabeza', pecho, 0, 0.74, 0);
@@ -61,6 +63,7 @@ export function crearAstronauta(): Modelo {
     const pierna = nodo(`pierna_${lado}`, cadera, 0.24 * s, -0.02, 0);
     pieza(pierna, capsula(0.18, 0.32), toon(PALETA.traje), 0, -0.36, 0);
     pieza(pierna, caja(0.36, 0.24, 0.5, 0.1), toon(PALETA.oscuro), 0, -0.72, 0.05);
+    nodo(`enganche_bota_${lado}`, pierna, 0, -0.72, 0);
   }
 
   const brazos = (fn: (f: number) => number, abre = 8, d = 1) => [

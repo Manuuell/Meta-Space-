@@ -1,4 +1,5 @@
 import { DEFAULT_PROFILE } from './profile/profile-data';
+import type { PersonajeId } from './personajes.ts';
 
 // Progreso entre partidas, en localStorage. Puede no estar disponible (modo
 // privado, almacenamiento bloqueado): el juego tiene que funcionar igual.
@@ -20,6 +21,8 @@ export interface Save {
   companero?: string;
   /** Estilo de Bruno: gorra, gafas y pajarita. */
   estiloBruno?: { pajarita: 'cuadros' | 'verde' | null; gorra: boolean; gafas: boolean };
+  /** Operador jugable elegido en el título. */
+  personaje?: PersonajeId;
 }
 
 const KEY = 'meta-space.save.v1';
@@ -27,6 +30,7 @@ const KEY = 'meta-space.save.v1';
 const EMPTY: Save = {
   bestTime: 0, bestKills: 0, bestScore: 0, runs: 0, scrapBank: 0, relics: [], killsByType: {},
   ...DEFAULT_PROFILE,
+  personaje: 'especialista',
 };
 
 export function loadSave(): Save {

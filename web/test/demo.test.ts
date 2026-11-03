@@ -30,3 +30,11 @@ test('demo: rodea al gólem sin apuntar y al dragón le dispara el Cañón', () 
   const huye = pilotar({ ...base, zonas: [{ tipo: 'circulo', x: 1, z: 0, r: 5 }], objetivo: null });
   assert.ok(huye.esquivando && huye.esprintar && huye.mx < 0, 'no huye del círculo');
 });
+
+test('demo: con herramienta de cuerpo a cuerpo rodea pegado al jefe', () => {
+  const base = { x: 0, y: 0, z: 0, t: 0, zonas: [], canon: false };
+  const objetivo = { x: 9, z: 0, radio: 3, vuela: false, canon: false, mira: { x: 9, y: 3, z: 0 } };
+  // A 9 m de un jefe de radio 3: de lejos se queda (o se aleja); de cerca, se acerca.
+  assert.ok(pilotar({ ...base, objetivo }).mx <= 0.05, 'de lejos no debería acercarse');
+  assert.ok(pilotar({ ...base, objetivo, cerca: true }).mx > 0.5, 'de cerca no se acerca');
+});

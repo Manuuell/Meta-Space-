@@ -1,13 +1,14 @@
 // Todo el diseño del juego vive aquí: armas, mejoras, enemigos y reliquias.
 // Equilibrar es tocar números en este archivo, no lógica.
 
-export type WeaponId = 'cortador' | 'pulso' | 'dron' | 'interferencia' | 'lanza' | 'arco' | 'mortero';
+export type WeaponId = 'cortador' | 'pulso' | 'dron' | 'interferencia' | 'lanza' | 'arco' | 'mortero' | 'torreta' | 'martillo' | 'sello' | 'bumeran' | 'semillas';
+import type { PersonajeId } from './personajes.ts';
 export type EnemyId = 'recolector' | 'baliza' | 'segador' | 'saltador' | 'avispa' | 'caparazon' | 'sembrador';
 export type PassiveId = 'velocidad' | 'iman' | 'blindaje' | 'enfriamiento' | 'area' | 'reparacion';
 export type GearId = 'mochila' | 'tabla' | 'botas';
 
-import { NUEVOS } from './enemies-nuevos';
-import { xpFor as xpForProgresion } from './progression';
+import { NUEVOS } from './enemies-nuevos.ts';
+import { xpFor as xpForProgresion } from './progression.ts';
 
 export interface WeaponLevel {
   damage: number;
@@ -24,6 +25,10 @@ export interface WeaponLevel {
   saltos?: number;
   /** Segundos que arde el charco de plasma tras la explosión (solo mortero). */
   charco?: number;
+  /** Cadencia interna de torretas; en semillas, intervalo del daño periódico. */
+  rate?: number;
+  /** Segundos que permanece un despliegue. */
+  duration?: number;
   /** Qué cambia respecto al nivel anterior, para la pantalla de subida. */
   mejora?: string;
 }
@@ -49,6 +54,8 @@ export interface WeaponDef {
   /** Identidad de juego: una línea que dice cuándo brilla esta herramienta. */
   rol: string;
   levels: WeaponLevel[];
+  /** Solo aparece en las mejoras de este personaje. */
+  exclusiva?: PersonajeId;
 }
 
 // El astronauta no es un soldado: no hay armas, hay herramientas de misión
@@ -209,6 +216,71 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
       { damage: 40, cooldown: 1.2, count: 4, area: 3.6, charco: 3, mejora: 'Bombardeo: cuatro bombas y charcos enormes.' },
     ],
   },
+  torreta: {
+    id: 'torreta', name: 'Torreta de despliegue', color: '#7566f5', exclusiva: 'mara-ilyin',
+    blurb: 'Deja una torreta autónoma que cubre el terreno durante ocho segundos.',
+    rol: 'Despliegue: convierte posiciones seguras en una red de fuego automático.',
+    levels: [
+      { damage: 8, cooldown: 4, count: 1, area: 12, rate: .40, duration: 8, mejora: 'Una torreta de despliegue.' },
+      { damage: 9, cooldown: 3.7, count: 1, area: 13, rate: .36, duration: 8, mejora: 'Sensores y alimentación mejorados.' },
+      { damage: 10, cooldown: 3.5, count: 2, area: 13, rate: .36, duration: 8, mejora: 'Dos torretas activas a la vez.' },
+      { damage: 12, cooldown: 3.2, count: 2, area: 14, rate: .33, duration: 8, mejora: 'Cañón y alcance reforzados.' },
+      { damage: 14, cooldown: 3, count: 3, area: 14, rate: .32, duration: 8, mejora: 'Red de tres torretas.' },
+      { damage: 16, cooldown: 2.8, count: 3, area: 15, rate: .30, duration: 8, mejora: 'Despliegue continuo de máxima cadencia.' },
+    ],
+  },
+  martillo: {
+    id: 'martillo', name: 'Llave de impacto', color: '#ffad35', exclusiva: 'idris-okafor',
+    blurb: 'Barre un arco delante de Idris y arroja la horda hacia atrás.',
+    rol: 'Cuerpo a cuerpo: abre espacio con golpes anchos y empuje brutal.',
+    levels: [
+      { damage: 20, cooldown: .9, count: 1, area: 3.2, mejora: 'Golpe de llave en arco.' },
+      { damage: 24, cooldown: .85, count: 1, area: 3.4, mejora: 'Más fuerza y alcance.' },
+      { damage: 26, cooldown: .8, count: 2, area: 3.6, mejora: 'Golpe de vuelta.' },
+      { damage: 32, cooldown: .75, count: 2, area: 3.9, mejora: 'Barrido reforzado.' },
+      { damage: 38, cooldown: .7, count: 2, area: 4.2, mejora: 'Impacto industrial.' },
+      { damage: 44, cooldown: .6, count: 2, area: 4.6, mejora: 'Doble golpe demoledor.' },
+    ],
+  },
+  sello: {
+    id: 'sello', name: 'Sello de auditoría', color: '#e151a5', exclusiva: 'noa-herrera',
+    blurb: 'Sellos guiados marcan objetivos para que reciban un 20 % más de daño.',
+    rol: 'Daño y control: prepara objetivos duros y hace rendir a todo el equipo.',
+    levels: [
+      { damage: 14, cooldown: 1.1, count: 1, area: 18, mejora: 'Un sello guiado.' },
+      { damage: 16, cooldown: 1, count: 1, area: 19, mejora: 'Auditoría más rápida.' },
+      { damage: 16, cooldown: .9, count: 2, area: 20, mejora: 'Dos sellos por descarga.' },
+      { damage: 20, cooldown: .8, count: 2, area: 20, mejora: 'Sello reforzado.' },
+      { damage: 24, cooldown: .7, count: 3, area: 21, mejora: 'Tres expedientes simultáneos.' },
+      { damage: 30, cooldown: .6, count: 3, area: 22, mejora: 'Auditoría total.' },
+    ],
+  },
+  bumeran: {
+    id: 'bumeran', name: 'Disco de antena', color: '#9bdc3c', exclusiva: 'taro-sato',
+    blurb: 'Discos que atraviesan a la horda a la ida y al volver.',
+    rol: 'Movilidad: abre corredores y recompensa reposicionarse sin parar.',
+    levels: [
+      { damage: 12, cooldown: 1.4, count: 1, area: 10, mejora: 'Un disco de ida y vuelta.' },
+      { damage: 14, cooldown: 1.3, count: 1, area: 11, mejora: 'Más alcance y daño.' },
+      { damage: 14, cooldown: 1.2, count: 2, area: 12, mejora: 'Dos discos en abanico.' },
+      { damage: 18, cooldown: 1.1, count: 2, area: 12, mejora: 'Borde cargado.' },
+      { damage: 20, cooldown: 1, count: 3, area: 13, mejora: 'Tres discos en abanico.' },
+      { damage: 24, cooldown: .8, count: 3, area: 14, mejora: 'Barrido de señal completo.' },
+    ],
+  },
+  semillas: {
+    id: 'semillas', name: 'Semillero solar', color: '#53cc8c', exclusiva: 'amara-keita',
+    blurb: 'Hace brotar zarzas que dañan y frenan durante tres segundos.',
+    rol: 'Apoyo: siembra zonas seguras y desgasta grupos enteros.',
+    levels: [
+      { damage: 6, cooldown: 2, count: 1, area: 2.2, rate: .5, duration: 3, mejora: 'Una zarza solar.' },
+      { damage: 7, cooldown: 1.9, count: 1, area: 2.4, rate: .5, duration: 3, mejora: 'Zarza más ancha.' },
+      { damage: 8, cooldown: 1.8, count: 2, area: 2.6, rate: .5, duration: 3, mejora: 'Dos semillas por descarga.' },
+      { damage: 10, cooldown: 1.6, count: 2, area: 2.9, rate: .5, duration: 3, mejora: 'Espinas solares.' },
+      { damage: 12, cooldown: 1.5, count: 3, area: 3.1, rate: .5, duration: 3, mejora: 'Tres semilleros.' },
+      { damage: 14, cooldown: 1.3, count: 3, area: 3.4, rate: .5, duration: 3, mejora: 'Jardín ofensivo completo.' },
+    ],
+  },
 };
 
 export interface PassiveDef {
@@ -259,6 +331,11 @@ export const SINERGIAS: Record<WeaponId, { alta: PassiveId[]; media: PassiveId[]
   lanza: { alta: ['area', 'enfriamiento'], media: ['velocidad', 'iman'] },
   arco: { alta: ['enfriamiento', 'area'], media: ['velocidad', 'reparacion'] },
   mortero: { alta: ['area', 'enfriamiento'], media: ['blindaje', 'velocidad'] },
+  torreta: { alta: ['enfriamiento', 'area'], media: ['blindaje', 'reparacion'] },
+  martillo: { alta: ['area', 'blindaje'], media: ['velocidad', 'reparacion'] },
+  sello: { alta: ['enfriamiento', 'area'], media: ['velocidad', 'iman'] },
+  bumeran: { alta: ['area', 'velocidad'], media: ['enfriamiento', 'iman'] },
+  semillas: { alta: ['area', 'enfriamiento'], media: ['reparacion', 'blindaje'] },
 };
 
 /** DPS monobjetivo teórico de un nivel de arma (daño × count / recarga). */

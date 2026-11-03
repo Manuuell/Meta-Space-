@@ -3,7 +3,9 @@
 // contexto se crea perezosamente.
 
 export type Sound = 'shot' | 'hit' | 'pulse' | 'pickup' | 'level' | 'hurt' | 'relic' | 'death' | 'kill' | 'jump' | 'guau' | 'zap' | 'aullido' | 'cura'
-  | 'boom' | 'solar' | 'cofre' | 'carga' | 'critico' | 'sinChatarra';
+  | 'boom' | 'solar' | 'cofre' | 'carga' | 'critico' | 'sinChatarra'
+  // Operadores: armas exclusivas y habilidades (R).
+  | 'torreta' | 'llave' | 'sello' | 'disco' | 'semilla' | 'sobrecarga' | 'muro' | 'apagado' | 'salto' | 'jardin';
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -15,6 +17,7 @@ const THROTTLE: Record<Sound, number> = {
   shot: 0.06, hit: 0.05, pulse: 0.1, pickup: 0.035, level: 0, hurt: 0.25, relic: 0, death: 0, kill: 0.04, jump: 0.15,
   guau: 0.25, zap: 0.08, aullido: 0, cura: 0,
   boom: 0.09, solar: 0.12, cofre: 0, carga: 0, critico: 0.07, sinChatarra: 0.3,
+  torreta: 0.07, llave: 0.12, sello: 0.1, disco: 0.12, semilla: 0.12, sobrecarga: 0, muro: 0, apagado: 0, salto: 0, jardin: 0,
 };
 
 export function unlockAudio() {
@@ -84,5 +87,15 @@ export function sfx(sound: Sound) {
     case 'carga': [440, 554, 659, 880, 1109].forEach((f, i) => tone('sine', f, f * 1.02, 0.35, 0.09, i * 0.06)); break;
     case 'critico': tone('square', 1400, 900, 0.05, 0.05); break;
     case 'sinChatarra': tone('square', 200, 150, 0.12, 0.08); tone('square', 150, 110, 0.14, 0.08, 0.12); break;
+    case 'torreta': tone('square', 1100, 700, 0.04, 0.035); break;
+    case 'llave': tone('sawtooth', 160, 60, 0.14, 0.12); tone('square', 900, 300, 0.05, 0.05); break;
+    case 'sello': tone('triangle', 520, 1040, 0.08, 0.06); tone('sine', 1560, 1560, 0.06, 0.03, 0.05); break;
+    case 'disco': tone('sine', 300, 900, 0.18, 0.05); break;
+    case 'semilla': tone('sine', 700, 1300, 0.06, 0.05); break;
+    case 'sobrecarga': [220, 330, 440, 660, 880].forEach((f, i) => tone('sawtooth', f, f * 1.5, 0.22, 0.05, i * 0.05)); break;
+    case 'muro': tone('square', 90, 50, 0.5, 0.22); tone('sawtooth', 300, 120, 0.3, 0.08, 0.05); break;
+    case 'apagado': tone('sine', 1400, 90, 0.6, 0.18); tone('square', 2400, 600, 0.12, 0.04); break;
+    case 'salto': tone('sawtooth', 200, 2400, 0.25, 0.06); tone('square', 2400, 300, 0.2, 0.04, 0.3); break;
+    case 'jardin': [523, 659, 784, 1046, 1318].forEach((f, i) => tone('triangle', f, f, 0.4, 0.07, i * 0.08)); break;
   }
 }

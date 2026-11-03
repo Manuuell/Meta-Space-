@@ -171,8 +171,8 @@ button.ms-pill:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 
 /* ---- 5. Mosaico principal -------------------------------------------- */
 .ms-actions {
-  display: grid; grid-template-columns: 1.35fr 1fr .95fr; grid-template-rows: 76px 76px;
-  grid-template-areas: 'play creator codex' 'play help codex'; gap: var(--ms-gap-sm);
+  display: grid; grid-template-columns: 1.35fr 1fr .95fr; grid-template-rows: 76px 76px 64px;
+  grid-template-areas: 'play creator codex' 'play help codex' 'character character character'; gap: var(--ms-gap-sm);
 }
 .ms-tile {
   position: relative; min-width: 0; min-height: var(--ms-target); display: flex; align-items: center; gap: 12px; overflow: hidden;
@@ -200,6 +200,14 @@ button.ms-pill:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .ms-tile--codex { grid-area: codex; flex-direction: column; justify-content: center; text-align: center; background: linear-gradient(150deg, #e25aa8, #a93d91); }
 .ms-tile--codex .ms-tile__icon { width: 58px; height: 58px; border-radius: 50%; font-size: 25px; }
 .ms-tile--codex b { font-size: 21px; }
+/* Personaje elegido: franja ancha con su retrato y su color de acento. */
+.ms-tile--character {
+  grid-area: character; padding: 8px 14px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--ms-pj) 78%, #1b1936), color-mix(in srgb, var(--ms-pj) 42%, #14122b));
+}
+.ms-tile--character .ms-tile__icon { width: 46px; height: 46px; padding: 0; overflow: hidden; border-radius: 50%; border-color: rgba(255, 255, 255, .55); }
+.ms-tile--character .ms-tile__icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ms-tile--character b { font-size: 18px; }
 /* Los iconos del menú son SVG del mismo idioma que los modelos (ver
  * iconos.ts): rellenan su medallón en vez de depender de la fuente. */
 .ms-tile__icon .icono { width: 100%; height: 100%; display: block; }
@@ -407,7 +415,7 @@ button.ms-pill:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
   .ms-wordmark__line { gap: 8px; }
   .ms-wordmark__line strong { padding: 4px 7px; font-size: 8px; }
   .ms-wordmark__sub { width: 80%; }
-  .ms-actions { grid-template-columns: 1fr 1fr; grid-template-rows: 120px 76px 76px; grid-template-areas: 'play play' 'creator codex' 'help codex'; }
+  .ms-actions { grid-template-columns: 1fr 1fr; grid-template-rows: 120px 76px 76px 64px; grid-template-areas: 'play play' 'creator codex' 'help codex' 'character character'; }
   .ms-tile--play b { font-size: 31px; }
   .ms-event-row { grid-template-columns: 1fr; }
   /* Sin récords ocultos: tira horizontal con los 5 resúmenes. */
@@ -429,7 +437,7 @@ button.ms-pill:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
   .ms-wordmark { margin-bottom: 8px; }
   .ms-wordmark h1 { font-size: 54px; }
   .ms-wordmark > p, .ms-wordmark__sub { display: none; }
-  .ms-actions { grid-template-rows: 66px 66px; }
+  .ms-actions { grid-template-rows: 66px 66px 56px; }
   .ms-tile--play .ms-tile__icon { width: 55px; height: 55px; }
   .ms-tile--play b { font-size: 29px; }
   .ms-event-row { margin-top: 8px; }
@@ -449,7 +457,7 @@ button.ms-pill:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
   .ms-title__layout { padding-top: 76px; gap: 14px; }
   .ms-wordmark h1 { font-size: 40px; }
   .ms-wordmark__sub, .ms-event-row { display: none; }
-  .ms-actions { grid-template-columns: 1.4fr 1fr 1fr; grid-template-rows: 64px; grid-template-areas: 'play creator codex'; }
+  .ms-actions { grid-template-columns: 1.4fr 1fr 1fr 1fr; grid-template-rows: 64px; grid-template-areas: 'play creator character codex'; }
   .ms-actions .ms-tile--help { display: none; }
   .ms-tile b { font-size: 16px; }
   .ms-tile--play b { font-size: 22px; }

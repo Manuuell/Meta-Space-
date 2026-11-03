@@ -297,6 +297,37 @@ export const ICONOS: Record<string, string> = {
     `<path d="M12 28 Q32 8 52 22 L52 15 Q32 2 12 21 Z" fill="#474a5e"/>`,
   ),
 
+  torreta: svg(`<path d="M14 55 L26 34 M50 55 L38 34 M32 56 V34"/>` +
+    `<rect x="19" y="25" width="26" height="15" rx="5" fill="#7566f5"/><path d="M37 27 L58 19 V29 L37 34 Z" fill="${METAL}"/>` + orbe(25, 32, 5)),
+  martillo: svg(`<g transform="rotate(-38 32 32)"><rect x="27" y="20" width="10" height="42" rx="5" fill="${METAL_OSCURO}"/><rect x="10" y="8" width="44" height="20" rx="7" fill="#ffad35"/></g>` + destello(51, 50, 7, '#ffcf74')),
+  sello: svg(`<path d="${estrella(32, 32, 27, 23, 6, -90)}" fill="#e151a5"/><path d="${estrella(32, 32, 15, 7, 6, -90)}" fill="${VISOR}"/>` + orbe(32, 32, 6)),
+  bumeran: svg(`<path d="M10 13 Q38 9 53 24 L45 32 Q34 22 23 24 Q31 36 49 41 L43 53 Q14 46 8 22 Z" fill="#9bdc3c"/>` + destello(53, 11, 5)),
+  semillas: svg(`<path d="M32 57 C14 47 14 24 32 7 C50 24 50 47 32 57 Z" fill="#53cc8c"/><path d="M32 49 V18 M32 32 L20 24 M32 39 L45 28" fill="none" stroke="${CREMA}" stroke-width="4"/>`),
+
+  // ------------------------------------------------ habilidades (tecla R)
+
+  /** Sobrecarga de red: nodo de la red de Mara con un rayo. */
+  'sobrecarga-red': svg(`<path d="M32 8 L52 20 V44 L32 56 L12 44 V20 Z" fill="#7566f5"/>` +
+    `<path d="M36 14 L23 35 H32 L27 50 L42 28 H33 Z" fill="#ffcf3a"/>` + brillo(20, 22, 3, 6, 30)),
+  /** Muro de chatarra: tres placas remachadas sobre el suelo. */
+  'muro-chatarra': svg(`<rect x="7" y="22" width="17" height="31" rx="3" fill="#8c5a3c"/>` +
+    `<rect x="24" y="12" width="17" height="41" rx="3" fill="#d9822a"/>` +
+    `<rect x="40" y="19" width="17" height="34" rx="3" fill="#6b7385"/>` +
+    `<path d="M5 55 H59" fill="none"/>` +
+    [[12, 27], [19, 27], [29, 17], [36, 17], [45, 24], [52, 24]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.6" fill="${METAL}" stroke="none"/>`).join('') +
+    brillo(29, 30, 2, 7)),
+  /** Orden de apagado: el botón de apagar dentro de un sello. */
+  'orden-apagado': svg(`<path d="${estrella(32, 32, 27, 23, 6, -90)}" fill="#e151a5"/>` +
+    linea(arco(32, 34, 12, -55, 235), CREMA, 5) + linea('M32 15 V31', CREMA, 5)),
+  /** Salto de señal: doble flecha de estática. */
+  'salto-senal': svg(linea('M12 16 L28 32 L12 48', '#9bdc3c', 7) + linea('M30 16 L46 32 L30 48', '#9bdc3c', 7) +
+    `<rect x="49" y="13" width="6" height="6" fill="${CREMA}" stroke="none"/><rect x="52" y="45" width="5" height="5" fill="#9bdc3c" stroke="none"/>` +
+    destello(55, 31, 5)),
+  /** Jardín de sol: un sol sobre un brote. */
+  'jardin-sol': svg(`<path d="${estrella(32, 22, 18, 11, 10, -90)}" fill="#ffd25a"/><circle cx="32" cy="22" r="8" fill="#ffe98a"/>` +
+    `<path d="M32 58 C20 54 15 44 18 36 C27 37 32 44 32 58 Z" fill="#53cc8c"/>` +
+    `<path d="M32 58 C44 54 49 44 46 36 C37 37 32 44 32 58 Z" fill="#2f9a63"/>`),
+
   // -------------------------------------------------------------- otros
 
   /** Parche de emergencia: una tirita verde con la cruz. */

@@ -18,7 +18,8 @@
 //
 // Todo el texto visible que genera este módulo va en español.
 
-import type { SpecialId } from './creator/stats';
+import type { SpecialId } from './creator/stats.ts';
+import type { PersonajeId } from './personajes.ts';
 
 // ---------------------------------------------------------------- Constantes
 // Toda la parametrización del sistema, arriba y a la vista.
@@ -72,6 +73,7 @@ export const OBJETIVOS_POR_ARMA: Record<WeaponId, number> = {
   lanza: 3.5,
   arco: 4,
   mortero: 3,
+  torreta: 2.5, martillo: 2.2, sello: 1.5, bumeran: 3, semillas: 4,
 };
 /** Multitud de referencia: con esta o más enemigos, el factor multiobjetivo
  *  base rinde al completo; con menos, se interpola hacia 1 (duelo). */
@@ -87,6 +89,7 @@ export const TOPE_MULTITUD: Record<WeaponId, number> = {
   lanza: 9,
   arco: 7,
   mortero: 8,
+  torreta: 6, martillo: 5, sello: 4, bumeran: 8, semillas: 10,
 };
 /** Prima de cobertura: cada herramienta nueva hasta la tercera multiplica su
  *  puntuación (0.3 por hueco libre). El modelo de daño no ve lo que sí ve un
@@ -104,7 +107,7 @@ export const XP_NIVELES_ATRASO = 3;
 
 // ------------------------------------------------------------------- Tipos
 
-export type WeaponId = 'cortador' | 'pulso' | 'dron' | 'interferencia' | 'lanza' | 'arco' | 'mortero';
+export type WeaponId = 'cortador' | 'pulso' | 'dron' | 'interferencia' | 'lanza' | 'arco' | 'mortero' | 'torreta' | 'martillo' | 'sello' | 'bumeran' | 'semillas';
 export type PassiveId =
   | 'velocidad'
   | 'iman'
@@ -430,6 +433,8 @@ export interface DepsTirada {
   rng?: Rng;
   maxArma?: number;
   maxPasiva?: number;
+  personaje?: PersonajeId;
+  exclusivas?: Partial<Record<WeaponId, PersonajeId>>;
   /** Informe opcional para telemetría y tests (piedad, trampas filtradas). */
   informa?: (info: { filtradas: number; piedad: 'daño' | 'vida' | null }) => void;
 }
@@ -439,6 +444,8 @@ function piscina(estado: EstadoBuild, deps: DepsTirada): Choice[] {
   const maxA = deps.maxArma ?? 6;
   const maxP = deps.maxPasiva ?? 5;
   for (const id of Object.keys(deps.tabla) as WeaponId[]) {
+    const dueno = deps.exclusivas?.[id];
+    if (dueno && dueno !== deps.personaje) continue;
     const nivel = estado.armas.get(id) ?? 0;
     if (nivel < maxA) pool.push({ kind: 'weapon', id, level: nivel + 1 });
   }

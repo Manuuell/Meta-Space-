@@ -52,6 +52,10 @@ export interface TitleOptions {
   companionName?: string;
   /** Especial del héroe personalizado, si aplica (texto corto). */
   customHeroSpecial?: string;
+  /** Abre el selector de personaje jugable (botón o tecla J). */
+  onCharacter?: () => void;
+  /** Personaje elegido, para su botón: nombre, rol, retrato y color. */
+  character?: { nombre: string; rol: string; retrato: string; color: string };
 }
 
 /** Estado derivado del guardado: lo que decide qué se muestra. */
@@ -143,6 +147,7 @@ export type TitleAction =
   | 'codex'
   | 'help'
   | 'companion'
+  | 'character'
   | 'close-dialog'
   | 'none';
 
@@ -165,6 +170,8 @@ export function resolveTitleAction(code: string, dialogOpen: boolean): TitleActi
       return 'codex';
     case 'KeyA':
       return 'companion';
+    case 'KeyJ':
+      return 'character';
     case 'KeyH':
     case 'F1':
       return 'help';
@@ -278,6 +285,12 @@ export function renderTitleHtml(save: TitleSave, opts?: TitleOptions): string {
               <span class="ms-tile__icon" aria-hidden="true">${iconoMenu('operador')}</span>
               <span><b>Operador</b><em>${creatorSub}</em></span>
             </button>
+            <button type="button" class="ms-tile ms-tile--character ms-character" data-action="character"
+              aria-keyshortcuts="j" style="--ms-pj:${esc(opts?.character?.color ?? '#ff8a3d')}">
+              <span class="ms-tile__icon" aria-hidden="true">${opts?.character
+                ? `<img src="${esc(opts.character.retrato)}" alt="">` : iconoMenu('operador')}</span>
+              <span><b>${esc(opts?.character?.nombre ?? 'Especialista de ARES-IX')}</b><em>${esc(opts?.character?.rol ?? 'Especialista')} · J para cambiar de personaje</em></span>
+            </button>
             <button type="button" class="ms-tile ms-tile--help ms-howto" data-action="help"
               aria-keyshortcuts="h">
               <span class="ms-tile__icon" aria-hidden="true">${iconoMenu('ayuda')}</span>
@@ -362,6 +375,8 @@ const HOW_TO_HTML = `
     <li><b>Pulsar Shift</b><span>Acelerón con las botas de impulso (si las tienes)</span></li>
     <li><b>A (en el menú)</b><span>Elegir compañero: dron, zorro, holograma de Noa, medusa, orbe o el perro</span></li>
     <li><b>K</b><span>En partida, pasar al siguiente compañero</span></li>
+    <li><b>R</b><span>Activar la habilidad característica del personaje</span></li>
+    <li><b>J (en el menú)</b><span>Elegir personaje, arma inicial y pasiva</span></li>
     <li><b>Ratón · Q / E</b><span>Girar la cámara</span></li>
     <li><b>Herramientas</b><span>Se activan automáticamente</span></li>
     <li><b>Chatarra</b><span>Recógela para subir de nivel y para pagar cofres</span></li>
@@ -586,6 +601,9 @@ export function showTitle(save: TitleSave, start: () => void, opts?: TitleOption
       case 'companion':
         opts?.onCompanion?.();
         break;
+      case 'character':
+        opts?.onCharacter?.();
+        break;
       default:
         break;
     }
@@ -598,6 +616,7 @@ export function showTitle(save: TitleSave, start: () => void, opts?: TitleOption
   node.querySelector('.ms-codex-secondary')!.addEventListener('click', openCodex);
   node.querySelector('.ms-howto')!.addEventListener('click', openHelp);
   node.querySelector('.ms-companion')!.addEventListener('click', () => opts?.onCompanion?.());
+  node.querySelector('.ms-character')!.addEventListener('click', () => opts?.onCharacter?.());
   window.addEventListener('keydown', onKey);
   root.appendChild(node);
   (node.querySelector('.ms-play') as HTMLButtonElement).focus();

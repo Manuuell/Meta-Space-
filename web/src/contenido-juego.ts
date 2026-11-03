@@ -321,7 +321,17 @@ function rng(semilla: number) {
  * Coloca y gobierna el contenido escaso del sector. La horda sigue en
  * Enemies; aquí viven altares, cajas, refugio, NPC, torres y jefes.
  */
+/** Metros a los que el mapa (M) apunta lo que hay alrededor. */
+export const VISTA_MAPA = 40;
+
 export class ContenidoJuego {
+  /** Multiplicadores que aportan las pasivas del operador actual. */
+  factorCosteCofre = 1;
+  factorCargaPilon = 1;
+  /** Hasta dónde se apunta en el mapa lo que hay alrededor (metros). */
+  radioVista = VISTA_MAPA;
+  /** Jefes apagados un rato por la Orden de apagado de Noa: id → segundos. */
+  private aturdidos = new Map<string, number>();
   private rand: () => number;
   private actores: Actor[] = [];
   private altares: EstadoAltar[] = [];
@@ -472,7 +482,15 @@ export class ContenidoJuego {
     return objetivos;
   }
 
+  /** Congela `segundos` a los jefes que haya en el círculo (la Orden de apagado). */
+  aturdirJefes(x: number, z: number, radio: number, segundos: number) {
+    for (const o of this.objetivoJefe) {
+      if (Math.hypot(o.x - x, o.z - z) <= radio + o.radio) this.aturdidos.set(o.id, Math.max(segundos, this.aturdidos.get(o.id) ?? 0));
+    }
+  }
+
   reset() {
+    this.aturdidos.clear();
     for (const jefe of this.jefes) this.eliminarActor(jefe.actor);
     this.jefes = [];
     this.minijefesCreados = 0;
@@ -542,7 +560,10 @@ export class ContenidoJuego {
       const cerca = Math.hypot(c.px - actor.modelo.raiz.position.x, c.pz - actor.modelo.raiz.position.z) <= actor.alcanceVista;
       actor.modelo.raiz.visible = cerca || altarActivo;
       if (actor.modelo.raiz.visible) actor.mixer.update(c.dt);
-      if (cerca && !this.vistos.has(actor.id) && Math.hypot(c.px - actor.x, c.pz - actor.z) <= 40) this.vistos.add(actor.id);
+      // El mapa (M) apunta lo que se ha visto; con más vista que la normal
+      // (la pasiva de Taro) cuenta aunque el actor todavía no se dibuje.
+      if ((cerca || this.radioVista > VISTA_MAPA) && !this.vistos.has(actor.id)
+        && Math.hypot(c.px - actor.x, c.pz - actor.z) <= this.radioVista) this.vistos.add(actor.id);
     }
 
     this.actualizarExposicion(c);
@@ -565,11 +586,17 @@ export class ContenidoJuego {
     this.jugador.x = c.px;
     this.jugador.z = c.pz;
     const jugador = { x: c.px, z: c.pz, vx: c.vx ?? 0, vz: c.vz ?? 0, dt: c.dt };
+    // Un jefe aturdido se queda congelado: su reloj no avanza.
+    for (const [id, t] of this.aturdidos) {
+      if (t - c.dt <= 0) this.aturdidos.delete(id);
+      else this.aturdidos.set(id, t - c.dt);
+    }
+    const quieto = { ...jugador, dt: 0 };
     let dano = this.actualizarJefes(c);
-    if (this.golem) dano += this.golem.update(jugador);
-    dano += this.actualizarDuelos(c, jugador);
+    if (this.golem) dano += this.golem.update(this.aturdidos.has(this.golem.def.id) ? quieto : jugador);
+    dano += this.actualizarDuelos(c, jugador, quieto);
     if (this.dragon) {
-      dano += this.dragon.update(jugador);
+      dano += this.dragon.update(this.aturdidos.has('dragon') ? quieto : jugador);
       if (this.dragon.terminado) {
         this.eventos.toast('ADA', 'El Dragón del Velo ha caído. Ese trozo de cielo vuelve a ser nuestro.', 6);
         this.eventos.aplicar(DRAGON.recompensa);
@@ -716,7 +743,7 @@ export class ContenidoJuego {
   /** Lo que cuesta abrir este cofre ahora (sube con cada uno abierto). */
   costeCofre(caja: EstadoCaja) {
     const a = caja.def.apertura;
-    return Math.round((a.coste ?? 0) + (a.subida ?? 0) * this.cofresAbiertos);
+    return Math.ceil(((a.coste ?? 0) + (a.subida ?? 0) * this.cofresAbiertos) * this.factorCosteCofre);
   }
 
   /** El cofre de pago cerrado más cercano a mano (2,4 m), si lo hay. */
@@ -999,10 +1026,10 @@ export class ContenidoJuego {
     }
   }
 
-  private actualizarDuelos(c: ContextoContenido, jugador: { x: number; z: number; vx: number; vz: number; dt: number }) {
+  private actualizarDuelos(c: ContextoContenido, jugador: { x: number; z: number; vx: number; vz: number; dt: number }, quieto = jugador) {
     let dano = 0;
     for (const duelo of this.duelos) {
-      for (const r of duelo.retadores) dano += r.update(jugador);
+      duelo.retadores.forEach((r, k) => { dano += r.update(this.aturdidos.has(`${duelo.actor.id}-${k}`) ? quieto : jugador); });
       if (duelo.estado === 'espera' || duelo.estado === 'superado' && !duelo.retadores.length) continue;
       duelo.t += c.dt;
       if (duelo.estado === 'activo') {
@@ -1054,7 +1081,7 @@ export class ContenidoJuego {
       if (pilon.estado === 'espera' || pilon.estado === 'cargando') {
         if (dentro) {
           const segundos = PILON.segundos + PILON.masPorUsado * this.pilonesGastados;
-          pilon.carga = Math.min(1, pilon.carga + c.dt / segundos);
+          pilon.carga = Math.min(1, pilon.carga + c.dt / segundos * this.factorCargaPilon);
           if (pilon.estado === 'espera') {
             pilon.estado = 'cargando';
             this.reproducir(pilon.actor, CLIPS_PILON.cargando);
@@ -1262,6 +1289,7 @@ export class ContenidoJuego {
   }
 
   private actualizarJefe(jefe: EstadoJefe, c: ContextoContenido) {
+    if (this.aturdidos.has(jefe.actor.id)) return 0;
     if (jefe.entrada > 0) {
       jefe.entrada -= c.dt;
       if (jefe.entrada <= 0) this.reproducir(jefe.actor, jefe.clipMover);

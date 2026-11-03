@@ -5,9 +5,11 @@ import './profile/profile-menu.css';
 import { Game } from './game';
 
 // `?demo=jefes`: sin título, el piloto automático pelea contra el Cancerbero y
-// el Dragón del Velo para verlos sin jugar.
-const demo = new URLSearchParams(location.search).get('demo') === 'jefes';
-const game = new Game(document.getElementById('game') as HTMLCanvasElement, { demo });
+// el Dragón del Velo para verlos sin jugar. `&personaje=noa-herrera` elige con
+// quién (si no, el del guardado).
+const params = new URLSearchParams(location.search);
+const demo = params.get('demo') === 'jefes';
+const game = new Game(document.getElementById('game') as HTMLCanvasElement, { demo, personaje: demo ? params.get('personaje') ?? undefined : undefined });
 
 // Solo en desarrollo: acceso desde la consola y el jugador automático para
 // medir el equilibrio. No entra en el build.

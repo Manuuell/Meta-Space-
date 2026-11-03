@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { EnemyDef } from './data';
+import type { EnemyDef } from './data.ts';
 
 // ============================================================================
 // META SPACE — Enemigos nuevos A: tipos con identidad (FOCO 4)
@@ -349,6 +349,8 @@ const DANIO_ESPORA = 6;
  * y resta lo que devuelve `update` a la vida del jugador.
  */
 export class NubeEsporas {
+  private scene: THREE.Scene;
+  private suelo: { heightAt(x: number, z: number): number };
   private n = 0;
   private x = new Float32Array(MAX_ESPORAS);
   private z = new Float32Array(MAX_ESPORAS);
@@ -361,7 +363,9 @@ export class NubeEsporas {
   private escala = new THREE.Vector3(1, 1, 1);
   private quat = new THREE.Quaternion();
 
-  constructor(private scene: THREE.Scene, private suelo: { heightAt(x: number, z: number): number }) {
+  constructor(scene: THREE.Scene, suelo: { heightAt(x: number, z: number): number }) {
+    this.scene = scene;
+    this.suelo = suelo;
     this.mesh = new THREE.InstancedMesh(
       new THREE.SphereGeometry(0.22, 8, 6),
       new THREE.MeshBasicMaterial({ color: '#9df09a' }),

@@ -5,6 +5,7 @@ import { World } from './world';
 import { sfx } from './audio';
 import type { ObjetivoCombate } from './contenido-juego';
 import { crearInspector } from './modelos/inspector';
+import { ArmasPersonaje } from './armas-personaje';
 
 const MAX_SHOTS = 200;
 const SHOT_SPEED = 24;
@@ -104,6 +105,7 @@ export class Weapons {
   readonly levels = new Map<WeaponId, number>();
   readonly damageDealt: Record<WeaponId, number> = {
     cortador: 0, pulso: 0, dron: 0, interferencia: 0, lanza: 0, arco: 0, mortero: 0,
+    torreta: 0, martillo: 0, sello: 0, bumeran: 0, semillas: 0,
   };
   /** Multiplicador de daño del héroe personalizado y de las bendiciones. */
   damageMul = 1;
@@ -113,6 +115,12 @@ export class Weapons {
   private timers = new Map<WeaponId, number>();
   /** Jefes y torres de este fotograma: se piden una vez, no por proyectil. */
   private extras: ObjetivoCombate[] = [];
+  /** Rumbo del personaje: lo usan la llave y el disco. */
+  rumbo = Math.PI;
+  /** Segundos que le quedan a la Sobrecarga de red de Mara. */
+  private sobrecarga = 0;
+  /** Las cinco herramientas exclusivas de los operadores. */
+  private personaje: ArmasPersonaje;
 
   // Cortador: proyectiles en arrays planos y dos InstancedMesh (halo + núcleo).
   private shotCount = 0;
@@ -194,6 +202,13 @@ export class Weapons {
     );
     this.aura.visible = false;
     scene.add(this.aura);
+
+    this.personaje = new ArmasPersonaje(scene, enemies, world, {
+      enemigo: (id, i, dano, x, z, empuje) => this.deal(id, i, dano, x, z, empuje),
+      extra: (id, objetivo, dano) => this.dealExtra(id, objetivo, dano),
+      extras: () => this.extras,
+      sacudida: () => this.eventos.sacudida?.(),
+    });
   }
 
   level(id: WeaponId) {
@@ -251,9 +266,10 @@ export class Weapons {
 
   update(dt: number, px: number, pz: number, mods: Modifiers) {
     this.extras = this.objetivosExtra();
+    this.sobrecarga = Math.max(0, this.sobrecarga - dt);
     for (const [id] of this.levels) {
       const s = this.stats(id);
-      let t = (this.timers.get(id) ?? 0) - dt;
+      let t = (this.timers.get(id) ?? 0) - dt * (this.sobrecarga > 0 ? 1.4 : 1);
       if (t <= 0) {
         this.fire(id, px, pz, mods);
         t += s.cooldown * mods.cooldown;
@@ -271,6 +287,9 @@ export class Weapons {
     this.updateRayos(dt);
     this.updateDrones(dt, px, pz, mods);
     this.updateAura(px, pz, mods);
+    const torreta = this.level('torreta') ? this.stats('torreta') : null;
+    const danoTorreta = torreta ? torreta.damage * factorNivel(this.level('torreta')) : 0;
+    this.personaje.update(dt, px, pz, mods, this.sobrecarga > 0, torreta, danoTorreta);
   }
 
   private fire(id: WeaponId, px: number, pz: number, mods: Modifiers) {
@@ -382,6 +401,13 @@ export class Weapons {
         if (blancos.length) sfx('shot');
         break;
       }
+      case 'torreta':
+      case 'martillo':
+      case 'sello':
+      case 'bumeran':
+      case 'semillas':
+        this.personaje.disparar(id, s, d, px, pz, mods, this.rumbo);
+        break;
     }
   }
 
@@ -420,6 +446,42 @@ export class Weapons {
   }
 
   /** Destello donde impacta el rayo: se ve cada golpe. */
+  // ------------------------------------------------------------- Operadores
+
+  /** La habilidad de Mara: acelera los relojes y planta una torreta extra. */
+  activarSobrecarga(segundos: number, x: number, z: number) {
+    this.sobrecarga = Math.max(this.sobrecarga, segundos);
+    if (this.level('torreta')) this.personaje.torretaExtra(x, z, this.stats('torreta'));
+  }
+
+  /** Dónde están las torretas de Mara (los enlaces de la Sobrecarga de red). */
+  posicionesTorretas() {
+    return this.personaje.posicionesTorretas();
+  }
+
+  /** Efectos compartidos con las habilidades (anillos, rayos, chispas…). */
+  get efectos() {
+    return this.personaje.efectos;
+  }
+
+  /** Daño de habilidad: no es de ninguna herramienta, pero cuenta el multiplicador y los críticos. */
+  danoHabilidad(x: number, z: number, radio: number, dano: number, empuje = .5, filtro?: (i: number) => boolean) {
+    this.enemies.forEachInRadius(x, z, radio, (i) => {
+      if (filtro && !filtro(i)) return;
+      const antes = Math.max(0, this.enemies.hp[i]);
+      const crit = this.tirarCritico();
+      const total = dano * this.damageMul * crit;
+      this.enemies.hit(i, total, x, z, empuje);
+      this.eventos.dano?.(this.enemies.x[i], this.enemies.z[i], Math.min(antes, total), crit > 1);
+    });
+    for (const extra of this.objetivosExtra()) {
+      if (extra.activo && Math.hypot(extra.x - x, extra.z - z) <= radio + extra.radio) {
+        const causado = extra.golpear(dano * this.damageMul);
+        if (causado > 0) this.eventos.dano?.(extra.x, extra.z, causado, false);
+      }
+    }
+  }
+
   private spawnImpact(x: number, z: number, size: number, color = '#ffd9a0') {
     if (this.impacts.length > 40) return;
     const mesh = new THREE.Mesh(
@@ -899,6 +961,7 @@ export class Weapons {
     for (const c of this.charcos) this.scene.remove(c.mesh);
     for (const e of this.explosiones) this.scene.remove(e.bola, e.onda);
     for (const r of this.rayos) this.scene.remove(r.grupo);
+    this.personaje.dispose();
     this.scene.remove(this.shotGlow, this.shotCore, this.aura);
   }
 }

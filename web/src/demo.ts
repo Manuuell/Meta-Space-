@@ -33,6 +33,8 @@ export interface EntradaPiloto {
   objetivo: ObjetivoPiloto | null;
   zonas: Iterable<Zona>;
   canon: boolean;
+  /** Su herramienta es de cuerpo a cuerpo (la llave de Idris): rodea pegado al jefe. */
+  cerca?: boolean;
 }
 
 export interface SalidaPiloto {
@@ -47,6 +49,8 @@ export interface SalidaPiloto {
   miraAlta: number;
   /** Si ahora mismo está esquivando un aviso. */
   esquivando: boolean;
+  /** Pulsa R cuando hay un jefe cerca; el juego decide si ya recargó. */
+  habilidad: boolean;
 }
 
 const MARGEN = 1.6;
@@ -89,19 +93,19 @@ export function pilotar(e: EntradaPiloto): SalidaPiloto {
   const o = e.objetivo;
   if (dentro) {
     const l = Math.hypot(ex, ez) || 1;
-    return { mx: ex / l, mz: ez / l, esprintar: true, apuntar: false, disparar: false, yaw: o ? yawHacia(e, o.x, o.z) : null, miraAlta: 0.15, esquivando: true };
+    return { mx: ex / l, mz: ez / l, esprintar: true, apuntar: false, disparar: false, yaw: o ? yawHacia(e, o.x, o.z) : null, miraAlta: 0.15, esquivando: true, habilidad: false };
   }
   if (!o) {
     // Sin jefe: vuelve despacio hacia el centro del sector.
     const d = Math.hypot(e.x, e.z);
-    return { mx: d > 6 ? -e.x / d * 0.4 : 0, mz: d > 6 ? -e.z / d * 0.4 : 0, esprintar: false, apuntar: false, disparar: false, yaw: null, miraAlta: 0.15, esquivando: false };
+    return { mx: d > 6 ? -e.x / d * 0.4 : 0, mz: d > 6 ? -e.z / d * 0.4 : 0, esprintar: false, apuntar: false, disparar: false, yaw: null, miraAlta: 0.15, esquivando: false, habilidad: false };
   }
 
   // Rodear al jefe a buena distancia, cambiando de sentido cada 7 s.
   const dx = e.x - o.x, dz = e.z - o.z, d = Math.hypot(dx, dz) || 1;
   const rx = dx / d, rz = dz / d;
   const giro = Math.floor(e.t / 7) % 2 ? 1 : -1;
-  const quiero = o.vuela ? 14 : o.radio + 10;
+  const quiero = o.vuela ? 14 : o.radio + (e.cerca ? 2.5 : 10);
   const acercar = Math.max(-1, Math.min(1, (quiero - d) * 0.25));
   let mx = -rz * giro * 0.8 + rx * acercar, mz = rx * giro * 0.8 + rz * acercar;
   const l = Math.hypot(mx, mz) || 1;
@@ -118,6 +122,7 @@ export function pilotar(e: EntradaPiloto): SalidaPiloto {
     yaw: yawHacia(e, o.mira.x, o.mira.z),
     miraAlta: Math.atan2(o.mira.y - (e.y + 2.5), h),
     esquivando: false,
+    habilidad: d < 15,
   };
 }
 

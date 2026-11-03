@@ -38,12 +38,18 @@ import {
 import { Radio, type EventoNpc, type Hablante, type RunBrief } from './npcs';
 import { Camara } from './camara';
 import { crearAstronauta } from './modelos/astronauta';
+import { crearMara } from './modelos/mara';
+import { crearIdris } from './modelos/idris';
+import { crearNoa } from './modelos/noa';
+import { crearTaro } from './modelos/taro';
+import { crearAmara } from './modelos/amara';
+import type { Modelo } from './modelos/kit';
 import { crearAerotabla, crearBotasImpulso, crearMochilaCohete } from './modelos/equipo';
 import {
   CUPO, NubeEsporas, angulosDePatron, criasAlMorir, oleadaEspecial, quiereDisparar, tasaEspecial,
 } from './enemies-nuevos';
 import { multChatarraElite, type EliteMod } from './enemies';
-import { ContenidoJuego, type RespuestaNpc } from './contenido-juego';
+import { ContenidoJuego, VISTA_MAPA, type RespuestaNpc } from './contenido-juego';
 import type { Efecto } from './contenido/mapa';
 import { lineaNpcMapa } from './npcs';
 import { NumerosDano } from './numeros';
@@ -57,6 +63,18 @@ import { alerta, marcarAcierto } from './hud';
 import { CANON } from './contenido/mapa';
 import { pilotar } from './demo';
 import { zonasActivas } from './avisos';
+import { personaje, type PersonajeDef, type PersonajeId } from './personajes';
+import { abrirSelectorPersonaje } from './ui-personaje';
+import { crearHabilidad, type ContextoHabilidad, type Habilidad } from './habilidades';
+
+const MODELOS_PERSONAJE: Record<PersonajeId, () => Modelo> = {
+  especialista: crearAstronauta,
+  'mara-ilyin': crearMara,
+  'idris-okafor': crearIdris,
+  'noa-herrera': crearNoa,
+  'taro-sato': crearTaro,
+  'amara-keita': crearAmara,
+};
 
 type State = 'title' | 'playing' | 'levelup' | 'paused' | 'results' | 'mapa';
 
@@ -88,6 +106,7 @@ export class Game {
   private rumbo = Math.PI;
   private golpeHasta = 0;
   private golpeListo = 0;
+  private habilidadHasta = 0;
   private frames = astronautFrames();
   private hurtFlash = 0;
   // Hacia dónde mira la cámara: yaw 0 es el norte (−z), donde está el cohete.
@@ -100,6 +119,9 @@ export class Game {
   private clock = new THREE.Clock();
   private save = loadSave();
   private tmp = { x: 0, z: 0 };
+  private personajeActual: PersonajeDef = personaje(this.save.personaje);
+  private habilidad: Habilidad | null = null;
+  private habilidadIntocableHasta = 0;
 
   // Estado de la partida en curso.
   private time = 0;
@@ -180,6 +202,8 @@ export class Game {
   private touchJumpHeld = false;
   private dashBtn: HTMLButtonElement | null = null;
   private touchDash = false;
+  private abilityBtn: HTMLButtonElement | null = null;
+  private touchAbility = false;
   // Equipo de movilidad (cartas de equipo): mochila cohete, aerotabla y botas.
   private gear = new Map<GearId, number>();
   private combustible = 0;
@@ -229,10 +253,14 @@ export class Game {
   private empujeZ = 0;
   private descansoAguante = 0;
 
-  /** Modo demo (`?demo=jefes`): el piloto automático pelea contra el Cancerbero y el dragón. */
+  /**
+   * Modo demo (`?demo=jefes`): el piloto automático pelea contra el Cancerbero
+   * y el dragón. Con `&personaje=<id>` lo hace con ese operador, sin guardarlo.
+   */
   private demo: { fase: 'preparar' | 'cancerbero' | 'pausa' | 'dragon' | 'fin'; t: number } | null = null;
 
-  constructor(private canvas: HTMLCanvasElement, opciones: { demo?: boolean } = {}) {
+  constructor(private canvas: HTMLCanvasElement, opciones: { demo?: boolean; personaje?: string } = {}) {
+    if (opciones.personaje) this.personajeActual = personaje(opciones.personaje);
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
@@ -262,8 +290,9 @@ export class Game {
       curar: (cantidad) => { this.hp = Math.min(this.maxHp, this.hp + cantidad); },
       empujar: (fx, fz, salto) => {
         if (this.intocable()) return;
-        this.empujeX += fx;
-        this.empujeZ += fz;
+        const factor = this.personajeActual.id === 'idris-okafor' && !this.customSprite ? .5 : 1;
+        this.empujeX += fx * factor;
+        this.empujeZ += fz * factor;
         if (salto > 0) {
           this.velY = Math.max(this.velY, salto);
           this.grounded = false;
@@ -299,6 +328,7 @@ export class Game {
     }
     this.animarAstronauta('Reposo');
     this.montarEquipo();
+    if (this.personajeActual.id !== 'especialista') this.montarModeloPersonaje(this.personajeActual);
 
     this.shadow = new THREE.Mesh(
       new THREE.PlaneGeometry(1.8, 1.8).rotateX(-Math.PI / 2),
@@ -345,6 +375,16 @@ export class Game {
       });
       document.body.appendChild(d);
       this.dashBtn = d;
+
+      const r = document.createElement('button');
+      r.textContent = 'R';
+      r.setAttribute('aria-label', 'Habilidad característica');
+      r.style.cssText = 'position:fixed;left:18px;bottom:32px;width:64px;height:64px;border-radius:50%;'
+        + 'border:2px solid #7566f5;background:rgba(20,26,44,.82);color:#fff;font:bold 24px Rubik,system-ui;'
+        + 'z-index:31;display:none;touch-action:none;';
+      r.addEventListener('pointerdown', (e) => { e.preventDefault(); this.touchAbility = true; });
+      document.body.appendChild(r);
+      this.abilityBtn = r;
     }
 
     // Cualquier gesto desbloquea el audio (los navegadores lo exigen).
@@ -369,19 +409,20 @@ export class Game {
   }
 
   /**
-   * Cuelga el equipo del astronauta: la mochila cohete del pecho y las botas
-   * de las piernas, para que se muevan con sus huesos. La aerotabla va suelta
-   * bajo los pies. Todo empieza oculto hasta que sale su carta.
+   * Cuelga el equipo del operador de sus enganches: la mochila cohete del
+   * centro de la espalda y las botas de los tobillos, para que se muevan con
+   * sus huesos (cada cuerpo pone los enganches donde le caen bien). La
+   * aerotabla va suelta bajo los pies. Todo empieza oculto hasta que sale su carta.
    */
   private montarEquipo() {
     const r = this.astronauta.raiz;
     const m = this.mochila.raiz.getObjectByName('mochila_cohete')!;
     m.position.set(0, 0, 0);
-    r.getObjectByName('pecho')!.add(m);
+    r.getObjectByName('enganche_mochila')!.add(m);
     for (const lado of ['i', 'd']) {
       const b = this.botas.raiz.getObjectByName(`bota_${lado}`)!;
       b.position.set(0, 0, 0);
-      r.getObjectByName(`pierna_${lado}`)!.add(b);
+      r.getObjectByName(`enganche_bota_${lado}`)!.add(b);
       this.chorrosBotas.push(b.getObjectByName(`chorro_bota_${lado}`)!);
       this.chorrosMochila.push(m.getObjectByName(`chorro_mochila_${lado}`)!);
     }
@@ -391,6 +432,51 @@ export class Game {
     this.mezcladorTabla.clipAction(this.tabla.animaciones[0].clip).play();
     this.scene.add(this.tabla.raiz);
     this.vestirEquipo();
+  }
+
+  /** Cambia el modelo articulado conservando los enganches del equipo. */
+  private montarModeloPersonaje(def: PersonajeDef) {
+    const vieja = this.astronauta.raiz;
+    // `montarEquipo` mueve estas piezas desde sus modelos a los nodos del
+    // personaje. Hay que recuperarlas antes de retirar el esqueleto viejo.
+    const mochila = vieja.getObjectByName('mochila_cohete');
+    if (mochila) this.mochila.raiz.add(mochila);
+    for (const lado of ['i', 'd']) {
+      const bota = vieja.getObjectByName(`bota_${lado}`);
+      if (bota) this.botas.raiz.add(bota);
+    }
+    this.mezclador.stopAllAction();
+    this.mezcladorEquipo.stopAllAction();
+    this.scene.remove(vieja);
+    this.astronauta = MODELOS_PERSONAJE[def.id]();
+    this.mezclador = new THREE.AnimationMixer(this.astronauta.raiz);
+    this.mezcladorEquipo = new THREE.AnimationMixer(this.astronauta.raiz);
+    this.acciones.clear();
+    this.chorrosBotas = [];
+    this.chorrosMochila = [];
+    this.scene.add(this.astronauta.raiz);
+    for (const a of this.astronauta.animaciones) {
+      const accion = this.mezclador.clipAction(a.clip);
+      if (!a.bucle) { accion.setLoop(THREE.LoopOnce, 1); accion.clampWhenFinished = true; }
+      this.acciones.set(a.clip.name, accion);
+    }
+    this.clipActual = '';
+    this.animarAstronauta('Reposo', 0);
+    this.montarEquipo();
+  }
+
+  private elegirPersonaje(id: PersonajeId) {
+    this.personajeActual = personaje(id);
+    this.save.personaje = id;
+    writeSave(this.save);
+    // Elegir un operador predefinido desactiva el sprite del creador, que
+    // puede volver a activarse desde Operador cuando el usuario quiera.
+    this.customSprite = null;
+    this.heroName = '';
+    this.heroSpecial = null;
+    this.heroSpecialLevel = 0;
+    this.montarModeloPersonaje(this.personajeActual);
+    this.toTitle();
   }
 
   /** Muestra las piezas de equipo que se tienen y repinta su HUD. */
@@ -508,6 +594,7 @@ export class Game {
     if (this.jumpBtn) this.jumpBtn.style.display = 'none';
     if (this.hudEquipo) this.hudEquipo.style.display = 'none';
     if (this.dashBtn) this.dashBtn.style.display = 'none';
+    if (this.abilityBtn) this.abilityBtn.style.display = 'none';
     if (this.micBtn) this.micBtn.style.display = 'none';
     this.resetRun();
     let started = false;
@@ -519,6 +606,8 @@ export class Game {
     }, {
       onCreator: () => void this.openProfile(),
       onCompanion: () => abrirSelectorCompanero(this.dron.forma, (id) => this.elegirCompanero(id), () => this.toTitle(), (e) => this.estiloDeBruno(e)),
+      onCharacter: () => abrirSelectorPersonaje(this.personajeActual.id, (id) => this.elegirPersonaje(id), () => this.toTitle()),
+      character: this.personajeActual,
       companionName: perfilDe(this.dron.forma).nombre,
       customHeroName: this.heroName || undefined,
       customHeroSpecial: this.heroSpecial ? SPECIALS[this.heroSpecial].name : undefined,
@@ -670,6 +759,7 @@ export class Game {
   /** Aplica daño al traje y resuelve los especiales que reaccionan al golpe. */
   private receiveDamage(amount: number) {
     amount *= this.factorTemporal('escudo');
+    if (this.personajeActual.id === 'idris-okafor' && !this.customSprite) amount *= .85;
     if (amount <= 0) return;
     if (this.heroSpecial === 'caparazon' && this.shieldReady) {
       this.shieldReady = false;
@@ -848,10 +938,21 @@ export class Game {
 
   private resetRun() {
     this.weapons?.dispose();
+    this.habilidad?.dispose();
     this.weapons = new Weapons(this.scene, this.enemies, this.world, () => this.contenido.objetivoJefe, {
       dano: (x, z, cantidad, critico) => this.numeros.sumar(x, this.world.heightAt(x, z) + 1.7, z, cantidad, critico),
       sacudida: () => this.camara.sacudidaPulso(),
     });
+    if (!this.customSprite) {
+      const s = this.personajeActual.stats;
+      this.heroMaxHp = s.maxHp;
+      this.heroSpeed = s.speed;
+      this.heroDamageMul = s.damageMul;
+      this.heroCooldownMul = s.cooldownMul;
+    }
+    this.habilidad = this.customSprite ? null : crearHabilidad(this.personajeActual, this.scene);
+    this.habilidadIntocableHasta = 0;
+    this.habilidadHasta = 0;
     this.bendiciones = [];
     this.totales = totalesVacios();
     this.bendicionesPendientes = [];
@@ -872,6 +973,9 @@ export class Game {
     this.aplicarBendiciones();
     this.enemies.clear();
     this.contenido.reset();
+    this.contenido.factorCosteCofre = this.personajeActual.id === 'mara-ilyin' && !this.customSprite ? .8 : 1;
+    this.contenido.factorCargaPilon = this.personajeActual.id === 'amara-keita' && !this.customSprite ? 1.3 : 1;
+    this.contenido.radioVista = this.personajeActual.id === 'taro-sato' && !this.customSprite ? VISTA_MAPA * 2 : VISTA_MAPA;
     this.pickups.clear();
     this.esporas?.dispose();
     this.esporas = new NubeEsporas(this.scene, this.world);
@@ -949,11 +1053,12 @@ export class Game {
 
   private startRun() {
     this.resetRun();
-    this.weapons.upgrade('cortador');
+    this.weapons.upgrade(this.customSprite ? 'cortador' : this.personajeActual.armaInicial);
     this.state = 'playing';
     ui.showHud();
     this.vestirEquipo();
     if (this.jumpBtn) this.jumpBtn.style.display = 'block';
+    if (this.abilityBtn) this.abilityBtn.style.display = this.habilidad ? 'block' : 'none';
     if (this.micBtn) this.micBtn.style.display = 'block';
     this.clock.getDelta();
     // En la demo no hay radio ni brief: que se vea la pelea.
@@ -1019,6 +1124,35 @@ export class Game {
         * Math.max(0.4, 1 - this.totales.recarga),
       area: (1 + 0.1 * this.passive('area')) * (1 + this.totales.area),
     };
+  }
+
+  private contextoHabilidad(): ContextoHabilidad {
+    return {
+      escena: this.scene,
+      mundo: this.world,
+      enemigos: this.enemies,
+      armas: this.weapons,
+      objetivoJefe: () => this.contenido.objetivoJefe,
+      modelo: this.astronauta.raiz,
+      posicion: this.player.position,
+      rumbo: this.rumbo,
+      yawCamara: this.yaw,
+      curar: (n) => { this.hp = Math.min(this.maxHp, this.hp + n); },
+      moverA: (x, z) => {
+        this.player.position.set(x, this.world.heightAt(x, z), z);
+        this.velX = this.velZ = 0;
+      },
+      hacerIntocable: (segundos) => { this.habilidadIntocableHasta = Math.max(this.habilidadIntocableHasta, this.time + segundos); },
+      aturdirJefes: (x, z, radio, segundos) => this.contenido.aturdirJefes(x, z, radio, segundos),
+      alerta: (texto) => alerta(texto),
+      sacudida: () => this.camara.sacudidaPulso(),
+      sfx: (nombre) => sfx(nombre),
+    };
+  }
+
+  private usarHabilidad() {
+    if (!this.habilidad || !this.habilidad.usar(this.contextoHabilidad())) return;
+    this.habilidadHasta = this.time + Math.min(1.2, this.acciones.get('Habilidad')?.getClip().duration ?? 0);
   }
 
   private passive(id: PassiveId) {
@@ -1159,6 +1293,9 @@ export class Game {
       return;
     }
     if (wasPressed('KeyF')) this.usarCofre();
+    // El piloto de la demo mantiene la R: la habilidad ya sabe si recargó.
+    if (wasPressed('KeyR') || this.touchAbility || piloto.activo && piloto.teclas.has('KeyR')) this.usarHabilidad();
+    this.touchAbility = false;
     if (wasPressed('KeyV') && !this.vozConV) {
       this.vozConV = true;
       void this.hablarAlDron();
@@ -1210,6 +1347,7 @@ export class Game {
       this.acidoAcumulado = 0;
     }
     this.updateHeroSpecial(dt, px, pz);
+    this.habilidad?.update(dt, this.contextoHabilidad());
     this.actualizarCrias();
     const contact = this.enemies.update(dt, px, pz, PLAYER_RADIUS);
     this.receiveDamage(contact * this.factorContacto());
@@ -1234,7 +1372,8 @@ export class Game {
       },
     });
     this.receiveDamage(danoContenido * (this.intocable() ? 0 : 1));
-    this.hp = Math.min(this.maxHp, this.hp + (this.passive('reparacion') * 0.7 + this.totales.regen) * dt);
+    const botanica = this.personajeActual.id === 'amara-keita' && !this.customSprite ? .5 : 0;
+    this.hp = Math.min(this.maxHp, this.hp + (this.passive('reparacion') * 0.7 + this.totales.regen + botanica) * dt);
     if (!this.heridoAvisado && this.hp < this.maxHp * 0.7) {
       this.heridoAvisado = true;
       this.decir('ada', 'herido', 'el traje ha perdido un tercio de su integridad');
@@ -1250,7 +1389,8 @@ export class Game {
 
     // Sembradores: abren fuego con esporas lentas y esquivables.
     for (let i = 0; i < this.enemies.count; i++) {
-      if (this.enemies.tipoDe(i) !== 'sembrador') continue;
+      // Los apagados por la Orden de apagado de Noa tampoco disparan.
+      if (this.enemies.tipoDe(i) !== 'sembrador' || this.enemies.aturdido[i] > 0) continue;
       const dx = this.enemies.x[i] - px, dz = this.enemies.z[i] - pz;
       if (Math.hypot(dx, dz) < 20 && quiereDisparar(i, this.enemies, this.time, dt)) {
         this.esporas.disparar(this.enemies.x[i], this.enemies.z[i], px, pz);
@@ -1260,6 +1400,7 @@ export class Game {
     const danoEsporas = this.esporas.update(dt, px, pz, PLAYER_RADIUS);
     this.receiveDamage(danoEsporas * (this.intocable() ? 0 : 1));
 
+    this.weapons.rumbo = this.rumbo;
     this.weapons.update(dt, px, pz, this.mods);
     this.enemies.sweep();
     this.enemies.render();
@@ -1311,6 +1452,10 @@ export class Game {
         mira: this.apuntando || isLocked(),
       },
       zona: this.contenido.zonaDe(px, pz),
+      personaje: { nombre: this.personajeActual.nombre, rol: this.personajeActual.rol, retrato: this.personajeActual.retrato, color: this.personajeActual.color },
+      habilidad: this.habilidad && this.personajeActual.habilidad
+        ? { id: this.personajeActual.habilidad.id, nombre: this.personajeActual.habilidad.nombre, color: this.personajeActual.color, lista: this.habilidad.lista }
+        : null,
     });
     ui.drawMinimap({
       px: this.player.position.x, pz: this.player.position.z, yaw: this.yaw,
@@ -1323,6 +1468,7 @@ export class Game {
       marca: this.contenido.marca,
       puntos: this.puntosMapa,
       carta: this.world.carta(),
+      alcance: this.personajeActual.id === 'taro-sato' && !this.customSprite ? 110 : undefined,
     });
     this.numeros.dibujar(dt, this.camera);
 
@@ -1377,13 +1523,15 @@ export class Game {
     this.player.position.set(claro.x, this.world.heightAt(claro.x, claro.z), claro.z);
     this.yaw = Math.atan2(claro.x, claro.z);
     this.camara.fijar(this.yaw, this.pitch, this.player.position);
-    const build = [['cortador', 3], ['lanza', 2], ['mortero', 2], ['arco', 2]] as const;
+    // La herramienta del operador va más alta que el resto: es lo que se enseña.
+    const propia = this.customSprite ? 'cortador' : this.personajeActual.armaInicial;
+    const build: [WeaponId, number][] = [[propia, propia === 'cortador' ? 3 : 4], ['lanza', 2], ['mortero', 2], ['arco', 2]];
     for (const [id, nivel] of build) while (this.weapons.level(id) < nivel) this.weapons.upgrade(id);
     this.canonNivel = 2;
     this.maxHp = this.hp = 400;
     this.mejorasTomadas = 4;
     this.aplicarBendiciones();
-    alerta('Modo demo: el piloto automático juega por ti', 3);
+    alerta(`Modo demo: ${this.personajeActual.nombre} con el piloto automático`, 3);
   }
 
   /** Fases de la demo y el piloto: decide cómo moverse, esquivar y apuntar este fotograma. */
@@ -1422,6 +1570,7 @@ export class Game {
     const s = pilotar({
       x: p.x, y: p.y, z: p.z, t: this.time,
       objetivo: this.contenido.objetivoPiloto, zonas: zonasActivas.values(), canon: this.canonNivel > 0,
+      cerca: !this.customSprite && this.personajeActual.armaInicial === 'martillo',
     });
     if (s.yaw !== null) {
       let giro = s.yaw - this.yaw;
@@ -1437,6 +1586,7 @@ export class Game {
     if (s.esprintar) piloto.teclas.add('ShiftLeft');
     if (s.apuntar) piloto.teclas.add('KeyZ');
     if (s.disparar) piloto.teclas.add('KeyX');
+    if (s.habilidad) piloto.teclas.add('KeyR');
   }
 
   // ------------------------------------------------------- Cañón solar
@@ -1580,7 +1730,9 @@ export class Game {
   /** Lo que las bendiciones cambian en las herramientas (el resto se lee al usarlo). */
   private aplicarBendiciones() {
     this.weapons.damageMul = this.heroDamageMul * (1 + this.totales.dano) * this.potencia;
-    this.weapons.critico = 0.05 + this.totales.critico;
+    const auditora = this.personajeActual.id === 'noa-herrera' && !this.customSprite;
+    this.weapons.critico = 0.05 + this.totales.critico + (auditora ? .05 : 0);
+    this.weapons.multCritico = auditora ? 2.5 : 2;
   }
 
   /** Multiplicador de daño que dan las mejoras elegidas al subir de nivel. */
@@ -1666,7 +1818,8 @@ export class Game {
       if (this.descansoAguante > MOVE.aguantePausa) this.aguante = Math.min(1, this.aguante + dt / MOVE.aguanteRecarga);
     }
     const sprint = this.esprintando ? MOVE.sprintMul : 1;
-    const maxSpeed = this.heroSpeed * MOVE.speedMul * (1 + 0.1 * this.passive('velocidad') + this.totales.velocidad) * overdrive * equipo
+    const explorador = this.personajeActual.id === 'taro-sato' && !this.customSprite ? 1.1 : 1;
+    const maxSpeed = this.heroSpeed * MOVE.speedMul * (1 + 0.1 * this.passive('velocidad') + this.totales.velocidad) * overdrive * equipo * explorador
       * vadeo * this.factorTemporal('velocidad') * sprint * (this.apuntando ? 0.6 : 1);
     // W avanza hacia donde mira la cámara; A y D van de lado.
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
@@ -1778,6 +1931,7 @@ export class Game {
         this.golpeListo = this.time + 1.2;
       }
       const clip = this.time < this.golpeHasta ? 'Golpe recibido'
+        : this.time < this.habilidadHasta && this.acciones.has('Habilidad') ? 'Habilidad'
         : this.dashTime > 0 ? 'Impulso'
         : this.propulsando ? 'Volar'
         : this.montado ? 'Surfear'
@@ -2121,7 +2275,10 @@ export class Game {
       ultimaArma: this.ultimaArma,
       rechazos: new Map(this.rechazos),
     };
-    const deps: DepsTirada = { tabla: TABLA_ARMAS };
+    const exclusivas = Object.fromEntries((Object.keys(WEAPONS) as WeaponId[])
+      .filter((id) => WEAPONS[id].exclusiva).map((id) => [id, WEAPONS[id].exclusiva])) as Partial<Record<WeaponId, PersonajeId>>;
+    // El héroe del creador no es ningún operador: no le sale ninguna exclusiva.
+    const deps: DepsTirada = { tabla: TABLA_ARMAS, personaje: this.customSprite ? undefined : this.personajeActual.id, exclusivas };
     const picks: ui.Choice[] = tirarCartas(estado, deps);
     // El equipo de movilidad entra como una carta más: seguro hasta tener la
     // primera pieza (desde el nivel 3) y luego de vez en cuando.
@@ -2163,7 +2320,7 @@ export class Game {
 
   /** Durante el acelerón de las botas a nivel 3 no te toca nada. */
   private intocable() {
-    return this.dashTime > 0 && (this.gear.get('botas') ?? 0) >= 3;
+    return this.time < this.habilidadIntocableHasta || this.dashTime > 0 && (this.gear.get('botas') ?? 0) >= 3;
   }
 
   /** Daño de contacto: volando con la mochila por encima de la horda no llega. */

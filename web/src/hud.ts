@@ -1,5 +1,6 @@
 import './hud.css';
 import { iconoMejora, iconoMenu } from './iconos.ts';
+import type { WeaponId } from './data.ts';
 
 // HUD de Meta Space, rehecho para el mapa nuevo. Sustituye a la parte del HUD
 // de ui.ts del juego con las mismas funciones (showHud, hideHud, setMision,
@@ -39,7 +40,7 @@ export function compact(n: number) {
 }
 
 // Las herramientas (los mismos nombres y colores que WEAPONS; los iconos, de iconos.ts).
-export type Herramienta = 'cortador' | 'pulso' | 'dron' | 'interferencia' | 'lanza' | 'arco' | 'mortero';
+export type Herramienta = WeaponId;
 const HERRAMIENTAS: Record<Herramienta, { nombre: string; color: string; icono: string }> = {
   cortador: { nombre: 'Cortador', color: '#ffb347', icono: iconoMejora('cortador') },
   pulso: { nombre: 'Pulso', color: '#5ee0ff', icono: iconoMejora('pulso') },
@@ -48,6 +49,11 @@ const HERRAMIENTAS: Record<Herramienta, { nombre: string; color: string; icono: 
   lanza: { nombre: 'Lanza solar', color: '#ffe066', icono: iconoMejora('lanza') },
   arco: { nombre: 'Arco', color: '#8ad7ff', icono: iconoMejora('arco') },
   mortero: { nombre: 'Mortero', color: '#ff7a45', icono: iconoMejora('mortero') },
+  torreta: { nombre: 'Torreta', color: '#7566f5', icono: iconoMejora('torreta') },
+  martillo: { nombre: 'Llave', color: '#ffad35', icono: iconoMejora('martillo') },
+  sello: { nombre: 'Sello', color: '#e151a5', icono: iconoMejora('sello') },
+  bumeran: { nombre: 'Disco', color: '#9bdc3c', icono: iconoMejora('bumeran') },
+  semillas: { nombre: 'Semillero', color: '#53cc8c', icono: iconoMejora('semillas') },
 };
 const NIVEL_MAX = 6;
 
@@ -98,6 +104,8 @@ export interface HudState {
   bendiciones?: { id: string; icono: string; color: string; n: number; titulo: string }[];
   /** Nombre de la zona en la que está el jugador. */
   zona?: string;
+  personaje?: { nombre: string; rol: string; retrato: string; color: string };
+  habilidad?: { id: string; nombre: string; color: string; lista: number } | null;
 }
 
 export interface MinimapState {
@@ -138,7 +146,7 @@ export function showHud() {
       <div class="h2-vineta herido"></div>
 
       <div class="h2-ficha h2-panel">
-        <div class="h2-retrato">${RETRATO}<span class="h2-nivel"></span></div>
+        <div class="h2-retrato">${RETRATO}<img alt=""><span class="h2-nivel"></span></div>
         <div class="h2-datos">
           <div class="h2-nombre"><b>Especialista</b><small>ARES-IX · con ADA</small></div>
           <div class="h2-vida"><div class="h2-vida-relleno"></div><div class="h2-vida-marcas"></div><span class="h2-vida-texto"></span></div>
@@ -147,6 +155,7 @@ export function showHud() {
         </div>
       </div>
       <div class="h2-bendiciones" aria-label="Bendiciones"></div>
+      <div class="h2-habilidad"><i><em class="h2-habilidad-icono"></em><b>R</b></i><span><strong></strong><small>Habilidad · R</small></span></div>
 
       <div class="h2-ventana">
         <div class="h2-reloj-fila">
@@ -269,6 +278,14 @@ export function updateHud(s: HudState) {
 
   // Ficha.
   q('.h2-nivel').textContent = `${s.level}`;
+  if (s.personaje) {
+    const img = q('.h2-retrato img') as HTMLImageElement;
+    img.src = s.personaje.retrato;
+    img.alt = `Retrato de ${s.personaje.nombre}`;
+    q('.h2-retrato').style.setProperty('--personaje', s.personaje.color);
+    q('.h2-nombre b').textContent = s.personaje.nombre;
+    q('.h2-nombre small').textContent = s.personaje.rol;
+  }
   const vida = Math.max(0, s.hp / s.maxHp);
   q('.h2-vida-relleno').style.width = `${vida * 100}%`;
   q('.h2-vida').classList.toggle('baja', vida < 0.3);
@@ -376,6 +393,19 @@ export function updateHud(s: HudState) {
       `<span class="h2-bendicion" style="--c:${b.color}" title="${b.titulo}">${iconoMejora(b.icono)}${b.n > 1 ? `<small>×${b.n}</small>` : ''}</span>`).join('');
   }
   q('.h2-pista').classList.toggle('on', !s.locked && s.time < 30);
+
+  const hab = q('.h2-habilidad');
+  hab.classList.toggle('on', !!s.habilidad);
+  if (s.habilidad) {
+    if (hab.dataset.id !== s.habilidad.id) {
+      hab.dataset.id = s.habilidad.id;
+      (hab.querySelector('.h2-habilidad-icono') as HTMLElement).innerHTML = iconoMejora(s.habilidad.id);
+    }
+    hab.style.setProperty('--c', s.habilidad.color);
+    hab.style.setProperty('--lista', String(Math.max(0, Math.min(1, s.habilidad.lista))));
+    (hab.querySelector('strong') as HTMLElement).textContent = s.habilidad.nombre;
+    hab.classList.toggle('lista', s.habilidad.lista >= .999);
+  }
 
   // Barra pequeña de vida bajo los pies.
   q('.hud-hp').style.transform = `translate(${s.anchor.x}px, ${s.anchor.y + 10}px) translateX(-50%)`;

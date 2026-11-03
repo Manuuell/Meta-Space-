@@ -28,6 +28,8 @@ export interface Tarjeta {
   control?: string;
   /** Bendiciones: la rareza pinta la cinta y el brillo de la tarjeta. */
   rareza?: { id: string; nombre: string; color: string };
+  /** Sustituye al nombre del tipo bajo la cinta («Herramienta», «Bendición»…). */
+  etiqueta?: string;
 }
 
 export interface OpcionesMejoras {
@@ -46,8 +48,8 @@ const NOMBRE_TIPO: Record<TipoMejora, string> = {
 
 /** Lo que dice la cinta de arriba. */
 function cinta(t: Tarjeta): { texto: string; nueva: boolean } {
-  if (t.tipo === 'reparar') return { texto: 'REPARAR', nueva: false };
   if (t.rareza) return { texto: t.rareza.nombre.toUpperCase(), nueva: false };
+  if (t.tipo === 'reparar') return { texto: 'REPARAR', nueva: false };
   if (!t.nivel || t.nivel <= 1) {
     return { texto: t.tipo === 'equipo' ? 'EQUIPO NUEVO' : t.tipo === 'especial' ? 'ESPECIAL NUEVO' : 'NUEVA', nueva: true };
   }
@@ -105,7 +107,7 @@ export function mostrarMejoras(nivel: number, tarjetas: Tarjeta[], elegir: (i: n
     const medallon = el('span', 'msm-medallon');
     medallon.innerHTML = iconoMejora(t.id); // SVG propio, no viene de fuera
     b.appendChild(medallon);
-    b.appendChild(el('span', 'msm-tipo', NOMBRE_TIPO[t.tipo]));
+    b.appendChild(el('span', 'msm-tipo', t.etiqueta ?? NOMBRE_TIPO[t.tipo]));
     b.appendChild(el('h3', '', t.titulo));
     // «2 → 3» no se parte en dos líneas.
     b.appendChild(el('p', '', t.texto.replace(/ → /g, '\u00a0→\u00a0')));

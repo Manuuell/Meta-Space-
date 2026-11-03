@@ -89,3 +89,20 @@ test('personajes: la tirada no ofrece armas exclusivas de otros operadores', () 
     }
   }
 });
+
+test('tirada: con las cuatro casillas llenas no ofrece herramientas nuevas', () => {
+  const tabla = Object.fromEntries((Object.keys(WEAPONS) as WeaponId[]).map((id) => [id, WEAPONS[id].levels.map((s) => ({
+    damage: s.damage, cooldown: s.cooldown, count: s.count, area: s.area,
+  }))])) as TablaArmas;
+  const llenas: WeaponId[] = ['cortador', 'pulso', 'lanza', 'arco'];
+  const rng = mulberry32(3);
+  for (let k = 0; k < 80; k++) {
+    const estado: EstadoBuild = {
+      armas: new Map(llenas.map((id) => [id, 2])), pasivas: new Map(), nivel: 5 + (k % 15), tiempo: 60 + k * 5, vida: 1, amenaza: 30,
+      presionDps: 40, especialHeroe: null, nivelEspecial: 0, ultimaTirada: [], ultimaArma: null, rechazos: new Map(),
+    };
+    for (const c of rollChoices(estado, { tabla, rng, maxHerramientas: 4 })) {
+      if (c.kind === 'weapon') assert.ok(llenas.includes(c.id as WeaponId), `ofreció ${c.id} con las casillas llenas`);
+    }
+  }
+});

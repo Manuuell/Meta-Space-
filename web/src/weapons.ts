@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { WEAPONS, WeaponId, factorNivel } from './data';
+import { WEAPONS, WeaponId, factorNivel, type WeaponLevel } from './data';
+import { FRAGUA } from './contenido/mapa';
 import { Enemies } from './enemies';
 import { World } from './world';
 import { sfx } from './audio';
@@ -117,6 +118,8 @@ export class Weapons {
   private extras: ObjetivoCombate[] = [];
   /** Rumbo del personaje: lo usan la llave y el disco. */
   rumbo = Math.PI;
+  /** Forjadas en la Fragua del Deshielo: su nivel máximo con la mejora de la forja. */
+  private forjadas = new Map<WeaponId, WeaponLevel>();
   /** Segundos que le quedan a la Sobrecarga de red de Mara. */
   private sobrecarga = 0;
   /** Las cinco herramientas exclusivas de los operadores. */
@@ -231,7 +234,31 @@ export class Weapons {
   }
 
   private stats(id: WeaponId) {
-    return WEAPONS[id].levels[this.level(id) - 1];
+    return this.forjadas.get(id) ?? WEAPONS[id].levels[this.level(id) - 1];
+  }
+
+  forjada(id: WeaponId) {
+    return this.forjadas.has(id);
+  }
+
+  /** La Fragua del Deshielo: `fundida` desaparece y `base` sale forjada. */
+  forjar(base: WeaponId, fundida: WeaponId) {
+    this.desmontar(fundida);
+    const s = WEAPONS[base].levels[this.level(base) - 1];
+    this.forjadas.set(base, { ...s, damage: s.damage * FRAGUA.dano, count: s.count + FRAGUA.carga, cooldown: s.cooldown * FRAGUA.recarga });
+    if (base === 'dron') this.syncDrones();
+  }
+
+  /** Quita una herramienta del todo (Iris la desmonta o se funde en la fragua). */
+  desmontar(id: WeaponId) {
+    this.levels.delete(id);
+    this.timers.delete(id);
+    this.forjadas.delete(id);
+    if (id === 'dron') {
+      for (const d of this.drones) this.scene.remove(d.raiz);
+      this.drones = [];
+    }
+    if (id === 'interferencia') this.aura.visible = false;
   }
 
   private tirarCritico(): number {

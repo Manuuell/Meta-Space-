@@ -102,6 +102,29 @@ y las botas de impulso que arma ADA.
 
 Sol Vega permanece en la radio: guía la expedición, pero no baja al sector.
 
+### Hallazgos del sector
+
+Explorando, además de altares y cofres, se encuentra:
+
+- **Raciones** de la colonia: latas que curan 25 al pasar por encima.
+- **Imanes de grúa**: al tocarlos, toda la chatarra suelta del sector vuela hacia ti.
+- **Cajas abandonadas**: gratis… salvo las que son **cebos de HELIOS** (un ojo
+  rojo en el costado las delata). Esas sueltan una emboscada; si aguantas
+  20 s a su lado, el botín es doble.
+- **Jaulas de HELIOS** con un superviviente (Teo, Nuria o Ilan). Con **F** lo
+  liberas y te cubre 45 s con su pistola de bengalas.
+- **El Guardián dormido**, una cosechadora de la colonia apagada desde el
+  velo. Con **F** empieza a despertar: aguanta 15 s a su lado mientras HELIOS
+  intenta impedirlo, y te deja elegir una bendición o 70 de chatarra.
+- **La Fragua del Deshielo**: con dos herramientas a nivel máximo, una se
+  funde en la otra, que sale **forjada** (más daño, una carga más, menos
+  recarga) y libera su casilla. Una vez por sector, 40 de chatarra.
+- **Iris**, la mecánica del refugio, te **desmonta** una herramienta (F a su
+  lado, o pídeselo por voz): devuelve chatarra y libera la casilla. Se llevan
+  **cuatro herramientas a la vez** como mucho.
+
+Todo sale en el mapa (**M**) en cuanto lo has tenido cerca.
+
 ### Cómo se salva Meta
 
 - **Cada partida es un sector.** Diez minutos hasta la ventana de lanzamiento.

@@ -36,7 +36,11 @@ export type Efecto =
   /** Da el Cañón solar (el arma que se apunta) o le sube un nivel. */
   | { tipo: 'canon' }
   /** El NPC cuenta algo de la partida (la oleada que viene, la última reliquia). */
-  | { tipo: 'informar'; que: 'oleada' | 'reliquia' };
+  | { tipo: 'informar'; que: 'oleada' | 'reliquia' }
+  /** Toda la chatarra suelta del sector sale volando hacia el jugador (el imán de grúa). */
+  | { tipo: 'imanTotal' }
+  /** Iris desmonta una herramienta a elegir: devuelve chatarra y libera su casilla. */
+  | { tipo: 'desmontar' };
 
 // ------------------------------------------------------------ altares de jefe
 
@@ -353,7 +357,7 @@ export const CLIPS_PILON = {
 // ------------------------------------------------------------ cajas de premio
 
 export interface Caja {
-  id: 'caja-suministros' | 'caja-helios' | 'caja-reliquia';
+  id: 'caja-suministros' | 'caja-helios' | 'caja-reliquia' | 'caja-abandonada' | 'caja-trampa';
   nombre: string;
   /**
    * Cómo se abre: acercarse, o pagar chatarra con la tecla de usar (y ADA
@@ -397,6 +401,25 @@ export const CAJAS: Caja[] = [
     apertura: { como: 'acercarse', segundos: 1.5 },
     aparece: 'Solo como premio de un desafío o donde la vigía lo marque. Siempre trae una reliquia.',
     botin: [{ peso: 1, da: [{ tipo: 'reliquia' }, { tipo: 'chatarra', cantidad: 10 }] }],
+  },
+  {
+    id: 'caja-abandonada', nombre: 'Caja abandonada',
+    apertura: { como: 'acercarse', segundos: 1.2 },
+    aparece: 'Cajas de la vieja colonia repartidas por el sector. Gratis: basta con quedarse al lado.',
+    botin: [
+      { peso: 45, da: [{ tipo: 'chatarra', cantidad: 15 }] },
+      { peso: 25, da: [{ tipo: 'integridad', cantidad: 30 }] },
+      { peso: 15, da: [{ tipo: 'temporal', cual: 'velocidad', segundos: 30, factor: 1.25 }, { tipo: 'chatarra', cantidad: 6 }] },
+      { peso: 15, da: [{ tipo: 'bendicion', elegir: 1, suerte: 0.3 }] },
+    ],
+  },
+  {
+    // Igual que una abandonada… salvo por un ojo rojo que parpadea de vez en
+    // cuando. El botín llega al aguantar la emboscada (ver EMBOSCADA).
+    id: 'caja-trampa', nombre: 'Caja abandonada',
+    apertura: { como: 'acercarse', segundos: 1.2 },
+    aparece: 'Una de cada tres cajas sueltas es un cebo de HELIOS: al abrirla salta una emboscada.',
+    botin: [{ peso: 1, da: [{ tipo: 'bendicion', elegir: 3, suerte: 0.8 }, { tipo: 'chatarra', cantidad: 25 }] }],
   },
 ];
 
@@ -504,11 +527,16 @@ export const NPCS: NpcMapa[] = [
         respuestas: ['Le cambio los rotores a tu inspector. Va a zumbar el doble.', 'Ese dron va descompensado. Dame un minuto… listo.'],
       },
       {
+        id: 'desmontar', claves: ['desmonta', 'desmontar', 'desmontame', 'quita una herramienta', 'quitame', 'libera', 'hueco', 'casilla'],
+        efecto: [{ tipo: 'desmontar' }], veces: 2, clip: 'Dar',
+        respuestas: ['¿Cuál te sobra? Te la desmonto y te doy lo que valgan las piezas.', 'Trae. La desarmo en un momento y te queda el hueco libre.'],
+      },
+      {
         id: 'generador', claves: ['generador', 'que arreglas', 'estufa'],
         efecto: [], clip: 'Hablar',
         respuestas: ['Es de antes del velo. Si arranca, el refugio pasa la noche caliente.', 'Le falta una bobina. O fe. Lo que llegue antes.'],
       },
-      ...COMUNES(['Reparo trajes por diez de chatarra y afino drones por veinticinco. Lo demás, con paciencia.']),
+      ...COMUNES(['Reparo trajes por diez de chatarra, afino drones por veinticinco y te desmonto la herramienta que te sobre. Lo demás, con paciencia.']),
     ],
     lineas: {
       saludo: ['¿Vienes entero? Que no se te note.', 'Hola. Si algo hace ruido raro, tráemelo.'],
@@ -701,6 +729,69 @@ export function contextoVoz(npc: NpcMapa, intencion: Intencion | null): string {
     'Responde en español, en una o dos frases cortas, sin emojis ni comillas.',
   ].join('\n');
 }
+
+// ----------------------------------------------------- hallazgos del sector
+// Lo que se encuentra explorando, además de altares y cofres: comida, un
+// imán, cajas sueltas (algunas, cebos), gente enjaulada por HELIOS, una
+// máquina dormida y la fragua. Todo sale en el mapa (M) cuando se ha visto.
+
+/** Raciones de antes del velo: al pasar por encima (si te falta vida) curan. */
+export const RACIONES = { cuantas: 14, cura: 25, distancia: [12, 118], separacion: 14 } as const;
+
+/** Electroimán de grúa caído: al tocarlo atrae toda la chatarra suelta del sector. */
+export const IMANES = { cuantos: 3, distancia: [30, 112], separacion: 45 } as const;
+
+/** Cajas sueltas gratis; `trampas` es la parte que son cebos de HELIOS. */
+export const CAJAS_SUELTAS = { cuantas: 9, trampas: 0.34, distancia: [20, 115], separacion: 18 } as const;
+
+/**
+ * Emboscada de una caja trampa: dos oleadas en corro alrededor de la caja; si
+ * se aguanta `segundos` sin alejarse más de `huida` m, llega el botín (doble).
+ */
+export const EMBOSCADA = { enemigos: 12, segunda: 7, segundos: 20, radio: 9, huida: 28 } as const;
+
+/**
+ * Jaulas de HELIOS con un superviviente dentro. Se abren con F; el
+ * superviviente te sigue `segundos` disparando bengalas a lo que se acerque.
+ */
+export const JAULAS = { cuantas: 3, distancia: [35, 110], separacion: 40, segundos: 45, dano: 16, cada: 0.55, alcance: 13 } as const;
+
+export interface Superviviente {
+  nombre: string;
+  /** Al salir de la jaula y al despedirse. */
+  libre: string;
+  adios: string;
+}
+
+export const SUPERVIVIENTES: Superviviente[] = [
+  { nombre: 'Teo', libre: '¡Por fin! Me quedan bengalas: te cubro un rato.', adios: 'Me vuelvo al refugio. ¡Gracias, de verdad!' },
+  { nombre: 'Nuria', libre: '¡Fuera de esa cosa! Vamos, que yo también sé disparar.', adios: 'Se me acaban las bengalas. Nos vemos en el refugio.' },
+  { nombre: 'Ilan', libre: 'Creí que me iban a cosechar… Te sigo, tú abre camino.', adios: 'Hasta aquí llego. Que vuelva el sol, ¿eh?' },
+];
+
+/**
+ * El Guardián dormido: una cosechadora de la colonia, de antes de HELIOS, que
+ * se apagó con el velo. Con F empieza a despertar; hay que aguantar a su lado
+ * (`radio`) `segundos` mientras HELIOS manda oleadas para impedirlo. Despierto,
+ * te deja elegir un regalo y vuelve a dormirse.
+ */
+export const GUARDIAN = {
+  distancia: [55, 105], radio: 9, segundos: 15, oleada: { cada: 5, enemigos: 7 },
+  premios: [
+    { id: 'bendicion', titulo: 'Bendición del Guardián', texto: 'Elige entre tres bendiciones, con la suerte de su lado.', efecto: [{ tipo: 'bendicion', elegir: 3, suerte: 1 }] as Efecto[] },
+    { id: 'chatarra', titulo: 'Tolva de chatarra', texto: 'Vacía su tolva: 70 de chatarra.', efecto: [{ tipo: 'chatarra', cantidad: 70 }] as Efecto[] },
+  ],
+} as const;
+
+/**
+ * Fragua del Deshielo: con dos herramientas a nivel máximo, una se funde en la
+ * otra. La que queda pasa a «forjada» (más daño, una carga más y menos
+ * recarga) y la fundida deja libre su casilla. Una vez por sector.
+ */
+export const FRAGUA = { distancia: [35, 90], coste: 40, usos: 1, dano: 1.6, carga: 1, recarga: 0.85 } as const;
+
+/** Iris desmonta una herramienta: devuelve esta chatarra por cada nivel que tenía. */
+export const DESMONTAR = { chatarraPorNivel: 6 } as const;
 
 // ---------------------------------------------------------------- colocación
 

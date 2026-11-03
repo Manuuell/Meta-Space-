@@ -3,8 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CATALOGO } from '../src/modelos/index.ts';
 import {
-  ALTARES_JEFE, CAJAS, CLIPS_ALTAR_JEFE, CLIPS_ARA, CLIPS_CAJA, CLIPS_NPC, CLIPS_PILON, DESAFIOS, ESTRUCTURAS, NPCS, aQuienHabla,
-  contextoVoz, detectarIntencion, frase, normalizar, tirarBotin, type EventoNpc,
+  ALTARES_JEFE, CAJAS, CLIPS_ALTAR_JEFE, CLIPS_ARA, CLIPS_CAJA, CLIPS_NPC, CLIPS_PILON, DESAFIOS, ESTRUCTURAS, NPCS, aQuienHabla, contextoVoz, detectarIntencion, frase, normalizar, tirarBotin, type EventoNpc, CAJAS_SUELTAS, EMBOSCADA, FRAGUA, GUARDIAN, IMANES, JAULAS, RACIONES, SUPERVIVIENTES,
 } from '../src/contenido/mapa.ts';
 
 // El contenido del mapa cita modelos y clips por nombre: si alguien renombra
@@ -105,4 +104,33 @@ test('voz: frases de respaldo y botín deterministas por semilla', () => {
   const caja = CAJAS.find((c) => c.id === 'caja-suministros')!;
   assert.deepEqual(tirarBotin(caja, 0), caja.botin[0].da);
   assert.deepEqual(tirarBotin(caja, 0.999), caja.botin[caja.botin.length - 1].da);
+});
+
+test('hallazgos: cajas sueltas, trampas, jaulas, Guardián y fragua con datos coherentes', () => {
+  const abandonada = CAJAS.find((c) => c.id === 'caja-abandonada');
+  const trampa = CAJAS.find((c) => c.id === 'caja-trampa');
+  assert.ok(abandonada && trampa, 'faltan las cajas sueltas');
+  // La trampa se presenta igual que una abandonada: es un cebo.
+  assert.equal(trampa.nombre, abandonada.nombre);
+  assert.equal(trampa.apertura.como, 'acercarse');
+  for (let k = 0; k < 10; k++) assert.ok(tirarBotin(abandonada, k / 10).length > 0, 'la abandonada no da nada');
+  assert.ok(tirarBotin(trampa, 0.5).some((e) => e.tipo === 'bendicion'), 'el botín doble de la trampa no trae bendición');
+  assert.ok(CAJAS_SUELTAS.trampas > 0 && CAJAS_SUELTAS.trampas < 0.5, 'demasiadas o ninguna trampa');
+  assert.ok(EMBOSCADA.segunda < EMBOSCADA.segundos && EMBOSCADA.huida > EMBOSCADA.radio);
+  assert.ok(SUPERVIVIENTES.length >= JAULAS.cuantas, 'faltan supervivientes para las jaulas');
+  assert.equal(GUARDIAN.premios.length, 2);
+  assert.ok(GUARDIAN.premios.every((p) => p.efecto.length > 0));
+  assert.ok(FRAGUA.dano > 1 && FRAGUA.recarga < 1 && FRAGUA.carga >= 1 && FRAGUA.usos >= 1);
+  assert.ok(RACIONES.cura > 0 && IMANES.cuantos > 0);
+});
+
+test('hallazgos: a Iris se le puede pedir que desmonte una herramienta', () => {
+  const iris = NPCS.find((n) => n.id === 'npc-mecanica')!;
+  for (const frase of ['desmonta el cortador', 'Iris, quítame una herramienta', 'libera un hueco']) {
+    const i = detectarIntencion(iris, frase);
+    assert.equal(i?.id, 'desmontar', `«${frase}» no se entiende como desmontar`);
+    assert.deepEqual(i?.efecto, [{ tipo: 'desmontar' }]);
+  }
+  // «Mejora el dron» sigue siendo lo del dron, no desmontar.
+  assert.equal(detectarIntencion(iris, 'mejora el dron')?.id, 'ajustar_dron');
 });

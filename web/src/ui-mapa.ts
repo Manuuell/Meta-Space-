@@ -1,5 +1,5 @@
 import './ui-mapa.css';
-import { icono, puntoJugador } from './hud.ts';
+import { icono, puntoJugador, type TipoIcono } from './hud.ts';
 
 // Mapa del sector (tecla M): la carta del terreno vista desde arriba, con el
 // norte arriba, y todo lo que el jugador ya ha tenido cerca. A la derecha, la
@@ -7,7 +7,7 @@ import { icono, puntoJugador } from './hud.ts';
 // se arrastra para moverse, y un toque pone (o quita) hasta tres marcas que
 // luego salen en el minimapa. La partida espera mientras está abierto.
 
-export type TipoLugar = 'altar' | 'ara' | 'caja' | 'torre' | 'refugio' | 'npc' | 'pilon' | 'duelo' | 'dragon';
+export type TipoLugar = TipoIcono;
 
 export interface LugarMapa {
   tipo: TipoLugar;
@@ -39,12 +39,23 @@ const NOMBRES: Record<TipoLugar, string> = {
   duelo: 'Altar de duelo (campeones)',
   dragon: 'Dragón del Velo (vuela)',
   caja: 'Cofre de HELIOS (de pago)',
+  suelta: 'Caja abandonada (gratis… casi siempre)',
   ara: 'Ara del Sol (desafío)',
   torre: 'Torre del Velo',
   refugio: 'Refugio (cura)',
   npc: 'Gente del refugio',
+  guardian: 'Guardián dormido (F: despiértalo)',
+  fragua: 'Fragua del Deshielo (funde dos herramientas)',
+  jaula: 'Jaula con un superviviente (F: libéralo)',
+  iman: 'Imán de grúa (atrae toda la chatarra)',
+  racion: 'Ración (cura al pasar)',
 };
-const ORDEN: TipoLugar[] = ['dragon', 'altar', 'duelo', 'pilon', 'caja', 'ara', 'torre', 'refugio', 'npc'];
+const ORDEN: TipoLugar[] = ['dragon', 'altar', 'duelo', 'guardian', 'fragua', 'jaula', 'pilon', 'caja', 'suelta', 'iman', 'ara', 'racion', 'torre', 'refugio', 'npc'];
+/** Cómo se dice que ya está hecho, por tipo (si no, «hecho»). */
+const HECHO: Partial<Record<TipoLugar, [string, string]>> = {
+  torre: ['derribada', 'derribadas'], jaula: ['liberado', 'liberados'], iman: ['usado', 'usados'], racion: ['comida', 'comidas'],
+  suelta: ['abierta', 'abiertas'], guardian: ['ya te ayudó', 'ya te ayudó'], fragua: ['fría', 'fría'],
+};
 
 function el<K extends keyof HTMLElementTagNameMap>(etiqueta: K, clase: string, texto?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(etiqueta);
@@ -126,7 +137,8 @@ export function abrirMapa(datos: DatosMapa, cerrar: (puntos: { x: number; z: num
       const abierto = vistos.find((l) => !l.hecho && l.coste !== undefined);
       if (abierto) texto.appendChild(el('small', '', `siguiente: ${abierto.coste} de chatarra`));
     } else if (hechos) {
-      texto.appendChild(el('small', '', `${hechos} ${tipo === 'torre' ? 'derribada' : 'hecho'}${hechos > 1 ? 's' : ''}`));
+      const [uno, varios] = HECHO[tipo] ?? ['hecho', 'hechos'];
+      texto.appendChild(el('small', '', `${hechos} ${hechos > 1 ? varios : uno}`));
     }
     fila.append(ico, texto, el('b', 'mp-cuenta', `×${vistos.length - hechos}`));
     lista.appendChild(fila);

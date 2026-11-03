@@ -435,6 +435,8 @@ export interface DepsTirada {
   maxPasiva?: number;
   personaje?: PersonajeId;
   exclusivas?: Partial<Record<WeaponId, PersonajeId>>;
+  /** Casillas de herramienta: con todas ocupadas no se ofrecen nuevas. */
+  maxHerramientas?: number;
   /** Informe opcional para telemetría y tests (piedad, trampas filtradas). */
   informa?: (info: { filtradas: number; piedad: 'daño' | 'vida' | null }) => void;
 }
@@ -447,6 +449,7 @@ function piscina(estado: EstadoBuild, deps: DepsTirada): Choice[] {
     const dueno = deps.exclusivas?.[id];
     if (dueno && dueno !== deps.personaje) continue;
     const nivel = estado.armas.get(id) ?? 0;
+    if (nivel === 0 && estado.armas.size >= (deps.maxHerramientas ?? Infinity)) continue;
     if (nivel < maxA) pool.push({ kind: 'weapon', id, level: nivel + 1 });
   }
   const pasivas: PassiveId[] = ['velocidad', 'iman', 'blindaje', 'enfriamiento', 'area', 'reparacion'];

@@ -380,7 +380,7 @@ const HOW_TO_HTML = `
     <li><b>Ratón · Q / E</b><span>Girar la cámara</span></li>
     <li><b>Herramientas</b><span>Se activan automáticamente</span></li>
     <li><b>Chatarra</b><span>Recógela para subir de nivel y para pagar cofres</span></li>
-    <li><b>F</b><span>Abrir un cofre de HELIOS (cuesta chatarra, y cada uno más)</span></li>
+    <li><b>F</b><span>Abrir un cofre de HELIOS (cuesta chatarra), liberar una jaula, despertar al Guardián, usar la Fragua o pedirle a Iris que desmonte una herramienta</span></li>
     <li><b>Pilones</b><span>Quédate dentro del círculo hasta el 100 % y elige una bendición</span></li>
     <li><b>M</b><span>Mapa del sector: lo descubierto y hasta tres marcas tuyas</span></li>
     <li><b>Duelos</b><span>F en un altar de duelo: vence a sus campeones en 90 s. El primero te da el Cañón solar; el segundo despierta al Dragón del Velo</span></li>

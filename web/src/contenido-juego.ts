@@ -14,11 +14,13 @@ import { crearSegadorJefe, TIEMPOS_JEFE_COSECHA } from './modelos/segador-jefe.t
 import { JefeGolem } from './jefe-golem.ts';
 import { JefeVolador } from './jefe-volador.ts';
 import type { ObjetivoPiloto } from './demo.ts';
+import { Hallazgos, type OpcionHallazgo, type TipoHallazgo } from './hallazgos.ts';
 import { crearHeraldo, TIEMPOS_HERALDO } from './modelos/heraldo.ts';
 import { crearOjoHelios, TIEMPOS_OJO } from './modelos/ojo-helios.ts';
 import {
   ALTARES_JEFE,
   CAJAS,
+  CAJAS_SUELTAS,
   CLIPS_ALTAR_JEFE,
   CLIPS_ARA,
   CLIPS_CAJA,
@@ -48,7 +50,7 @@ import {
   type NpcMapa,
 } from './contenido/mapa.ts';
 
-export type TipoMarca = 'altar' | 'ara' | 'caja' | 'torre' | 'refugio' | 'npc' | 'pilon' | 'duelo' | 'dragon';
+export type TipoMarca = 'altar' | 'ara' | 'caja' | 'suelta' | 'torre' | 'refugio' | 'npc' | 'pilon' | 'duelo' | 'dragon' | TipoHallazgo;
 
 /** Lo que acierta un disparo del Cañón solar: a qué distancia y cómo dañarlo. */
 export interface AciertoRayo {
@@ -237,6 +239,10 @@ export interface ContextoContenido {
   /** Velocidad del jugador: los gólems apuntan adonde va a estar. */
   vx?: number;
   vz?: number;
+  /** Si al jugador le falta vida (las raciones solo se recogen entonces). */
+  herido?: boolean;
+  /** El enemigo vivo más cercano a (x, z) dentro de `radio` (para los supervivientes). */
+  enemigoCercano?: (x: number, z: number, radio: number) => { x: number; z: number } | null;
 }
 
 export interface EventosContenido {
@@ -250,6 +256,11 @@ export interface EventosContenido {
   aviso?: (texto: string) => void;
   sacudida?: () => void;
   sonido?: (nombre: 'boom' | 'solar' | 'pulse') => void;
+  /** Hallazgos (ver hallazgos.ts): emboscadas, bengalas, elegir regalo y la fragua. */
+  emboscada?: (x: number, z: number, cuantos: number, radio: number) => void;
+  bengala?: (desde: { x: number; y: number; z: number }, hacia: { x: number; z: number }, dano: number) => void;
+  elegir?: (titulo: string, frase: string, opciones: OpcionHallazgo[], listo: () => void) => void;
+  forjar?: (coste: number, hecho: () => void) => boolean;
 }
 
 
@@ -317,13 +328,14 @@ function rng(semilla: number) {
   };
 }
 
-/**
- * Coloca y gobierna el contenido escaso del sector. La horda sigue en
- * Enemies; aquí viven altares, cajas, refugio, NPC, torres y jefes.
- */
 /** Metros a los que el mapa (M) apunta lo que hay alrededor. */
 export const VISTA_MAPA = 40;
 
+/**
+ * Coloca y gobierna el contenido escaso del sector. La horda sigue en
+ * Enemies; aquí viven altares, cajas, refugio, NPC, torres y jefes, y los
+ * hallazgos (hallazgos.ts) les piden prestado cómo poner actores.
+ */
 export class ContenidoJuego {
   /** Multiplicadores que aportan las pasivas del operador actual. */
   factorCosteCofre = 1;
@@ -361,12 +373,30 @@ export class ContenidoJuego {
   private scene: THREE.Scene;
   private world: World;
   private eventos: EventosContenido;
+  private hallazgos: Hallazgos;
 
   constructor(scene: THREE.Scene, world: World, eventos: EventosContenido, semilla = Math.floor(Math.random() * 0x100000000)) {
     this.scene = scene;
     this.world = world;
     this.eventos = eventos;
     this.rand = rng(semilla);
+    this.hallazgos = new Hallazgos({
+      poner: (id, crear, x, z, giro, clip) => this.poner(id, crear, x, z, giro, clip),
+      buscar: (distancia, margen, separacion) => this.buscar(distancia, margen, separacion),
+      reproducir: (actor, clip, unaVez) => this.reproducir(actor as Actor, clip, unaVez),
+      visto: (id) => this.vistos.has(id),
+      rand: () => this.rand(),
+    }, world, {
+      toast: (quien, texto, segundos) => this.eventos.toast(quien, texto, segundos),
+      aplicar: (efectos) => this.eventos.aplicar(efectos),
+      curar: (n) => this.eventos.curar(n),
+      aviso: (texto) => this.eventos.aviso?.(texto),
+      sacudida: () => this.eventos.sacudida?.(),
+      emboscada: (x, z, n, r) => this.eventos.emboscada?.(x, z, n, r),
+      bengala: (a, b, dano) => this.eventos.bengala?.(a, b, dano),
+      elegir: (titulo, frase, opciones, listo) => this.eventos.elegir ? this.eventos.elegir(titulo, frase, opciones, listo) : listo(),
+      forjar: (coste, hecho) => this.eventos.forjar?.(coste, hecho) ?? false,
+    });
     this.colocarContenido();
   }
 
@@ -386,8 +416,10 @@ export class ContenidoJuego {
     for (const a of this.aras) marcas.push({ id: a.actor.id, tipo: 'ara', x: a.actor.x, z: a.actor.z, hecho: a.estado === 'superado', visto: visto(a.actor.id) });
     for (const p of this.pilones) marcas.push({ id: p.actor.id, tipo: 'pilon', x: p.actor.x, z: p.actor.z, hecho: p.estado === 'agotado' || p.estado === 'cargado', visto: visto(p.actor.id) });
     for (const c of this.cajas) {
+      // Las trampas salen en el mapa como cualquier caja suelta: es un cebo.
+      const suelta = c.def.id === 'caja-abandonada' || c.def.id === 'caja-trampa';
       marcas.push({
-        id: c.actor.id, tipo: 'caja', x: c.actor.x, z: c.actor.z, hecho: c.abierta, visto: visto(c.actor.id) || c.dinamica,
+        id: c.actor.id, tipo: suelta ? 'suelta' : 'caja', x: c.actor.x, z: c.actor.z, hecho: c.abierta, visto: visto(c.actor.id) || c.dinamica,
         coste: c.def.apertura.como === 'pagar' ? this.costeCofre(c) : undefined,
       });
     }
@@ -396,6 +428,7 @@ export class ContenidoJuego {
     for (const n of this.npcs) marcas.push({ id: n.def.id, tipo: 'npc', x: n.actor.x, z: n.actor.z, visto: visto(n.def.id) });
     for (const d of this.duelos) marcas.push({ id: d.actor.id, tipo: 'duelo', x: d.actor.x, z: d.actor.z, hecho: d.estado === 'superado', visto: visto(d.actor.id) });
     if (this.dragon && !this.dragon.derrotado) marcas.push({ id: 'dragon', tipo: 'dragon', x: this.dragon.x, z: this.dragon.z, visto: true });
+    marcas.push(...this.hallazgos.marcas);
     return marcas;
   }
 
@@ -414,6 +447,8 @@ export class ContenidoJuego {
 
   /** La barra grande del HUD: el gólem si está en pie; si no, el minijefe más cercano. */
   get barraJefe(): { nombre: string; vida: number; vidaMax: number } | undefined {
+    const hallazgo = this.hallazgos.barra;
+    if (hallazgo) return hallazgo;
     if (this.dragon && !this.dragon.derrotado) {
       return { nombre: this.dragon.nombre + (this.dragon.posado ? ' · ¡posado!' : ' · usa el Cañón'), vida: this.dragon.vida, vidaMax: this.dragon.vidaMax };
     }
@@ -491,6 +526,7 @@ export class ContenidoJuego {
 
   reset() {
     this.aturdidos.clear();
+    this.hallazgos.reset();
     for (const jefe of this.jefes) this.eliminarActor(jefe.actor);
     this.jefes = [];
     this.minijefesCreados = 0;
@@ -568,6 +604,7 @@ export class ContenidoJuego {
 
     this.actualizarExposicion(c);
     this.actualizarAltares(c);
+    this.hallazgos.update({ dt: c.dt, px: c.px, pz: c.pz, herido: c.herido ?? false, enemigoCercano: c.enemigoCercano ?? (() => null) });
     this.actualizarCajas(c);
     this.actualizarPilones(c);
     this.actualizarAras(c);
@@ -629,7 +666,31 @@ export class ContenidoJuego {
       .map((n) => ({ n, d: Math.hypot(x - n.actor.x, z - n.actor.z) }))
       .filter((v) => v.d <= DISTANCIAS_NPC.saludar)
       .sort((a, b) => a.d - b.d)[0];
+    if (cerca?.n.def.id === 'npc-mecanica' && cerca.d <= DISTANCIAS_NPC.hablar) {
+      return { tecla: 'F', texto: 'Iris te desmonta una herramienta · mantén V para hablar' };
+    }
     return cerca ? { tecla: 'V', texto: 'Mantén V para hablar con ' + cerca.n.def.nombre } : undefined;
+  }
+
+  /** ¿Está Iris a mano? (F le pide que desmonte una herramienta). */
+  irisCerca(x: number, z: number) {
+    return this.npcs.some((n) => n.def.id === 'npc-mecanica' && Math.hypot(x - n.actor.x, z - n.actor.z) <= DISTANCIAS_NPC.hablar);
+  }
+
+  /** Iris coge la herramienta y la desmonta: el clip de dar. */
+  irisDesmonta() {
+    const iris = this.npcs.find((n) => n.def.id === 'npc-mecanica');
+    if (iris) this.reproducir(iris.actor, CLIPS_NPC.dar, true);
+  }
+
+  /** Aviso de la tecla F de los hallazgos (jaula, Guardián, fragua). */
+  interaccionHallazgo(x: number, z: number, chatarra: number): Interaccion | undefined {
+    return this.hallazgos.interaccion(x, z, chatarra);
+  }
+
+  /** F junto a un hallazgo. Devuelve si hizo algo. */
+  usarHallazgo(x: number, z: number) {
+    return this.hallazgos.usar(x, z);
   }
 
   // ------------------------------------------------------------ modo demo
@@ -892,6 +953,16 @@ export class ContenidoJuego {
       const actor = this.poner('caja-helios-' + k, () => crearCaja('helios'), p.x, p.z, haciaCentro(p.x, p.z), CLIPS_CAJA.espera);
       this.cajas.push({ actor, def: cajaHelios, progreso: 0, abierta: false, entregada: false, dinamica: false });
     }
+    // Cajas sueltas gratis; una parte son cebos de HELIOS.
+    const abandonada = CAJAS.find((c) => c.id === 'caja-abandonada')!, trampa = CAJAS.find((c) => c.id === 'caja-trampa')!;
+    for (let k = 0; k < CAJAS_SUELTAS.cuantas; k++) {
+      const p = this.buscar(CAJAS_SUELTAS.distancia, 2, CAJAS_SUELTAS.separacion);
+      const esTrampa = this.rand() < CAJAS_SUELTAS.trampas;
+      const actor = this.poner('caja-suelta-' + k, () => crearCaja(esTrampa ? 'trampa' : 'abandonada'), p.x, p.z, this.rand() * Math.PI * 2, CLIPS_CAJA.espera);
+      this.cajas.push({ actor, def: esTrampa ? trampa : abandonada, progreso: 0, abierta: false, entregada: false, dinamica: false });
+    }
+    this.hallazgos.colocar();
+
     const reliquia = this.buscar([30, 50], 2, 6);
     const actorReliquia = this.poner('caja-reliquia', () => crearCaja('reliquia'), reliquia.x, reliquia.z, haciaCentro(reliquia.x, reliquia.z), CLIPS_CAJA.espera);
     this.cajas.push({
@@ -904,11 +975,20 @@ export class ContenidoJuego {
     });
   }
 
+  /**
+   * Sitio libre para algo que quiere `separacion` m de lo demás. Entre dos
+   * cosas vale la menor de sus separaciones (una ración no necesita los 48 m de
+   * un altar, pero dos altares sí); si no cabe, se prueba a la mitad y, en
+   * último caso, en cualquier punto de su anillo de distancias.
+   */
   private buscar(distancia: readonly [number, number], margen: number, separacion: number) {
-    const p = this.world.lugarLibre(this.rand, distancia, margen, this.ocupados) ?? {
-      x: (this.rand() * 2 - 1) * distancia[0],
-      z: (this.rand() * 2 - 1) * distancia[0],
-    };
+    const lejos = (k: number) => this.ocupados.map((o) => ({ x: o.x, z: o.z, r: Math.min(o.r, Math.max(separacion, 8)) * k }));
+    const p = this.world.lugarLibre(this.rand, distancia, margen, lejos(1))
+      ?? this.world.lugarLibre(this.rand, distancia, margen, lejos(0.5))
+      ?? (() => {
+        const ang = this.rand() * Math.PI * 2, d = distancia[0] + this.rand() * (distancia[1] - distancia[0]);
+        return this.world.resolve(Math.cos(ang) * d, Math.sin(ang) * d, margen, { x: 0, z: 0 });
+      })();
     this.ocupados.push({ ...p, r: separacion });
     return p;
   }
@@ -1007,9 +1087,13 @@ export class ContenidoJuego {
           caja.progreso += c.dt;
           if (caja.progreso >= CLIPS_CAJA.botin) {
             caja.entregada = true;
-            this.eventos.aplicar(tirarBotin(caja.def, this.rand()));
             this.reproducir(caja.actor, CLIPS_CAJA.vacia);
-            this.eventos.toast('ADA', caja.def.nombre + ': botín recuperado.', 3);
+            // La trampa no da nada todavía: el botín, si se aguanta la emboscada.
+            if (caja.def.id === 'caja-trampa') this.hallazgos.emboscar(caja.actor.x, caja.actor.z, tirarBotin(caja.def, this.rand()));
+            else {
+              this.eventos.aplicar(tirarBotin(caja.def, this.rand()));
+              this.eventos.toast('ADA', caja.def.nombre + ': botín recuperado.', 3);
+            }
           }
         }
         continue;

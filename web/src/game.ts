@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ENEMIES, ESCALADO, EnemyId, GEAR, GearId, MOVE, PassiveId, RELICS, RUN, WEAPONS, WeaponId, factorNivel } from './data';
+import { ENEMIES, ESCALADO, EnemyId, GEAR, GearId, MAX_HERRAMIENTAS, MOVE, PassiveId, RELICS, RUN, WEAPONS, WeaponId, factorNivel } from './data';
 import { World } from './world';
 import { Enemies } from './enemies';
 import { Weapons, Modifiers } from './weapons';
@@ -60,7 +60,8 @@ import {
 import { mostrarMejoras } from './mejoras';
 import { abrirMapa } from './ui-mapa';
 import { alerta, marcarAcierto } from './hud';
-import { CANON } from './contenido/mapa';
+import { CANON, DESMONTAR } from './contenido/mapa';
+import type { OpcionHallazgo } from './hallazgos';
 import { pilotar } from './demo';
 import { zonasActivas } from './avisos';
 import { personaje, type PersonajeDef, type PersonajeId } from './personajes';
@@ -142,6 +143,8 @@ export class Game {
   private elitesVivas = 0;
   private passives = new Map<PassiveId, number>();
   private relicsFound: string[] = [];
+  /** Herramientas que Iris ya ha desmontado en este sector (le quedan piezas para dos). */
+  private desmontadas = 0;
   // Héroe personalizado del creador de personaje (Meta Space).
   private customSprite: THREE.Texture | null = null;
   private heroName = '';
@@ -301,6 +304,10 @@ export class Game {
       aviso: (texto) => alerta(texto),
       sacudida: () => this.camara.sacudidaPulso(),
       sonido: (nombre) => sfx(nombre),
+      emboscada: (x, z, cuantos, radio) => this.emboscar(x, z, cuantos, radio),
+      bengala: (desde, hacia, dano) => this.bengala(desde, hacia, dano),
+      elegir: (titulo, frase, opciones, listo) => this.elegirHallazgo(titulo, frase, opciones, listo),
+      forjar: (coste, hecho) => this.abrirFragua(coste, hecho),
     });
     this.pickups = new Pickups(this.scene, this.world);
     this.numeros = new NumerosDano(canvas);
@@ -956,6 +963,7 @@ export class Game {
     this.bendiciones = [];
     this.totales = totalesVacios();
     this.bendicionesPendientes = [];
+    this.desmontadas = 0;
     this.puntosMapa = [];
     this.mejorasTomadas = 0;
     this.aguante = 1;
@@ -1155,6 +1163,12 @@ export class Game {
     this.habilidadHasta = this.time + Math.min(1.2, this.acciones.get('Habilidad')?.getClip().duration ?? 0);
   }
 
+  /** ¿Puede llevar esta herramienta? Las exclusivas, solo su operador. */
+  private armaDisponible(id: WeaponId) {
+    const dueno = WEAPONS[id].exclusiva;
+    return !dueno || !this.customSprite && dueno === this.personajeActual.id;
+  }
+
   private passive(id: PassiveId) {
     return this.passives.get(id) ?? 0;
   }
@@ -1191,9 +1205,10 @@ export class Game {
         // ya están todas al máximo, te da una nueva.
         const subibles = (Object.keys(WEAPONS) as WeaponId[])
           .filter((id) => this.weapons.level(id) < WEAPONS[id].levels.length);
+        const nuevas = this.weapons.levels.size < MAX_HERRAMIENTAS ? subibles.filter((id) => this.weapons.level(id) === 0 && this.armaDisponible(id)) : [];
         const ids = [
           ...subibles.filter((id) => this.weapons.level(id) > 0).sort((a, b) => this.weapons.level(a) - this.weapons.level(b)),
-          ...subibles.filter((id) => this.weapons.level(id) === 0),
+          ...nuevas,
         ];
         const id = efecto.herramienta === 'cualquiera' ? ids[0] : efecto.herramienta;
         if (id && this.weapons.level(id) < WEAPONS[id].levels.length) {
@@ -1213,6 +1228,10 @@ export class Game {
         this.temporales.set(efecto.cual, { hasta: this.time + efecto.segundos, factor: efecto.factor });
       } else if (efecto.tipo === 'marcar') {
         this.contenido.marcar(efecto.que, this.player.position.x, this.player.position.z);
+      } else if (efecto.tipo === 'imanTotal') {
+        this.pickups.atraer(this.player.position.x, this.player.position.z, 9999);
+      } else if (efecto.tipo === 'desmontar') {
+        this.abrirDesmontar();
       } else if (efecto.tipo === 'informar') {
         const texto = efecto.que === 'oleada'
           ? 'La vigía marca la dirección de la próxima oleada.'
@@ -1370,6 +1389,11 @@ export class Game {
         const p = this.world.resolve(x, z, ENEMIES.baliza.radius, { x: 0, z: 0 });
         this.enemies.spawn('baliza', p.x, p.z, this.lastHpScale);
       },
+      herido: this.hp < this.maxHp - 1,
+      enemigoCercano: (x, z, radio) => {
+        const i = this.enemies.nearest(x, z, radio);
+        return i >= 0 ? { x: this.enemies.x[i], z: this.enemies.z[i] } : null;
+      },
     });
     this.receiveDamage(danoContenido * (this.intocable() ? 0 : 1));
     const botanica = this.personajeActual.id === 'amara-keita' && !this.customSprite ? .5 : 0;
@@ -1428,7 +1452,9 @@ export class Game {
     ui.updateHud({
       time: this.time, hp: this.hp, maxHp: this.maxHp, level: this.level, xp: this.xp,
       xpNext: RUN.xpFor(this.level + this.pendingLevels), kills: this.kills, scrap: this.scrap,
-      weapons: [...this.weapons.levels.entries()], signal: this.enemies.countOf('baliza'),
+      // Las forjadas van como nivel 7: el HUD les pone su marco de forja.
+      weapons: [...this.weapons.levels.entries()].map(([id, n]) => [id, this.weapons.forjada(id) ? n + 1 : n] as [WeaponId, number]),
+      signal: this.enemies.countOf('baliza'),
       recargas: [...this.weapons.levels.keys()].map((id) => this.weapons.recarga(id, this.mods)),
       carga: this.contenido.cargaPilon,
       bendiciones: this.resumenBendiciones(),
@@ -1443,7 +1469,7 @@ export class Game {
       jefes: this.contenido.jefesHud,
       jefeActivo: this.contenido.barraJefe,
       interaccion: this.contenido.interaccionCofre(px, pz, this.scrap) ?? this.contenido.interaccionDuelo(px, pz)
-        ?? this.contenido.interaccionNpc(px, pz),
+        ?? this.contenido.interaccionHallazgo(px, pz, this.scrap) ?? this.contenido.interaccionNpc(px, pz),
       canon: {
         nivel: this.canonNivel,
         recarga: this.canonNivel ? this.canonCd / CANON.recarga[this.canonNivel - 1] : 0,
@@ -1480,14 +1506,167 @@ export class Game {
     else if (this.pendingLevels > 0) this.levelUp();
   }
 
+  // ------------------------------------------------- Hallazgos del sector
+
+  /** Emboscada: `cuantos` enemigos en corro alrededor de (x, z), con la vida de ahora. */
+  private emboscar(x: number, z: number, cuantos: number, radio: number) {
+    for (let k = 0; k < cuantos; k++) {
+      const a = (k / cuantos) * Math.PI * 2 + Math.random() * 0.3;
+      const tipo: EnemyId = k % 4 === 3 ? 'saltador' : 'recolector';
+      const p = this.world.resolve(x + Math.sin(a) * radio, z + Math.cos(a) * radio, ENEMIES[tipo].radius, { x, z });
+      this.enemies.spawn(tipo, p.x, p.z, this.lastHpScale);
+      this.weapons.efectos.columna(p.x, this.world.heightAt(p.x, p.z), p.z, 3, { color: '#c77dff', duracion: 0.4, desde: 0.6, hasta: 0.2 });
+    }
+    sfx('boom');
+  }
+
+  /** Una bengala de un superviviente: trazo naranja, destello y daño en el punto. */
+  private bengala(desde: { x: number; y: number; z: number }, hacia: { x: number; z: number }, dano: number) {
+    const y = this.world.heightAt(hacia.x, hacia.z) + 1;
+    const fx = this.weapons.efectos;
+    fx.rayo(new THREE.Vector3(desde.x, desde.y, desde.z), new THREE.Vector3(hacia.x, y, hacia.z), 0.12, { color: '#ffb347', duracion: 0.14 });
+    fx.chispa(hacia.x, y, hacia.z, { color: '#ffe066', duracion: 0.25, desde: 0.3, hasta: 1.2 });
+    this.weapons.danoHabilidad(hacia.x, hacia.z, 1.2, dano, 0.6);
+    sfx('shot');
+  }
+
+  /** Pausa la partida y enseña tarjetas; `alElegir` recibe el índice. */
+  private tarjetas(tarjetas: Parameters<typeof mostrarMejoras>[1], alElegir: (i: number) => void, titulo: string, frase: string) {
+    this.state = 'levelup';
+    this.expectUnlock = isLocked();
+    unlockPointer();
+    mostrarMejoras(this.level, tarjetas, (i) => {
+      this.state = 'playing';
+      this.clock.getDelta();
+      lockPointer(this.canvas);
+      alElegir(i);
+    }, { titulo, frase });
+  }
+
+  /** Una tarjeta para no hacer nada (Iris y la fragua no obligan a elegir). */
+  private tarjetaVolver(texto: string) {
+    return {
+      id: 'generico', tipo: 'reparar' as const, titulo: 'Mejor no', texto, color: '#8a8fa3', etiqueta: 'Sin cambios',
+      rareza: { id: 'volver', nombre: 'Volver', color: '#8a8fa3' },
+    };
+  }
+
+  /** El regalo del Guardián (o cualquier elección de un hallazgo). */
+  private elegirHallazgo(titulo: string, frase: string, opciones: OpcionHallazgo[], listo: () => void) {
+    if (this.demo) {
+      this.aplicarEfectos(opciones[0].efecto);
+      listo();
+      return;
+    }
+    sfx('carga');
+    this.tarjetas(opciones.map((o) => ({
+      id: o.id, tipo: 'bendicion' as const, titulo: o.titulo, texto: o.texto, color: o.color, etiqueta: 'Regalo del Guardián',
+      rareza: { id: 'regalo', nombre: 'Regalo', color: o.color },
+    })), (i) => {
+      this.aplicarEfectos(opciones[i].efecto);
+      listo();
+    }, titulo, frase);
+  }
+
+  /**
+   * Iris desmonta una herramienta: devuelve chatarra por nivel y deja la
+   * casilla libre. Dos veces por sector, y nunca la única que llevas.
+   */
+  private abrirDesmontar() {
+    const ids = [...this.weapons.levels.keys()];
+    if (this.desmontadas >= 2) {
+      ui.toast('Iris', 'Me he quedado sin sitio en el banco. Hoy no desmonto nada más.', 'info', 4);
+      return;
+    }
+    if (ids.length <= 1) {
+      ui.toast('Iris', 'Si te desmonto la única que llevas, ¿con qué te defiendes? Ni hablar.', 'info', 4);
+      return;
+    }
+    sfx('cofre');
+    this.tarjetas([
+      ...ids.map((id) => ({
+        id, tipo: 'herramienta' as const, titulo: WEAPONS[id].name, color: WEAPONS[id].color,
+        texto: `Iris la desmonta: +${DESMONTAR.chatarraPorNivel * this.weapons.level(id)} de chatarra y una casilla libre para otra.`,
+        rareza: { id: 'desmontar', nombre: 'Desmontar', color: '#ff8a3d' },
+      })),
+      this.tarjetaVolver('Te la quedas como está. Iris vuelve a su generador.'),
+    ], (i) => {
+      const id = ids[i];
+      if (!id) return;
+      const chatarra = DESMONTAR.chatarraPorNivel * this.weapons.level(id);
+      this.weapons.desmontar(id);
+      this.scrap += chatarra;
+      this.desmontadas++;
+      this.contenido.irisDesmonta();
+      sfx('cofre');
+      ui.toast('Iris', `${WEAPONS[id].name} desmontada: ${chatarra} de chatarra y una casilla libre.`, 'info', 4);
+    }, 'IRIS, LA MECÁNICA', '¿Qué herramienta te sobra? La desmonto y te doy lo que valgan sus piezas.');
+  }
+
+  /**
+   * La Fragua del Deshielo: con dos herramientas a nivel máximo, eliges cuál
+   * sale forjada y cuál se funde en ella. Devuelve si abrió la elección.
+   */
+  private abrirFragua(coste: number, hecho: () => void): boolean {
+    const maximas = [...this.weapons.levels]
+      .filter(([id, n]) => n >= WEAPONS[id].levels.length && !this.weapons.forjada(id)).map(([id]) => id);
+    if (maximas.length < 2) {
+      sfx('sinChatarra');
+      ui.toast('ADA', 'La fragua necesita dos herramientas a nivel máximo (y que no estén ya forjadas).', 'info', 4);
+      return false;
+    }
+    if (this.scrap < coste) {
+      sfx('sinChatarra');
+      ui.toast('ADA', `Hacen falta ${coste} de chatarra para avivar la fragua.`, 'info', 3);
+      return false;
+    }
+    const tarjeta = (id: WeaponId, texto: string, paso: string) => ({
+      id, tipo: 'herramienta' as const, titulo: WEAPONS[id].name, texto, color: WEAPONS[id].color,
+      rareza: { id: 'forja', nombre: paso, color: '#ff8a3d' },
+    });
+    const forjar = (base: WeaponId, fundida: WeaponId) => {
+      this.scrap -= coste;
+      this.weapons.forjar(base, fundida);
+      hecho();
+      sfx('carga');
+      alerta(`¡${WEAPONS[base].name} forjada!`);
+      ui.toast('ADA', `${WEAPONS[fundida].name} se ha fundido en ${WEAPONS[base].name}: más daño, una carga más y menos recarga. Su casilla queda libre.`, 'info', 6);
+    };
+    sfx('cofre');
+    this.tarjetas([
+      ...maximas.map((id) => tarjeta(id, 'Esta se queda y sale forjada: +60 % de daño, una carga más y un 15 % menos de recarga.', 'Forjar')),
+      this.tarjetaVolver('Ahora no. La fragua seguirá encendida.'),
+    ], (i) => {
+      const base = maximas[i];
+      if (!base) return;
+      const resto = maximas.filter((id) => id !== base);
+      if (resto.length === 1) { forjar(base, resto[0]); return; }
+      // Con más de dos a tope, se elige también cuál se funde.
+      window.setTimeout(() => this.tarjetas(
+        resto.map((id) => tarjeta(id, `Se funde en ${WEAPONS[base].name} y deja libre su casilla.`, 'Fundir')),
+        (j) => forjar(base, resto[j]), 'FRAGUA DEL DESHIELO', '¿Cuál se funde? Desaparece y deja su casilla libre.',
+      ), 250);
+    }, 'FRAGUA DEL DESHIELO', 'Elige la herramienta que sale forjada; la otra se funde en ella.');
+    return true;
+  }
+
   // ------------------------------------------------- Cofres, bendiciones y mapa
 
-  /** F: abre el cofre que tengas a mano (si te llega la chatarra) o empieza un duelo. */
+  /**
+   * F: abre el cofre que tengas a mano (si te llega la chatarra), empieza un
+   * duelo, usa un hallazgo (jaula, Guardián, fragua) o le pide a Iris que
+   * desmonte una herramienta.
+   */
   private usarCofre() {
     const p = this.player.position;
     const coste = this.contenido.abrirCofre(p.x, p.z, this.scrap);
     if (coste === -1 && this.contenido.empezarDuelo(p.x, p.z)) {
       sfx('carga');
+      return;
+    }
+    if (coste === -1 && this.contenido.usarHallazgo(p.x, p.z)) return;
+    if (coste === -1 && this.contenido.irisCerca(p.x, p.z)) {
+      this.abrirDesmontar();
       return;
     }
     if (coste === -2) {
@@ -2278,7 +2457,9 @@ export class Game {
     const exclusivas = Object.fromEntries((Object.keys(WEAPONS) as WeaponId[])
       .filter((id) => WEAPONS[id].exclusiva).map((id) => [id, WEAPONS[id].exclusiva])) as Partial<Record<WeaponId, PersonajeId>>;
     // El héroe del creador no es ningún operador: no le sale ninguna exclusiva.
-    const deps: DepsTirada = { tabla: TABLA_ARMAS, personaje: this.customSprite ? undefined : this.personajeActual.id, exclusivas };
+    const deps: DepsTirada = {
+      tabla: TABLA_ARMAS, personaje: this.customSprite ? undefined : this.personajeActual.id, exclusivas, maxHerramientas: MAX_HERRAMIENTAS,
+    };
     const picks: ui.Choice[] = tirarCartas(estado, deps);
     // El equipo de movilidad entra como una carta más: seguro hasta tener la
     // primera pieza (desde el nivel 3) y luego de vez en cuando.

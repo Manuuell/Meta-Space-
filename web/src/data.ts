@@ -433,6 +433,12 @@ export const RELICS: RelicDef[] = [
   },
 ];
 
+/**
+ * Herramientas a la vez (las casillas del HUD). Con todas ocupadas ya no salen
+ * nuevas al subir de nivel: Iris o la Fragua del Deshielo liberan casillas.
+ */
+export const MAX_HERRAMIENTAS = 4;
+
 export const RUN = {
   length: 600,            // diez minutos hasta la ventana de lanzamiento
   maxHp: 100,

@@ -108,6 +108,10 @@ export interface HudState {
   habilidad?: { id: string; nombre: string; color: string; lista: number } | null;
 }
 
+/** Lo que tiene icono en el minimapa y en el mapa del sector (M). */
+export type TipoIcono = 'altar' | 'ara' | 'caja' | 'suelta' | 'torre' | 'refugio' | 'npc' | 'pilon' | 'duelo' | 'dragon'
+  | 'racion' | 'iman' | 'jaula' | 'guardian' | 'fragua';
+
 export interface MinimapState {
   px: number;
   pz: number;
@@ -118,7 +122,7 @@ export interface MinimapState {
   /** La nave de ARES-IX posada junto a la salida (World.nave): se queda en el borde si está lejos. */
   nave?: { x: number; z: number; giro: number };
   /** Lo que hay en el mapa: lagos, montañas, barrios y el contenido. */
-  lugares?: { tipo: 'lago' | 'montaña' | 'barrio' | 'altar' | 'ara' | 'caja' | 'torre' | 'refugio' | 'npc' | 'pilon' | 'duelo' | 'dragon'; x: number; z: number; r?: number; hecho?: boolean }[];
+  lugares?: { tipo: 'lago' | 'montaña' | 'barrio' | TipoIcono; x: number; z: number; r?: number; hecho?: boolean }[];
   /** Lo que ha marcado la vigía: pulsa en el minimapa. */
   marca?: { x: number; z: number } | null;
   /** Puntos que el jugador ha puesto en el mapa grande (M). */
@@ -424,8 +428,11 @@ export function updateHud(s: HudState) {
     ultimas = clave;
     q('.h2-herramientas').innerHTML = s.weapons.map(([id, nivel]) => {
       const hta = HERRAMIENTAS[id];
+      // Por encima del máximo es una forjada (la Fragua del Deshielo).
+      const forjada = nivel > NIVEL_MAX;
       const pips = Array.from({ length: NIVEL_MAX }, (_, k) => `<i class="${k < nivel ? 'si' : ''}"></i>`).join('');
-      return `<div class="h2-casilla" style="--c:${hta.color}"><i class="h2-recarga"></i>${hta.icono}<small>${hta.nombre}</small><div class="h2-pips">${pips}</div></div>`;
+      return `<div class="h2-casilla${forjada ? ' forjada' : ''}" style="--c:${hta.color}"><i class="h2-recarga"></i>${hta.icono}`
+        + `<small>${hta.nombre}</small><div class="h2-pips">${pips}</div>${forjada ? '<b class="h2-forja">★</b>' : ''}</div>`;
     }).join('') + '<div class="h2-casilla vacia"></div>'.repeat(Math.max(0, 4 - s.weapons.length));
   }
   // La recarga baja como una cortina oscura sobre cada casilla.
@@ -619,5 +626,41 @@ export function icono(ctx: CanvasRenderingContext2D, tipo: string, hecho: boolea
     ctx.fillStyle = hecho ? '#6a6478' : '#ffe066';
     ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(7, 0); ctx.lineTo(0, 12); ctx.lineTo(-7, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
     if (!hecho) { ctx.fillStyle = '#fff'; ctx.fillRect(-1.5, -6, 3, 6); }
+  } else if (tipo === 'suelta') {
+    // Caja abandonada (gratis): verde oliva con su banda.
+    ctx.fillStyle = hecho ? '#6a6070' : '#8a9a52';
+    ctx.fillRect(-6, -5, 12, 10); ctx.strokeRect(-6, -5, 12, 10);
+    ctx.fillStyle = hecho ? '#4a4450' : '#4a4f34'; ctx.fillRect(-1.5, -5, 3, 10);
+  } else if (tipo === 'racion') {
+    // Ración: círculo verde con la cruz de curar.
+    ctx.fillStyle = hecho ? '#6a6070' : '#4fd38a';
+    ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    if (!hecho) { ctx.fillStyle = '#fff'; ctx.fillRect(-1.2, -4, 2.4, 8); ctx.fillRect(-4, -1.2, 8, 2.4); }
+  } else if (tipo === 'iman') {
+    // Imán de herradura rojo con los polos claros.
+    ctx.lineWidth = 6.5; ctx.strokeStyle = '#16111f';
+    ctx.beginPath(); ctx.arc(0, -1, 6, Math.PI, 0); ctx.lineTo(6, 7); ctx.moveTo(-6, -1); ctx.lineTo(-6, 7); ctx.stroke();
+    ctx.lineWidth = 3.5; ctx.strokeStyle = hecho ? '#6a6070' : '#e0483b';
+    ctx.beginPath(); ctx.arc(0, -1, 6, Math.PI, 0); ctx.lineTo(6, 4); ctx.moveTo(-6, -1); ctx.lineTo(-6, 4); ctx.stroke();
+    ctx.fillStyle = '#e8eeff'; ctx.fillRect(-7.5, 4, 3, 3); ctx.fillRect(4.5, 4, 3, 3);
+  } else if (tipo === 'jaula') {
+    // Jaula: cuadro púrpura con barrotes (verde si ya la abriste).
+    ctx.fillStyle = hecho ? '#4fd38a' : '#8a2cf0';
+    ctx.fillRect(-7, -8, 14, 16); ctx.strokeRect(-7, -8, 14, 16);
+    ctx.strokeStyle = hecho ? '#16111f' : '#e3c9ff'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); for (const x of [-3.5, 0, 3.5]) { ctx.moveTo(x, -6); ctx.lineTo(x, 6); } ctx.stroke();
+  } else if (tipo === 'guardian') {
+    // El Guardián: casco redondo con su ojo dorado (apagado si ya te ayudó).
+    ctx.fillStyle = hecho ? '#6a6070' : '#5f8f7a';
+    ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = hecho ? '#3b4a5a' : '#ffd25a';
+    ctx.beginPath(); ctx.arc(0, 0, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  } else if (tipo === 'fragua') {
+    // Fragua: yunque oscuro con su llama naranja encima.
+    ctx.fillStyle = '#3b3f52';
+    ctx.fillRect(-8, 3, 16, 5); ctx.strokeRect(-8, 3, 16, 5);
+    ctx.fillStyle = hecho ? '#6a6070' : '#ff8a3d';
+    ctx.beginPath(); ctx.moveTo(0, -11); ctx.quadraticCurveTo(8, -3, 4, 3); ctx.lineTo(-4, 3); ctx.quadraticCurveTo(-8, -3, 0, -11); ctx.closePath(); ctx.fill(); ctx.stroke();
+    if (!hecho) { ctx.fillStyle = '#ffe066'; ctx.beginPath(); ctx.arc(0, -1, 2.2, 0, Math.PI * 2); ctx.fill(); }
   }
 }

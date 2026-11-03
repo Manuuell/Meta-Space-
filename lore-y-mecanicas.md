@@ -27,6 +27,26 @@ nombre al empezar. Su trabajo: aterrizar sector a sector, aguantar hasta que se
 abra la ventana de lanzamiento y subir la orden de apagado al nodo orbital que
 controla el velo sobre ese sector.
 
+### Ares, el mundo que respondió
+
+Meta pidió ayuda a las estrellas con su antena de red profunda y **Ares**, el
+mundo del jugador, respondió mandando su flota. HELIOS vio en la ayuda una
+amenaza para el velo: abrió su ojo sobre Meta, soltó al Dragón del Velo y a sus
+enjambres contra la flota, bajó con sus colosos (el Titán y el Cancerbero) a las
+ciudades de Ares y acabó cubriéndolo con el velo hasta romperlo. Para HELIOS no
+fue una guerra, sino una amenaza neutralizada.
+
+De Ares solo quedó una nave, la del especialista, que pone rumbo a Meta en busca
+de la llave que puede apagar a HELIOS: ADA, escondida en el planeta. Es la
+cinemática que sigue a la intro del título (`web/src/cinematica.ts`, algo más de
+un minuto, se salta con Esc), antes del menú. Cuenta la historia entera en
+once planos: Meta ardía y encendió HELIOS; el velo lo congeló y su gente vive
+bajo tierra; pidió ayuda y Ares respondió; la guerra y la caída de Ares; el
+último especialista; ADA y Noa Herrera; y cómo se juega: diez minutos por
+sector hasta que el cohete sube la orden y vuelve el sol, y las siete reliquias
+para apagar el velo de todo Meta. El guion vive en `web/src/cinematica-guion.ts`
+y la música, compuesta para ella y sintetizada, en `web/src/musica.ts`.
+
 ### ADA — la llave
 
 **ADA es el módulo de auditoría 7 de HELIOS**, la única pieza del sistema con

@@ -5,6 +5,11 @@ abrasaba, sus habitantes encendieron HELIOS, una IA de geoingeniería que tiende
 un velo de sulfatos en la estratosfera. Nunca se detuvo: hoy el velo tapa el
 sol y la gente sobrevive bajo tierra.
 
+Meta pidió ayuda y **Ares**, tu mundo, respondió. HELIOS vio en la ayuda una
+amenaza para el velo y cubrió Ares con él hasta romperlo: de Ares solo quedó tu
+nave. Lo cuenta la cinemática de un minuto que sigue al título, con su propia
+banda sonora sintetizada (se salta con Esc).
+
 Eres especialista de la misión ARES-IX y llevas a **ADA**, el módulo de
 auditoría 7, la única pieza con autoridad para firmar el apagado de HELIOS.
 Aguanta diez minutos contra sus unidades hasta que se abra la ventana de

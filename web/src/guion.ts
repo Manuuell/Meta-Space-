@@ -16,7 +16,9 @@ export const LORE =
   'gente de Meta sobrevive en refugios bajo tierra. Nadie puede revocar la orden, porque HELIOS solo obedece ' +
   'a su protocolo. La única pieza con autoridad para firmar el apagado es el módulo de auditoría 7, ADA, que ' +
   'la ingeniera Noa Herrera arrancó del sistema y escondió. El jugador es especialista de la misión ARES-IX y ' +
-  'lleva a ADA en la mochila; HELIOS envía sus unidades (Recolectores, Balizas, Segadores, Saltadores, Avispas, ' +
+  'viene de Ares, el mundo que respondió a la llamada de auxilio de Meta: HELIOS vio en la ayuda una amenaza ' +
+  'para el velo, cubrió Ares con él hasta romperlo y de Ares solo quedó su nave. En Meta encontró a ADA y la ' +
+  'lleva en la mochila; HELIOS envía sus unidades (Recolectores, Balizas, Segadores, Saltadores, Avispas, ' +
   'Caparazones y Sembradores) a recuperarla. En cada sector hay que aguantar diez minutos hasta que se abre la ' +
   'ventana de lanzamiento: el cohete sube la orden de apagado y el sol vuelve a ese sector. Las reliquias son ' +
   'pruebas de lo que pasó; con las siete, ADA completa la auditoría que apaga el velo de todo Meta.';

@@ -1,0 +1,263 @@
+# Cómo hacer cinemáticas en Meta Space
+
+Traspaso para seguir en otro chat o hacer más cinemáticas. Refleja el estado del
+03/11/2026, con la cinemática de la historia ya integrada en el juego.
+
+## Prompt para el chat nuevo
+
+Pega esto como primer mensaje, abierto en `~/Developer/Meta Space`:
+
+```
+Seguimos con Meta Space. Lee cinematicas.md, TRASPASO.md y lore-y-mecanicas.md.
+Quiero hacer esta cinemática: <qué pasa, cuándo sale y cuánto dura>.
+Antes de escribir código, propónme el guion plano a plano (tiempos, qué se ve,
+qué se dice y qué suena) y espera mi visto bueno. Todo el texto en español.
+Música y sonido sintetizados, sin assets ni nada con derechos de terceros.
+Commits solo cuando te lo pida, sin coautoría ni marcas de IA. Pregúntame antes
+de fusionar o de hacer push.
+```
+
+## Qué hay hoy
+
+Secuencia al abrir el juego (`toTitle` en `web/src/game.ts`):
+
+1. **Intro del título** (`web/src/intro.ts`): la nave suelta las letras de META
+   SPACE. Al pulsar, despega.
+2. **Historia** (`web/src/cinematica.ts`): 63 s en 11 planos, con música.
+3. **Menú.**
+
+Las dos primeras salen una vez por carga (`introVista`). No salen con
+`prefers-reduced-motion` ni con `?demo=jefes`.
+
+| Archivo | Qué contiene |
+|---|---|
+| `web/src/cinematica-guion.ts` | Planos, rótulos y momentos clave. Solo datos. |
+| `web/src/cinematica.ts` | Puesta en escena, efectos y sonidos sueltos. |
+| `web/src/musica.ts` | Partitura e instrumentos sintetizados. |
+| `web/src/intro.ts` | Intro del título; exporta planetas, velo, `sonar`, `tono`, `tramo`… |
+| `web/test/cinematica.test.ts` | Comprueba tiempos, rótulos y que la música cae con la imagen. |
+
+## Las cuatro ideas del sistema
+
+1. **Todo sale de `t`.** Cada fotograma se calcula solo con el segundo en curso:
+   disparos, explosiones, esquirlas y chispas no guardan estado. Por eso se puede
+   empezar en cualquier plano y las capturas se repiten. Usa `azar(n)`, nunca
+   `Math.random()`, en lo que se ve.
+2. **Los tiempos son relativos al plano.** Escribe `en('caida', 2)` o `tl`, nunca
+   un segundo absoluto. Así se puede mover o alargar un plano sin tocar el resto.
+3. **La imagen sigue al audio.** Con música, `t` sale del reloj de `AudioContext`
+   (`relojBanda`), así que nunca se desfasan. Sin audio, avanza con `dt`.
+4. **Los golpes se deciden antes.** `guionDeFuego()` calcula al empezar todos los
+   rayos y explosiones. Cada baja tiene su disparo y cada estallido su `plano`.
+
+## Receta: añadir un plano
+
+1. **Guion** (`cinematica-guion.ts`): añade el plano a `PLANOS`, en orden y sin
+   huecos, y sus rótulos con `r(plano, de, a, voz, texto)`.
+   - `narra` va abajo. `helios` va arriba, en mayúsculas de protocolo.
+   - Máximo 48 caracteres. Duración mínima: letras ÷ 38 + 0,5 s.
+   - Una voz no puede pisarse a sí misma; las dos sí pueden coincidir.
+2. **Objetos** (`showCinematica`): créalos antes de `const nuevos` y añádelos a esa
+   lista. Todo lo de esa lista se apaga en cada fotograma.
+3. **Plano** (objeto `planos`): añade `miPlano: (tl) => { … }`, donde `tl` son los
+   segundos desde que empezó. TypeScript avisa si falta. El esqueleto es:
+
+   ```ts
+   miPlano: (tl) => {
+     ver(objeto, actor.raiz);                     // enciende lo que sale
+     luz(0.5, 0.7, 0.5, '#fff1dc', 2.2);          // dirección, color y fuerza
+     contraluz(1, 0.2, -0.6, PALETA.helios, 0.8);
+     ambiente('#c3c6ff', '#3d2440', 1.0);
+     actor.raiz.position.set(0, 0, -5);
+     orientar(actor.raiz, vA.set(0, 0, 1));       // +z es el frente del modelo
+     actor.raiz.scale.setScalar(1);
+     posar(actor, ['Reposo', 1, t]);              // clip, peso y segundo del clip
+     encuadrar(0, 1.5, 4, 0, 1, -5);              // cámara y punto al que mira
+   },
+   ```
+
+4. **Sonido:** añade `[en('miPlano', 1.2), fn]` a `SONIDOS`.
+5. **Música:** añade su parte en `componer()`. Ver «Música y sonido».
+6. **Si cambian los tiempos,** revisa los números de `test/cinematica.test.ts`.
+
+Un corte pasa por negro automáticamente; la excepción está en `CORTES`.
+
+## Caja de herramientas
+
+Todo está dentro de `showCinematica` salvo que se indique.
+
+| Herramienta | Para qué sirve |
+|---|---|
+| `actor(modelo, alto, copia?)` | Prepara un modelo. `alto` sube el pivote al centro del cuerpo. |
+| `conDetalle(0.5, crearX)` y `raiz.clone()` | Enjambres: una base con menos detalle y copias. |
+| `posar(actor, [clip, peso, s, bucle?], …)` | Pone clips y los mezcla por peso. |
+| `orientar(obj, dirección, alabeo)` | Apunta el frente del modelo. |
+| `ruta([[s, x, y, z], …])` | Trayectoria suave; devuelve posición y rumbo. |
+| `encuadrar(px, py, pz, mx, my, mz)` | Cámara, con el temblor de `sacudida` incluido. |
+| `chispa(x, y, z, color, metros)` | Punto luminoso: nieve, ascuas, estelas, datos. Hasta 4.000 por fotograma. |
+| `estallidos.push({ plano, t, pos, tam })` | Explosión con chispas, destello, raya de lente, luz y temblor. |
+| `disparo(t0, dur, de, a, color, grosor, impacto)` | Rayo entre dos puntos, dentro de `guionDeFuego`. |
+| `destello(mapa, color, tam, niebla?)` | Sprite aditivo: halos, soles, fuegos, anillos. |
+| `materialPlaneta(paleta)` | Planeta con velo (`cubre`), hielo (`polo`) y lava (`grietas`). |
+| `ponerCampo(sol)`, `pintarRocas`, `nieve` | Campo helado bajo el velo; `sol` lo abre de 0 a 1. |
+| `tramo(t, a, b)`, `campana(t, c, ancho)` | Rampa suave de 0 a 1 y pulso centrado en un momento. |
+| `enPantalla(v)` | Pasa un punto 3D a píxeles, para etiquetas HTML. |
+
+Para rótulos o HUD en HTML: añade el elemento en `capa.innerHTML`, usa unidades
+`cqh`/`cqw` en el CSS y ponlo a `opacity: 0` en `pintar` junto a `ficha`.
+
+## Modelos más útiles
+
+Están todos en `CATALOGO` (`web/src/modelos/index.ts`). Miran hacia +z.
+
+| Modelo | `alto` | Tamaño | Clips útiles |
+|---|---|---|---|
+| Nave `crearNave` | 1,5 | 3,3 m | Flotar, Volar, Turbo |
+| Astronauta `crearAstronauta` | 0 | 2,9 m | Reposo, Correr, Volar, Victoria, Derrota |
+| Avispa `crearAvispa` | 3,4 | 1,4 m | Volar |
+| Recolector `crearRecolector` | 0 | 1,8 m | Caminar, Derrota |
+| Baliza `crearBaliza` | 0 | flota a 1,6 m | Flotar, Triangular, Derrota |
+| Dragón `crearDragon` | 2,6 | 18 m de alas | Volar, Rugir, Aliento |
+| Heraldo `crearHeraldo` | 4,3 | 4,9 m | Flotar, Entrada, Furia, Derrota |
+| Titán `crearGolem('titan')` | 0 | 12 m | Caminar, Pisoton (golpe a 1,15 s), Furia |
+| Cancerbero `crearSabueso` | 0 | 7,3 m | Embestir, Furia, Aliento |
+| Refugio `crearRefugio` | 0 | 5 m | Reposo, Abrir, Alarma |
+| Torre del Velo `crearTorreVelo` | 0 | 14 m | Emitir, Colapso |
+| Tali `crearNpcVigia` y gente | 0 | 2,5 m | Trabajar, Saludar, Hablar, Celebrar, Asustarse |
+| Holograma `crearAdaNoa` | 0 | 1,8 m, centrado | Reposo, Escanear, Hablar |
+
+Para medir un modelo nuevo usa `medir` de `kit.ts` y `THREE.Box3`. Mira además su
+altura real: varios modelos no tienen el pivote donde parece.
+
+## Música y sonido
+
+Todo se sintetiza: no hay muestras ni grabaciones, así que no hay derechos de
+terceros.
+
+- **Música:** en `componer()`, `const X = de('miPlano')` y luego
+  `toca(X(1.5), voz, dur, notas, vol)`. Las notas son MIDI (60 = do central).
+- **Tempo:** 120 pulsaciones por minuto; medio segundo el pulso.
+- **Voces:** `pad`, `arpa`, `bajo`, `metal`, `campana`, `zumbido`, `bombo`, `caja`,
+  `charles`, `platillo`, `tambor`, `subida`, `impacto`, `pitido`.
+- **Volumen orientativo:** colchones 0,07–0,17 (se reparte entre sus notas), bajo
+  0,12, bombo 0,5, metales 0,07, campanas 0,06.
+- **Motivos:** Ares es el arpegio en re mayor. HELIOS es re, mi bemol y la. Noa
+  tiene su tema en campanas. Reutilízalos: atan la música con la historia.
+- **Efectos:** `tono`, `soplido`, `estallido`, `barrido`, `sirena`, `viento`, `sos`.
+
+El navegador no deja sonar nada sin un gesto. El clic que despega la nave cuenta,
+pero Esc no. Por eso, si se salta la intro con Esc, la cinemática espera en negro
+con el botón «Ver la historia».
+
+## Comprobar el trabajo
+
+Antes de dar algo por hecho: `npx tsc --noEmit`, `npm test`, `npm run build` y
+verlo en el navegador. Arranca con `preview_start` y el nombre `web`.
+
+Fotograma congelado, en la consola con `npm run dev`:
+
+```js
+window.__ver = async (s) => {
+  window.__cin?.();
+  document.querySelectorAll('.msc, .msi').forEach((e) => e.remove());
+  const m = await import('/src/cinematica.ts?t=' + Date.now());
+  window.__cin = m.showCinematica(document.body, () => {}, { fijo: s });
+  await new Promise((r) => setTimeout(r, 900));
+  // En el panel del navegador, la captura no se refresca hasta que cambia algo.
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;z-index:99';
+  document.body.appendChild(d);
+  await new Promise((r) => setTimeout(r, 400));
+  d.remove();
+};
+await __ver(27.7);
+```
+
+Pasada completa sin que suene el Mac:
+
+```js
+window.AudioContext = undefined;
+const m = await import('/src/cinematica.ts?t=' + Date.now());
+m.showCinematica(document.body, () => console.log('fin'), { inicio: 0, sonido: true });
+```
+
+Para bloquear el sonido en la secuencia real del juego, ejecuta esto después de
+cargar: `AudioContext.prototype.resume = () => Promise.resolve();`.
+
+Medir la música sin oírla:
+
+```js
+const m = await import('/src/musica.ts?t=' + Date.now());
+const sr = 16000, oc = new OfflineAudioContext(2, sr * 66, sr);
+m.tocarBanda(oc, 0, 0);
+const d = (await oc.startRendering()).getChannelData(0);
+const rms = [];
+let pico = 0;
+for (let s = 0; s < 66; s++) {
+  let suma = 0;
+  for (let i = s * sr; i < (s + 1) * sr; i++) {
+    suma += d[i] * d[i];
+    pico = Math.max(pico, Math.abs(d[i]));
+  }
+  rms.push(Math.round(Math.sqrt(suma / sr) * 1000));
+}
+({ pico, rms: rms.join(' ') });
+```
+
+El pico debe quedar por debajo de 1 y sin `NaN`. Hay que escucharla igualmente: la
+medida no dice si suena bien.
+
+## Actualizar el artifact
+
+El visor es **[La caída de Ares](https://claude.ai/artifact/GVgKxq2wra3RvJ3aY4Evqy)**
+(privado). La página y su `cinematica.js` no están en el repositorio: vivían en el
+directorio temporal, que se borró en un reinicio.
+
+1. Recupera la página con la acción `read` de la herramienta Artifact.
+2. Empaqueta con Vite en modo librería, sin minificar y con `copyPublicDir: false`.
+   La entrada exporta `showCinematica`, `PLANOS`, `ROTULOS`, `DURACION`, `planoEn`
+   y `sonar`. Marca `three` como externo con `rolldownOptions: { external: ['three'] }`.
+3. Cambia en el resultado los dos `from "three"` por
+   `https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js`.
+4. Actualiza en la página la barra de planos y la escaleta.
+5. Publica la página, con `cinematica.js` en `files`.
+
+Antes de publicar módulos nuevos hay que haberlos leído enteros. Busca además
+URLs, claves y `fetch` en el paquete.
+
+## Trampas que ya costaron tiempo
+
+- **Capturas viejas:** con el panel oculto, las capturas no se actualizan. Muestra
+  el panel y toca el DOM antes de capturar.
+- **Recarga de Vite:** al guardar, la página se recarga y `__ver` desaparece.
+- **Colores en shaders:** `THREE.Color` pasa a lineal y los `ShaderMaterial` no
+  convierten de vuelta. Por eso las paletas de planeta van en números 0–1.
+- **Clips con avisos:** `Bombardeo` y `Rociar` del Heraldo pintan marcas en el
+  suelo, que en el espacio quedan flotando. Revisa los clips de ataque.
+- **Rutas:** `monotona` frena en la última clave. Ponla después del corte.
+- **Instancias:** usa `frustumCulled = false` o desaparecen al moverse.
+- **Explosiones:** cada una lleva `plano`; si no, se cuela en el plano siguiente.
+- **Tests en Node:** importa con extensión `.ts`, no uses propiedades en el
+  constructor y no toques `document` al cargar el módulo.
+- **Dependencias circulares:** `musica.ts` no puede importar `cinematica.ts`. Lo
+  compartido va en `cinematica-guion.ts`.
+- **Nombres:** `baliza` es el sprite de la señal de ADA; la unidad es `balizaHelios`.
+- **Móvil:** el campo de visión se abre en vertical. Compruébalo con
+  `resize_window` en `mobile`.
+
+## Para hacer otra cinemática
+
+`showCinematica` es una sola función con un solo guion. Para añadir planos a esta
+historia, basta con la receta. Para una cinemática independiente, como la victoria
+final con las siete reliquias, la derrota o la entrada de un jefe, conviene separar
+antes el motor:
+
+1. Crear `web/src/cine/motor.ts` con actores, `posar`, `orientar`, `ruta`, chispas,
+   rayos, estallidos, rótulos, puerta de audio, grano y control de teclas.
+2. Dejar en cada cinemática sus datos: planos, rótulos, objetos, `planos`,
+   `SONIDOS` y partitura.
+3. Hacer que `tocarBanda` reciba la partitura como parámetro.
+4. Comprobar que la historia actual sigue igual antes de empezar la nueva.
+
+Antes de escribir código, acuerda el guion plano a plano. Además, los diseños deben
+ser siempre originales: PokéBonk y Megabonk son solo referencia de género.

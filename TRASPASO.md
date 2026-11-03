@@ -7,8 +7,7 @@ Estado a 03/11/2026. Pega este archivo al abrir el chat nuevo.
 ## Cinemática de la historia (03/11/2026)
 
 Al abrir el juego salen la intro con el nombre de META SPACE, la historia de Meta
-y Ares (63 s, 11 planos, con música sintetizada) y el menú. Todo está en la rama
-`operadores-y-mapa`, sin fusionar en `main` ni subir. Pregunta antes de hacerlo.
+y Ares (63 s, 11 planos, con música sintetizada) y el menú. Todo está en `main`.
 
 Cómo hacer más cinemáticas, con la receta y las trampas conocidas:
 [cinematicas.md](cinematicas.md).

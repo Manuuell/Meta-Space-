@@ -12,16 +12,22 @@ import {
 // - HELIOS: cofre de chapa con grietas púrpura y una cerradura con ojo rojo.
 //   Sale del suelo; al abrirlo, ADA le apaga el ojo.
 // - Reliquia: cofre dorado con un sol. Se materializa entre destellos.
+// - Abandonada: caja militar de la vieja colonia, verde oliva y gastada, con
+//   escarcha en la tapa y una cuerda. Gratis.
+// - Trampa: idéntica a la abandonada salvo por un ojo rojo de HELIOS en el
+//   costado que se abre de vez en cuando. Al abrirla saltan pinchos.
 //
 // Bisagra de la tapa detrás: girarla en x negativo la abre. Mira hacia +z;
 // 1 m de ancho. Pocas piezas y detalle bajo: puede haber docenas en el mapa.
 
-export type TipoCaja = 'suministros' | 'helios' | 'reliquia';
+export type TipoCaja = 'suministros' | 'helios' | 'reliquia' | 'abandonada' | 'trampa';
 
 const NOMBRES: Record<TipoCaja, string> = {
   suministros: 'Caja de suministros',
   helios: 'Cofre de HELIOS',
   reliquia: 'Cofre de reliquia',
+  abandonada: 'Caja abandonada',
+  trampa: 'Caja abandonada (trampa)',
 };
 
 const TAU = Math.PI * 2;
@@ -41,6 +47,8 @@ function montar(tipo: TipoCaja): Modelo {
     suministros: { base: PALETA.traje, banda: PALETA.naranja, luz: PALETA.ada },
     helios: { base: PALETA.chapaHelios, banda: PALETA.oscuroHelios, luz: PALETA.purpuraBrillo },
     reliquia: { base: '#7a5a3a', banda: ORO, luz: PALETA.arena },
+    abandonada: { base: '#6b7448', banda: '#4a4f34', luz: '#ffd25a' },
+    trampa: { base: '#6b7448', banda: '#4a4f34', luz: '#ffd25a' },
   }[tipo];
 
   // Cuerpo, bandas y la luz que llama la atención.
@@ -75,6 +83,26 @@ function montar(tipo: TipoCaja): Modelo {
     const hackeo = nodo('hackeo', cuerpo, 0, 0.43, 0.43);
     pieza(hackeo, esfera(0.085, 1.3, 1, 0.4), brillo(PALETA.ada), 0, 0, 0, { contorno: false });
     oculto(hackeo);
+  } else if (tipo === 'abandonada' || tipo === 'trampa') {
+    // Número de la colonia en plantilla, escarcha en la tapa y una cuerda.
+    pieza(cuerpo, caja(0.34, 0.16, 0.02, 0.01), toon('#e8dfc0'), 0, 0.32, 0.36, { contorno: false });
+    pieza(cuerpo, caja(0.06, 0.1, 0.01, 0.005), toon('#4a4f34'), -0.08, 0.32, 0.372, { contorno: false });
+    pieza(cuerpo, caja(0.06, 0.1, 0.01, 0.005), toon('#4a4f34'), 0.06, 0.32, 0.372, { contorno: false });
+    pieza(tapa, caja(0.8, 0.04, 0.5, 0.02), toon('#eef4ff'), 0.06, 0.2, 0.32, { contorno: false });
+    pieza(cuerpo, toro(0.52, 0.025).scale(1, 1, 0.72), toon('#a8875a'), 0, 0.12, 0, { contorno: false });
+    if (tipo === 'trampa') {
+      // El ojo del costado: casi siempre cerrado (la pista para quien se fije).
+      const ojo = nodo('ojo_trampa', cuerpo, 0.505, 0.3, 0.05);
+      pieza(ojo, esfera(0.07, 0.4, 1, 1), brillo(PALETA.helios), 0, 0, 0, { contorno: false });
+      ojo.scale.set(1, 0.08, 1);
+      const pinchos = nodo('pinchos', cuerpo, 0, 0.3, 0);
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * TAU;
+        const p = pieza(pinchos, punta(0.07, 0.4), toon(PALETA.purpura), Math.sin(a) * 0.45, 0, Math.cos(a) * 0.3);
+        p.rotation.set(Math.cos(a) * 1.3, 0, -Math.sin(a) * 1.3);
+      }
+      oculto(pinchos);
+    }
   } else {
     // Sol dorado en el frente y remaches de oro.
     pieza(cuerpo, esfera(0.13, 1, 1, 0.3), brillo(colores.luz), 0, 0.32, 0.36, { contorno: false });
@@ -93,7 +121,7 @@ function montar(tipo: TipoCaja): Modelo {
   const destello = nodo('destello', cuerpo, 0, 0.7, 0);
   for (let k = 0; k < 8; k++) {
     const a = (k / 8) * TAU;
-    const r = pieza(destello, punta(0.06, 0.7), brillo(tipo === 'helios' ? PALETA.purpuraBrillo : PALETA.arena), Math.sin(a) * 0.25, 0.35 + Math.abs(Math.cos(a)) * 0.15, Math.cos(a) * 0.25, { contorno: false, sombra: false });
+    const r = pieza(destello, punta(0.06, 0.7), brillo(tipo === 'helios' ? PALETA.purpuraBrillo : tipo === 'trampa' ? PALETA.helios : PALETA.arena), Math.sin(a) * 0.25, 0.35 + Math.abs(Math.cos(a)) * 0.15, Math.cos(a) * 0.25, { contorno: false, sombra: false });
     r.rotation.set(Math.cos(a) * 0.6, 0, -Math.sin(a) * 0.6);
   }
   oculto(destello);
@@ -109,7 +137,7 @@ function montar(tipo: TipoCaja): Modelo {
       rot('cuerpo', poses([[0, 0, 0, 8], [0.7, 0, 0, -8], [1.4, 0, 0, 4], [1.5, 0, 0, 0], [2.0, 0, 0, 0]])),
       esc('cuerpo', poses([[0, 1, 1, 1], [1.5, 1, 1, 1], [1.55, 1.15, 0.8, 1.15], [1.75, 0.95, 1.05, 0.95], [2.0, 1, 1, 1]])),
     ]
-    : tipo === 'helios'
+    : tipo === 'helios' || tipo === 'abandonada' || tipo === 'trampa'
       ? [
         mov(raiz, 'cuerpo', poses([[0, 0, -1.0, 0], [0.4, 0, -0.95, 0], [1.4, 0, 0.1, 0], [1.6, 0, 0, 0], [2.0, 0, 0, 0]])),
         rot('cuerpo', poses([[0, 0, 0, 0], [0.5, 0, 0, 4], [0.8, 0, 0, -4], [1.1, 0, 0, 3], [1.4, 0, 0, 0], [2.0, 0, 0, 0]])),
@@ -124,6 +152,8 @@ function montar(tipo: TipoCaja): Modelo {
   const animaciones = [
     animacion('Reposo', 2.0, [
       parpadeoLuz(2, 2),
+      // La trampa entreabre el ojo un instante cada dos segundos.
+      ...(tipo === 'trampa' ? [esc('ojo_trampa', poses([[0, 1, 0.08, 1], [1.3, 1, 0.08, 1], [1.4, 1, 1, 1], [1.6, 1, 1, 1], [1.7, 1, 0.08, 1], [2.0, 1, 0.08, 1]]))] : []),
       rot('tapa', ciclo(2, (f) => [-Math.max(0, sen(f, 1)) * 3, 0, 0])),
       mov(raiz, 'tapa', ciclo(2, (f) => [0, Math.max(0, sen(f, 1, 0.1)) * 0.015, 0])),
     ], 'movimiento', 'Espera a que la abran: la luz parpadea y la tapa se levanta un poco, como si respirara.'),
@@ -141,6 +171,10 @@ function montar(tipo: TipoCaja): Modelo {
       rot('tapa', poses([[0, 0, 0, 0], [0.42, 0, 0, 0], [0.55, -125, 0, 0], [0.7, -100, 0, 0], [0.85, -110, 0, 0], [1.2, -108, 0, 0]])),
       esc('destello', poses([[0, 0.001, 0.001, 0.001], [0.44, 0.001, 0.001, 0.001], [0.6, 1.3, 1.6, 1.3], [0.9, 1, 1.2, 1], [1.2, 0.001, 0.001, 0.001]])),
       esc('baliza', poses([[0, 1, 1, 1], [0.45, 1.8, 1.8, 1.8], [0.7, 0.001, 0.001, 0.001], [1.2, 0.001, 0.001, 0.001]])),
+      ...(tipo === 'trampa'
+        ? [esc('ojo_trampa', poses([[0, 1, 0.08, 1], [0.2, 1.4, 1.4, 1.4], [1.2, 1.4, 1.4, 1.4]])),
+          esc('pinchos', poses([[0, 0.001, 0.001, 0.001], [0.42, 0.001, 0.001, 0.001], [0.55, 1.3, 1.3, 1.3], [0.7, 1, 1, 1], [1.2, 1, 1, 1]]))]
+        : []),
       ...(tipo === 'helios'
         ? [esc('cerradura', poses([[0, 1, 1, 1], [0.2, 1.2, 1.2, 1], [0.35, 1, 0.05, 1], [1.2, 1, 0.05, 1]])),
           esc('hackeo', poses([[0, 0.001, 0.001, 0.001], [0.3, 0.001, 0.001, 0.001], [0.4, 1.2, 1.2, 1.2], [0.6, 1, 1, 1], [1.2, 1, 1, 1]]))]
@@ -151,6 +185,7 @@ function montar(tipo: TipoCaja): Modelo {
       rot('tapa', ciclo(2, () => [-108, 0, 0])),
       esc('baliza', ciclo(2, () => [0.001, 0.001, 0.001])),
       ...(tipo === 'helios' ? [esc('cerradura', ciclo(2, () => [1, 0.05, 1])), esc('hackeo', ciclo(2, (f) => { const k = 1 + 0.1 * sen(f, 2); return [k, k, k]; }))] : []),
+      ...(tipo === 'trampa' ? [esc('ojo_trampa', ciclo(2, (f) => { const k = 1.3 + 0.2 * sen(f, 4); return [k, k, k]; })), esc('pinchos', ciclo(2, () => [1, 1, 1]))] : []),
     ], 'movimiento', 'Abierta y vacía.'),
   ];
 

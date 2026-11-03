@@ -32,6 +32,12 @@ import { crearSegador } from './segador.ts';
 import { crearSegadorJefe } from './segador-jefe.ts';
 import { crearSembrador } from './sembrador.ts';
 import { crearTorreVelo } from './torre-velo.ts';
+import { crearRacion } from './racion.ts';
+import { crearImanGrua } from './iman-grua.ts';
+import { crearJaula } from './jaula.ts';
+import { crearSuperviviente } from './superviviente.ts';
+import { crearGuardian } from './guardian.ts';
+import { crearFragua } from './fragua.ts';
 import type { Modelo } from './kit.ts';
 
 export type { Animacion, Modelo } from './kit.ts';
@@ -97,6 +103,16 @@ export const CATALOGO: { id: string; nombre: string; tipo: Tipo; crear: () => Mo
   { id: 'caja-suministros', nombre: 'Caja de suministros', tipo: 'objeto', crear: () => crearCaja('suministros') },
   { id: 'caja-helios', nombre: 'Cofre de HELIOS', tipo: 'objeto', crear: () => crearCaja('helios') },
   { id: 'caja-reliquia', nombre: 'Cofre de reliquia', tipo: 'objeto', crear: () => crearCaja('reliquia') },
+  { id: 'caja-abandonada', nombre: 'Caja abandonada', tipo: 'objeto', crear: () => crearCaja('abandonada') },
+  { id: 'caja-trampa', nombre: 'Caja abandonada (trampa)', tipo: 'objeto', crear: () => crearCaja('trampa') },
+  { id: 'racion', nombre: 'Ración de la colonia', tipo: 'objeto', crear: crearRacion },
+  { id: 'iman-grua', nombre: 'Imán de grúa', tipo: 'mapa', crear: crearImanGrua },
+  { id: 'jaula', nombre: 'Jaula de HELIOS', tipo: 'mapa', crear: crearJaula },
+  { id: 'superviviente', nombre: 'Teo, superviviente', tipo: 'npc', crear: () => crearSuperviviente(0) },
+  { id: 'superviviente-2', nombre: 'Nuria, superviviente', tipo: 'npc', crear: () => crearSuperviviente(1) },
+  { id: 'superviviente-3', nombre: 'Ilan, superviviente', tipo: 'npc', crear: () => crearSuperviviente(2) },
+  { id: 'guardian', nombre: 'Guardián dormido', tipo: 'mapa', crear: crearGuardian },
+  { id: 'fragua', nombre: 'Fragua del Deshielo', tipo: 'mapa', crear: crearFragua },
   { id: 'torre-velo', nombre: 'Torre del Velo', tipo: 'mapa', crear: crearTorreVelo },
   { id: 'refugio', nombre: 'Refugio', tipo: 'mapa', crear: crearRefugio },
   { id: 'nave', nombre: 'Nave de ARES-IX', tipo: 'escena', crear: crearNave },

@@ -9,7 +9,8 @@ import { crearNave } from './modelos/nave.ts';
 // cada una sale de la nave al pasar por encima de su hueco, salta a su sitio
 // con muelle y luego flota en ola. La nave frena con los retros y se queda
 // flotando bajo el nombre. Al pulsar, despega atravesando el título y deja
-// paso al menú. Todo en código (Three.js y el kit de modelos), sin assets.
+// paso a la historia (cinematica.ts). Todo en código (Three.js y el kit de
+// modelos), sin assets.
 //
 // Se salta con clic / Intro / Espacio (el primero lleva al título completo, el
 // segundo despega) y con Escape. El juego la omite con `prefers-reduced-motion`.
@@ -35,7 +36,7 @@ const T = {
   lema: 5.75,
   pista: 6.5,
   completo: 6.4, // adonde salta el primer clic
-  despegue: 0.95, // lo que dura la salida antes de dar paso al menú
+  despegue: 0.95, // lo que dura la salida antes de dar paso a lo siguiente
 };
 
 /**
@@ -62,12 +63,12 @@ const SECTOR = 'SECTOR DELTA';
 const NOTAS = [523, 587, 659, 784, 880, 1047, 1175, 1319, 1568, 1760];
 
 const TAU = Math.PI * 2;
-const suave = (x: number) => {
+export const suave = (x: number) => {
   const k = Math.min(1, Math.max(0, x));
   return k * k * (3 - 2 * k);
 };
-const tramo = (t: number, a: number, b: number) => suave((t - a) / (b - a));
-const azar = (n: number) => {
+export const tramo = (t: number, a: number, b: number) => suave((t - a) / (b - a));
+export const azar = (n: number) => {
   const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
   return x - Math.floor(x);
 };
@@ -77,7 +78,7 @@ const azar = (n: number) => {
  * parámetro de la curva sin retroceder y con velocidad continua. Termina
  * con pendiente cero, así la nave llega frenando.
  */
-function monotona(xs: number[], ys: number[]): (x: number) => number {
+export function monotona(xs: number[], ys: number[]): (x: number) => number {
   const n = xs.length;
   const d = xs.slice(1).map((x, k) => (ys[k + 1] - ys[k]) / (x - xs[k]));
   const m = xs.map((_, k) => (k === 0 ? d[0] : k === n - 1 ? 0 : d[k - 1] * d[k] <= 0 ? 0 : (d[k - 1] + d[k]) / 2));
@@ -137,7 +138,7 @@ function ponerEstilo() {
 // ------------------------------------------------------------ escena
 
 /** Cielo: degradado vertical de casi negro a violeta, con el velo rojizo abajo. */
-function cielo(): THREE.CanvasTexture {
+export function cielo(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = 4;
   c.height = 256;
@@ -155,7 +156,7 @@ function cielo(): THREE.CanvasTexture {
 }
 
 /** Punto suave para estrellas y estela. */
-function punto(): THREE.CanvasTexture {
+export function punto(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
   const g = c.getContext('2d')!;
@@ -190,7 +191,7 @@ function estrellas(n: number, tam: number, semilla: number, mapa: THREE.Texture)
  * de la dirección de cada punto, con cortes duros como en un dibujo, y la luz
  * es la misma rampa toon de los personajes.
  */
-function planeta(radio: number): THREE.Mesh {
+export function planeta(radio: number): THREE.Mesh {
   const mat = toon(PALETA.blanco).clone();
   // La luz de la escena está pensada para la nave: el planeta, algo más apagado.
   mat.color.set('#c4c4c4');
@@ -222,11 +223,11 @@ function planeta(radio: number): THREE.Mesh {
  * se enciende hacia el contorno; fuera, un halo (caras traseras de una esfera
  * algo mayor) que va del borde del planeta, con toda la fuerza, a cero.
  */
-function velo(radioPlaneta: number, escala: number, fuera: boolean): THREE.Mesh {
+export function velo(radioPlaneta: number, escala: number, fuera: boolean, color = fuera ? '#ff4a3a' : '#ff7a4a'): THREE.Mesh {
   // En el borde del planeta, las caras traseras del halo miran a la cámara con este coseno.
   const borde = Math.sqrt(1 - 1 / (escala * escala));
   const mat = new THREE.ShaderMaterial({
-    uniforms: { color: { value: new THREE.Color(fuera ? '#ff4a3a' : '#ff7a4a') }, borde: { value: borde } },
+    uniforms: { color: { value: new THREE.Color(color) }, borde: { value: borde } },
     vertexShader: `
       varying vec3 vN; varying vec3 vV;
       void main() {
@@ -249,7 +250,7 @@ function velo(radioPlaneta: number, escala: number, fuera: boolean): THREE.Mesh 
 let audio: AudioContext | null = null;
 
 /** Sonidos sintetizados; sin permiso de audio todavía, no suena y ya está. */
-function sonar(fn: (a: AudioContext, t0: number) => void) {
+export function sonar(fn: (a: AudioContext, t0: number) => void) {
   try {
     audio ??= new AudioContext();
     if (audio.state === 'suspended') void audio.resume();
@@ -260,7 +261,7 @@ function sonar(fn: (a: AudioContext, t0: number) => void) {
   }
 }
 
-function tono(a: AudioContext, t0: number, tipo: OscillatorType, de: number, a2: number, dur: number, vol: number) {
+export function tono(a: AudioContext, t0: number, tipo: OscillatorType, de: number, a2: number, dur: number, vol: number) {
   const o = a.createOscillator(), g = a.createGain();
   o.type = tipo;
   o.frequency.setValueAtTime(de, t0);
@@ -273,7 +274,7 @@ function tono(a: AudioContext, t0: number, tipo: OscillatorType, de: number, a2:
 }
 
 /** Soplido de ruido filtrado: la nave pasando junto a la cámara o despegando. */
-function soplido(a: AudioContext, t0: number, dur: number, de: number, pico: number, vol: number) {
+export function soplido(a: AudioContext, t0: number, dur: number, de: number, pico: number, vol: number) {
   const buf = a.createBuffer(1, Math.ceil(a.sampleRate * dur), a.sampleRate);
   const datos = buf.getChannelData(0);
   for (let i = 0; i < datos.length; i++) datos[i] = Math.random() * 2 - 1;
@@ -691,7 +692,7 @@ export function showIntro(root: HTMLElement, onDone: () => void, opts: IntroOpti
     renderer.dispose();
     renderer.forceContextLoss();
   };
-  /** Fin tras el despegue: el menú se monta debajo y esta capa se funde encima. */
+  /** Fin tras el despegue: lo siguiente se monta y esta capa se funde. */
   const acabar = () => {
     if (!vivo) return;
     soltar();
@@ -723,8 +724,8 @@ export function showIntro(root: HTMLElement, onDone: () => void, opts: IntroOpti
   };
   const alTecla = (e: KeyboardEvent) => {
     if (e.code !== 'Escape' && e.code !== 'Enter' && e.code !== 'Space') return;
-    // Sin esto, el título que se abre ahora recibe el foco en «Jugar» y la
-    // misma pulsación lo activa: la partida empezaba sin pasar por el menú.
+    // Sin esto, lo que se abre después recibiría la misma pulsación: en el
+    // menú el foco cae en «Jugar» y la partida empezaba sin pasar por él.
     e.preventDefault();
     if (e.code === 'Escape') terminar();
     else alClic();

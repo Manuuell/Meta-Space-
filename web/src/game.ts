@@ -25,6 +25,7 @@ import { applyCustomHero, toCustomHero } from './creator/player-contract';
 import type { HeroTuning } from './creator/player-contract';
 import { SPECIALS } from './creator/stats';
 import { openProfileMenu } from './profile/profile-menu';
+import { showCinematica } from './cinematica';
 import { showIntro } from './intro';
 import { Dron } from './dron';
 import { Companero } from './companero';
@@ -589,10 +590,11 @@ export class Game {
   private toTitle() {
     this.destroyTitle?.();
     this.destroyTitle = null;
-    // Cinemática de entrada: la nave llega al planeta antes del primer título.
+    // Entrada: la nave trae el nombre de META SPACE y, al despegar, la historia
+    // de Meta y Ares (algo más de un minuto, se salta con Esc) antes del menú.
     if (!this.introVista && !(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)) {
       this.introVista = true;
-      showIntro(document.body, () => this.toTitle());
+      showIntro(document.body, () => showCinematica(document.body, () => this.toTitle()));
       return;
     }
     this.state = 'title';

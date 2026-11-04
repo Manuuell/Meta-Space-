@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { PALETA, toon } from './modelos/kit.ts';
 import { crearNave } from './modelos/nave.ts';
+import { INTRO } from './cinematica-guion.ts';
+import { NOTAS_LETRAS, tocarIntro, type Banda } from './musica.ts';
 
 // META SPACE — Cinemática de entrada.
 //
@@ -11,6 +13,11 @@ import { crearNave } from './modelos/nave.ts';
 // flotando bajo el nombre. Al pulsar, despega atravesando el título y deja
 // paso a la historia (cinematica.ts). Todo en código (Three.js y el kit de
 // modelos), sin assets.
+//
+// El navegador no deja sonar nada hasta el primer gesto y la intro es lo primero
+// que se ve, pero no se le hace esperar a nadie: arranca sola y, si aún no puede
+// sonar, la música y el motor entran en el punto en que vaya la imagen en cuanto se
+// pulse algo. Todo se sintetiza y, con música, la imagen sigue al reloj del audio.
 //
 // Se salta con clic / Intro / Espacio (el primero lleva al título completo, el
 // segundo despega) y con Escape. El juego la omite con `prefers-reduced-motion`.
@@ -28,16 +35,7 @@ export interface IntroOptions {
 
 // ------------------------------------------------------------- guion
 
-/** Momentos clave en segundos. */
-const T = {
-  frena: 4.7, // retros encendidos
-  llega: 5.45, // la nave se queda flotando
-  sector: 5.15, // «SECTOR DELTA»
-  lema: 5.75,
-  pista: 6.5,
-  completo: 6.4, // adonde salta el primer clic
-  despegue: 0.95, // lo que dura la salida antes de dar paso a lo siguiente
-};
+const T = INTRO;
 
 /**
  * Ruta de la nave en metros, con la cámara en el origen mirando a -z:
@@ -60,7 +58,6 @@ const SALIDA = new THREE.Vector3(0.3, 0.75, -1).normalize();
 const TITULO = 'META SPACE';
 const SECTOR = 'SECTOR DELTA';
 /** Pentatónica ascendente: cada letra que cae suena un poco más alta. */
-const NOTAS = [523, 587, 659, 784, 880, 1047, 1175, 1319, 1568, 1760];
 
 const TAU = Math.PI * 2;
 export const suave = (x: number) => {
@@ -249,6 +246,9 @@ export function velo(radioPlaneta: number, escala: number, fuera: boolean, color
 
 let audio: AudioContext | null = null;
 
+/** Si el navegador ya deja sonar. Justo tras el gesto aún tarda un instante. */
+export const audioEnMarcha = () => audio?.state === 'running';
+
 /** Sonidos sintetizados; sin permiso de audio todavía, no suena y ya está. */
 export function sonar(fn: (a: AudioContext, t0: number) => void) {
   try {
@@ -274,12 +274,13 @@ export function tono(a: AudioContext, t0: number, tipo: OscillatorType, de: numb
 }
 
 /** Soplido de ruido filtrado: la nave pasando junto a la cámara o despegando. */
-export function soplido(a: AudioContext, t0: number, dur: number, de: number, pico: number, vol: number) {
+export function soplido(a: AudioContext, t0: number, dur: number, de: number, pico: number, vol: number, pan = 0) {
   const buf = a.createBuffer(1, Math.ceil(a.sampleRate * dur), a.sampleRate);
   const datos = buf.getChannelData(0);
   for (let i = 0; i < datos.length; i++) datos[i] = Math.random() * 2 - 1;
-  const fuente = a.createBufferSource(), filtro = a.createBiquadFilter(), g = a.createGain();
+  const fuente = a.createBufferSource(), filtro = a.createBiquadFilter(), g = a.createGain(), lado = a.createStereoPanner();
   fuente.buffer = buf;
+  lado.pan.value = pan;
   filtro.type = 'bandpass';
   filtro.Q.value = 1.2;
   filtro.frequency.setValueAtTime(de, t0);
@@ -288,8 +289,77 @@ export function soplido(a: AudioContext, t0: number, dur: number, de: number, pi
   g.gain.setValueAtTime(0.0001, t0);
   g.gain.exponentialRampToValueAtTime(vol, t0 + dur * 0.4);
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  fuente.connect(filtro).connect(g).connect(a.destination);
+  fuente.connect(filtro).connect(g).connect(lado).connect(a.destination);
   fuente.start(t0);
+}
+
+const acotar = (x: number, de: number, a: number) => Math.min(a, Math.max(de, x));
+
+/**
+ * El motor de la nave. Suena todo el rato y sale de lo que se ve, así que sigue
+ * bien aunque se salte: más fuerte y brillante cuanto más cerca y más empuje, en
+ * el lado en que va la nave y con el tono que sube al acercarse y cae al alejarse.
+ */
+function crearMotor(a: AudioContext) {
+  const BASE = 62;
+  const salida = a.createGain(), lado = a.createStereoPanner();
+  const cuerpo = a.createBiquadFilter(), aire = a.createBiquadFilter(), nivelAire = a.createGain();
+  salida.gain.value = 0;
+  cuerpo.type = 'lowpass';
+  cuerpo.Q.value = 1.1;
+  aire.type = 'bandpass';
+  aire.Q.value = 0.7;
+  nivelAire.gain.value = 0.3;
+  cuerpo.connect(lado);
+  aire.connect(nivelAire).connect(lado);
+  lado.connect(salida).connect(a.destination);
+
+  // Dos sierras casi iguales baten entre sí; el triángulo da la turbina que se oye en altavoces pequeños.
+  const voces = ([['sawtooth', 1, 0, 0.5], ['sawtooth', 1, 11, 0.5], ['sine', 0.5, 0, 0.7], ['triangle', 4, 6, 0.1]] as const).map(([tipo, razon, desafino, vol]) => {
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = tipo;
+    o.frequency.value = BASE * razon;
+    o.detune.value = desafino;
+    g.gain.value = vol;
+    o.connect(g).connect(cuerpo);
+    o.start();
+    return { o, razon };
+  });
+  const ruido = a.createBuffer(1, a.sampleRate * 2, a.sampleRate);
+  const datos = ruido.getChannelData(0);
+  for (let i = 0; i < datos.length; i++) datos[i] = Math.random() * 2 - 1;
+  const soplo = a.createBufferSource();
+  soplo.buffer = ruido;
+  soplo.loop = true;
+  soplo.connect(aire);
+  soplo.start();
+
+  let distancia = -1, ultimo = 0;
+  return {
+    ajustar(empuje: number, pos: THREE.Vector3) {
+      const ahora = a.currentTime;
+      if (ahora - ultimo < 0.05) return; // Con 20 veces por segundo sobra, y cada ajuste queda en la cola del audio.
+      const d = pos.length();
+      const acercandose = distancia < 0 ? 0 : (distancia - d) / (ahora - ultimo);
+      distancia = d;
+      ultimo = ahora;
+      const fuerza = Math.min(1.3, empuje / 1.7), cerca = 1 / (1 + (d / 9) ** 2);
+      const f = BASE * (0.75 + 0.35 * empuje) * acotar(1 + acercandose / 60, 0.7, 1.35);
+      for (const { o, razon } of voces) o.frequency.setTargetAtTime(f * razon, ahora, 0.05);
+      cuerpo.frequency.setTargetAtTime(220 + 1100 * fuerza * (0.35 + cerca), ahora, 0.05);
+      aire.frequency.setTargetAtTime(500 + 2600 * fuerza * cerca, ahora, 0.05);
+      lado.pan.setTargetAtTime(acotar(pos.x / (Math.hypot(pos.x, pos.z) + 1), -0.9, 0.9), ahora, 0.05);
+      salida.gain.setTargetAtTime((0.02 + 0.13 * fuerza) * (0.2 + 1.3 * cerca), ahora, 0.05);
+    },
+    parar() {
+      const ahora = a.currentTime;
+      salida.gain.cancelScheduledValues(ahora);
+      salida.gain.setTargetAtTime(0, ahora, 0.08);
+      for (const { o } of voces) o.stop(ahora + 0.6);
+      soplo.stop(ahora + 0.6);
+      window.setTimeout(() => salida.disconnect(), 800);
+    },
+  };
 }
 
 // ------------------------------------------------------------ cinemática
@@ -310,6 +380,9 @@ interface Letra {
   giro: number;
   sentido: number;
 }
+
+/** En táctil solo cuenta como gesto levantar el dedo: por eso no basta `pointerdown`. */
+const GESTOS = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const;
 
 const nuevaPose = (): Pose => ({ pos: new THREE.Vector3(), quat: new THREE.Quaternion(), empuje: 0 });
 
@@ -647,12 +720,35 @@ export function showIntro(root: HTMLElement, onDone: () => void, opts: IntroOpti
 
   let t = opts.fijo !== undefined ? opts.fijo + (opts.fijoSalida ?? 0) : 0;
   let destello = 0;
+
+  let banda: Banda | null = null;
+  let motor: ReturnType<typeof crearMotor> | null = null;
+  /** Con música, la imagen sigue al reloj del audio. */
+  let relojBanda: { a: AudioContext; a0: number; t0: number } | null = null;
+  /** Lo que tiene que sonar al arrancar: el clic que desbloquea el audio llega antes que él. */
+  let alArrancar: ((b: Banda) => void) | null = null;
+  const arrancarBanda = () => {
+    sonar((a, ahora) => {
+      const cuando = ahora + 0.06;
+      banda = tocarIntro(a, t, cuando);
+      relojBanda = { a, a0: cuando, t0: t };
+      motor ??= crearMotor(a);
+      alArrancar?.(banda);
+      alArrancar = null;
+    });
+  };
+
   const pintar = (dt: number) => {
     const antes = t;
-    if (opts.fijo === undefined) t += dt;
+    if (opts.fijo === undefined) {
+      // La música entra cuando se pueda y donde vaya la imagen; hasta entonces, sin ella.
+      if (!banda && audioEnMarcha()) arrancarBanda();
+      t = relojBanda ? Math.max(t, relojBanda.t0 + relojBanda.a.currentTime - relojBanda.a0) : t + dt;
+    }
     if (medir) medirLetras();
 
     pose(t, pn);
+    motor?.ajustar(pn.empuje, pn.pos);
     pivote.position.copy(pn.pos);
     pivote.quaternion.copy(pn.quat);
     animarNave(t);
@@ -669,10 +765,15 @@ export function showIntro(root: HTMLElement, onDone: () => void, opts: IntroOpti
     // Sonidos al cruzar cada momento (no al saltar por encima).
     if (t - antes > 0 && t - antes < 0.2) {
       const cruza = (x: number) => antes < x && t >= x;
-      if (cruza(0.8)) sonar((a, t0) => soplido(a, t0, 0.9, 300, 1800, 0.12));
-      letras.forEach((l, i) => { if (cruza(l.suelta)) sonar((a, t0) => tono(a, t0, 'triangle', NOTAS[i], NOTAS[i] * 0.98, 0.16, 0.05)); });
-      if (cruza(T.frena)) sonar((a, t0) => soplido(a, t0, 0.45, 900, 2400, 0.05));
-      if (cruza(T.sector)) sonar((a, t0) => tono(a, t0, 'sine', 220, 880, 0.6, 0.06));
+      if (cruza(0.55)) sonar((a, t0) => soplido(a, t0, 0.9, 300, 2200, 0.2, -0.6));
+      if (cruza(T.tonel)) sonar((a, t0) => soplido(a, t0, 0.85, 500, 1900, 0.07, -0.3));
+      letras.forEach((l, i) => { if (cruza(l.suelta)) banda?.nota('arpa', 1.1, [NOTAS_LETRAS[i]], 0.2, (i - 4) / 6); });
+      if (cruza(T.frena)) {
+        sonar((a, t0) => {
+          soplido(a, t0, 0.32, 900, 2600, 0.11, 0.5);
+          soplido(a, t0 + 0.24, 0.42, 900, 2200, 0.09, 0.3);
+        });
+      }
     }
     if (tSalida !== null && t - tSalida >= T.despegue && opts.fijo === undefined) acabar();
   };
@@ -683,8 +784,13 @@ export function showIntro(root: HTMLElement, onDone: () => void, opts: IntroOpti
   const soltar = () => {
     vivo = false;
     cancelAnimationFrame(raf);
+    banda?.parar(false);
+    banda = null;
+    motor?.parar();
+    motor = null;
     window.removeEventListener('keydown', alTecla);
     window.removeEventListener('resize', encajar);
+    for (const tipo of GESTOS) window.removeEventListener(tipo, desbloquear, true);
     capa.removeEventListener('pointerdown', alClic);
   };
   const destruir = () => {
@@ -706,20 +812,34 @@ export function showIntro(root: HTMLElement, onDone: () => void, opts: IntroOpti
     destruir();
     onDone();
   };
+  const sonidoSalida = (b: Banda) => {
+    b.nota('timbal', 0.8, [38], 0.42);
+    b.nota('subida', T.despegue, [], 0.24);
+    b.nota('platilloInverso', T.despegue, [], 0.22);
+    sonar((a, t0) => {
+      soplido(a, t0, 1.1, 200, 2600, 0.32);
+      tono(a, t0, 'sawtooth', 90, 420, 0.9, 0.06);
+    });
+  };
   const despegar = () => {
     if (tSalida !== null) return;
     tSalida = t;
-    sonar((a, t0) => {
-      soplido(a, t0, 1.1, 200, 2600, 0.14);
-      tono(a, t0, 'sawtooth', 90, 420, 0.9, 0.025);
-    });
+    if (banda) sonidoSalida(banda);
+    else alArrancar = sonidoSalida;
   };
   const alClic = () => {
     if (t < minVer || tSalida !== null) return;
-    sonar(() => undefined); // el primer gesto desbloquea el audio
     if (t < T.completo) {
       t = T.completo;
       destello = 0.85;
+      // La música salta con la imagen, con un golpe que tape el corte.
+      banda?.parar(false);
+      banda = null;
+      relojBanda = null;
+      alArrancar = (b) => {
+        b.nota('impacto', 1.2, [], 0.22);
+        b.nota('platillo', 1.8, [], 0.08);
+      };
     } else despegar();
   };
   const alTecla = (e: KeyboardEvent) => {
@@ -732,6 +852,16 @@ export function showIntro(root: HTMLElement, onDone: () => void, opts: IntroOpti
   };
   capa.addEventListener('pointerdown', alClic);
   window.addEventListener('keydown', alTecla);
+
+  // Se pide audio al abrir, por si el navegador ya lo permite, y de nuevo con cada
+  // gesto hasta que lo haga. En captura, para ir antes que el resto del juego.
+  const desbloquear = () => {
+    if (!audioEnMarcha()) sonar(() => undefined);
+  };
+  if (opts.fijo === undefined) {
+    desbloquear();
+    for (const tipo of GESTOS) window.addEventListener(tipo, desbloquear, true);
+  }
 
   let ultimo = performance.now();
   const fotograma = (ahora: number) => {

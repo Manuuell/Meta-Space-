@@ -1,4 +1,4 @@
-// META SPACE — Banda sonora de la cinemática.
+// META SPACE — Banda sonora de la intro y de la cinemática.
 //
 // Compuesta para ella y tocada con sintetizadores de Web Audio: no hay
 // muestras ni grabaciones, así que no tiene derechos de nadie más. Va a 120
@@ -12,10 +12,14 @@
 // - El motivo de HELIOS: re, mi bemol y la. En la batalla se come al de Meta.
 // - El tema de ADA, en campanas: abre la cinemática y crece cuando se presenta.
 //
-// La partitura es solo datos (las pruebas la leen en Node); `tocarBanda` la
-// programa poco a poco en el reloj del audio desde cualquier segundo.
+// La intro del título tiene su propia partitura: las letras tocan el principio
+// del tema de Meta, el acorde del título lo resuelve y, mientras la nave espera,
+// la caja de música lo repite ya en mayor.
+//
+// La partitura es solo datos (las pruebas la leen en Node); `tocarBanda` y
+// `tocarIntro` la programan poco a poco en el reloj del audio desde cualquier segundo.
 
-import { ESTALLA, PLANOS, VENTANA, VUELVE_EL_SOL, en } from './cinematica-guion.ts';
+import { ESTALLA, INTRO, PLANOS, VENTANA, VUELVE_EL_SOL, en } from './cinematica-guion.ts';
 import type { Plano } from './cinematica-guion.ts';
 
 export type Voz =
@@ -65,7 +69,8 @@ function hasta(m: Melodia, pulsos: number): Melodia {
   return fuera;
 }
 
-function componer(): Nota[] {
+/** Lo necesario para escribir una partitura; las notas se van guardando en `p`. */
+function compositor() {
   const p: Nota[] = [];
   const toca = (t: number, voz: Voz, dur: number, notas: readonly number[], vol: number, pan = 0) => p.push({ t, voz, dur, notas, vol, pan });
   /** Una melodía desde un segundo. El 0 es silencio; `liga` alarga cada nota para que se toquen. */
@@ -84,6 +89,11 @@ function componer(): Nota[] {
     const figura = [0, 0, 3, 0, 5, 0, 3, 7];
     for (let k = 0; k < pulsos * 4; k++) toca(t0 + k * 0.125, 'cortas', 0.13, [raiz + figura[k % 8]], vol * (k % 4 === 0 ? 1.25 : 0.85), k % 2 ? 0.4 : -0.4);
   };
+  return { p, toca, frase, arpegio, ostinato };
+}
+
+function componer(): Nota[] {
+  const { p, toca, frase, arpegio, ostinato } = compositor();
   /** Un segundo de un plano, para escribir cada parte desde su principio. */
   const de = (plano: Plano) => (s: number) => en(plano, s);
   const menor = temaDeMeta(false), mayor = temaDeMeta(true);
@@ -310,6 +320,60 @@ function componer(): Nota[] {
 }
 
 export const PARTITURA: readonly Nota[] = componer();
+
+// ------------------------------------------------------------- intro
+
+/** Cada letra del título toca, al salir de la nave, una nota del tema de Meta. */
+export const NOTAS_LETRAS: readonly number[] = temaDeMeta(true).a.slice(0, 9).map(([nota]) => nota + 12);
+
+/** Segundo en que la música pasa a acompañar la espera bajo el título. */
+export const ESPERA_INTRO = INTRO.sector + 2;
+/** Una vuelta son los dieciséis compases del tema; veinte vueltas superan cualquier espera. */
+const VUELTA_INTRO = 16, VUELTAS_INTRO = 20;
+export const DURACION_INTRO = ESPERA_INTRO + VUELTA_INTRO * VUELTAS_INTRO;
+
+function componerIntro(): Nota[] {
+  const { p, toca, frase, ostinato } = compositor();
+  const { a, b } = temaDeMeta(true);
+  const { pasada, sector } = INTRO;
+
+  // En el vacío: un pedal grave y un acorde abierto, sin tercera, que aún no dice nada.
+  toca(0, 'zumbido', sector, [38, 45], 0.1);
+  toca(0.1, 'pad', sector - 0.1, [50, 57, 62], 0.08);
+  toca(0, 'platilloInverso', pasada, [], 0.08);
+
+  // La nave pasa rozando la cámara.
+  toca(pasada, 'timbal', 0.9, [38], 0.36);
+  toca(pasada, 'impacto', 1.2, [], 0.16);
+
+  // Mientras suelta las letras, las cuerdas empujan hacia el acorde del título.
+  toca(sector - 3.5, 'cuerdas', 3.5, [50, 57, 62], 0.08);
+  ostinato(sector - 3.5, 50, 7, 0.07);
+  for (const s of [3, 2, 1, 0.5]) toca(sector - s, 'timbal', 0.6, [38], 0.2 + (3 - s) * 0.05);
+  toca(sector - 1.3, 'subida', 1.3, [], 0.1);
+  toca(sector - 1.3, 'platilloInverso', 1.3, [], 0.13);
+
+  // El título entero: re mayor con todo, y las trompas empiezan el tema.
+  toca(sector, 'impacto', 1.6, [], 0.32);
+  toca(sector, 'timbal', 1.2, [38], 0.42);
+  toca(sector, 'platillo', 2.6, [], 0.1);
+  toca(sector, 'metal', 2.2, [62, 66, 69, 74], 0.15);
+  toca(sector, 'cuerdas', 3, [50, 62, 66, 69], 0.17);
+  toca(sector, 'coro', 3, [62, 69, 74, 78], 0.14);
+  frase(sector, 'trompa', hasta(a, 4), 0.18);
+
+  // La espera: el tema entero en la caja de música, sobre un colchón suave.
+  const acordes = [RE, SOL_M, RE, LA_M, RE, SI_m, SOL_M, RE];
+  for (let v = 0; v < VUELTAS_INTRO; v++) {
+    const t0 = ESPERA_INTRO + v * VUELTA_INTRO;
+    acordes.forEach((acorde, k) => toca(t0 + k * 2, 'pad', 2.3, acorde, 0.07));
+    frase(t0, 'cajita', a, 0.06, 12, -0.15, 1.6);
+    frase(t0 + VUELTA_INTRO / 2, 'cajita', b, 0.06, 12, 0.15, 1.6);
+  }
+  return p;
+}
+
+export const PARTITURA_INTRO: readonly Nota[] = componerIntro();
 
 // ------------------------------------------------------------- instrumentos
 
@@ -741,16 +805,22 @@ function hacerHueco(g: GainNode, t: number, cuanto: number) {
   g.gain.linearRampToValueAtTime(1, t + 0.26);
 }
 
+export interface Banda {
+  /** `suave` la deja apagarse, como al final; si no, corta en seco. */
+  parar: (suave: boolean) => void;
+  /** Una nota ahora mismo, para lo que depende de lo que pasa en pantalla. */
+  nota: (voz: Voz, dur: number, notas: readonly number[], vol: number, pan?: number) => void;
+}
+
 /**
- * Programa la banda desde el segundo `desde` de la cinemática, que sonará en
- * el instante `cuando` del reloj del audio. Lo que ya empezó antes de `desde`
- * entra a mitad (los colchones) o se salta (los golpes). Devuelve con qué
- * pararla: `suave` la deja apagarse, como al final; si no, corta en seco.
+ * Programa una partitura de `largo` segundos desde su segundo `desde`, que sonará
+ * en el instante `cuando` del reloj del audio. Lo que ya empezó antes de `desde`
+ * entra a mitad (los colchones) o se salta (los golpes).
  *
  * En directo las notas se crean poco antes de sonar: crearlas todas de golpe
  * trabaría el primer fotograma. Sin conexión (para medirla) van todas juntas.
  */
-export function tocarBanda(a: BaseAudioContext, desde: number, cuando: number): (suave: boolean) => void {
+function tocar(a: BaseAudioContext, partitura: readonly Nota[], desde: number, cuando: number, largo: number): Banda {
   const limitador = a.createDynamicsCompressor();
   limitador.threshold.value = -5;
   limitador.knee.value = 3;
@@ -773,10 +843,10 @@ export function tocarBanda(a: BaseAudioContext, desde: number, cuando: number): 
   nave.connect(compresor);
   const colchon = a.createGain();
   colchon.connect(compresor);
-  ensanchar(a, colchon, compresor, cuando, cuando + 120);
+  ensanchar(a, colchon, compresor, cuando, cuando + largo);
   const mesa: Mesa = { a, seco: compresor, colchon, eco, nave, rebote: rebote(a, compresor), ruido: blanco(a), nodos: [] };
 
-  const notas = [...PARTITURA].sort((x, y) => x.t - y.t);
+  const notas = [...partitura].sort((x, y) => x.t - y.t);
   let i = 0, ultimoHueco = -1;
   // Las notas que acabaron se desconectan: si no, se quedan en el grafo y cada
   // vez cuesta más calcular el audio, aunque ya no suenen.
@@ -808,9 +878,10 @@ export function tocarBanda(a: BaseAudioContext, desde: number, cuando: number): 
   };
   let reloj = 0;
   if ('startRendering' in a) {
-    programar(Infinity);
     const sinConexion = a as OfflineAudioContext;
-    for (let s = 3; s < sinConexion.length / a.sampleRate; s += 3) {
+    const segundos = sinConexion.length / a.sampleRate;
+    programar(desde + segundos);
+    for (let s = 3; s < segundos; s += 3) {
       void sinConexion.suspend(s).then(() => {
         limpiar();
         return sinConexion.resume();
@@ -824,12 +895,30 @@ export function tocarBanda(a: BaseAudioContext, desde: number, cuando: number): 
     }, 400);
   }
 
-  return (suave) => {
-    window.clearInterval(reloj);
-    const ahora = a.currentTime;
-    maestro.gain.cancelScheduledValues(ahora);
-    maestro.gain.setValueAtTime(maestro.gain.value, ahora);
-    maestro.gain.setTargetAtTime(0, ahora, suave ? 0.8 : 0.12);
-    setTimeout(() => maestro.disconnect(), suave ? 5000 : 1500);
+  return {
+    parar: (suave) => {
+      window.clearInterval(reloj);
+      const ahora = a.currentTime;
+      maestro.gain.cancelScheduledValues(ahora);
+      maestro.gain.setValueAtTime(maestro.gain.value, ahora);
+      maestro.gain.setTargetAtTime(0, ahora, suave ? 0.8 : 0.12);
+      setTimeout(() => maestro.disconnect(), suave ? 5000 : 1500);
+    },
+    nota: (voz, dur, alturas, vol, pan = 0) => {
+      const instante = a.currentTime + 0.01;
+      mesa.nodos = [];
+      VOCES[voz](mesa, instante, { t: 0, voz, dur, notas: alturas, vol, pan });
+      pendientes.push({ fin: instante + dur + 0.5, nodos: mesa.nodos });
+    },
   };
+}
+
+/** La banda de la cinemática. Devuelve con qué pararla. */
+export function tocarBanda(a: BaseAudioContext, desde: number, cuando: number): (suave: boolean) => void {
+  return tocar(a, PARTITURA, desde, cuando, 120).parar;
+}
+
+/** La banda de la intro del título. */
+export function tocarIntro(a: BaseAudioContext, desde: number, cuando: number): Banda {
+  return tocar(a, PARTITURA_INTRO, desde, cuando, DURACION_INTRO);
 }

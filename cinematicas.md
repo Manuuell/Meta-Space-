@@ -23,7 +23,8 @@ de fusionar o de hacer push.
 Secuencia al abrir el juego (`toTitle` en `web/src/game.ts`):
 
 1. **Intro del título** (`web/src/intro.ts`): la nave suelta las letras de META
-   SPACE. Al pulsar, despega.
+   SPACE con su propia música, que entra en cuanto el navegador deja sonar. Al pulsar,
+   despega.
 2. **Historia** (`web/src/cinematica.ts`): 83 s en 13 planos, con música. Es un
    mensaje de ADA para el último superviviente: habla en primera persona y le
    trata de tú, así que todo rótulo nuevo tiene que sonar a ella.
@@ -165,10 +166,27 @@ terceros.
   muy caro. Por eso todo va a `k-rate`, el vibrato es común y cada nota libera sus
   nodos al acabar. Sin eso, la banda tardaba cuatro veces más en calcularse.
 - **Efectos:** `tono`, `soplido`, `estallido`, `barrido`, `sirena`, `viento`, `sos`.
+- **Intro:** su partitura está en `componerIntro()` y sus momentos, en `INTRO`
+  (`cinematica-guion.ts`). Las letras tocan el principio del tema de Meta
+  (`NOTAS_LETRAS`), el título lo resuelve y la caja de música lo repite en la espera.
+  Lo que depende de la pantalla se toca con `banda.nota(voz, dur, notas, vol, pan)`.
+  El motor de la nave (`crearMotor`) sale de su empuje y su posición.
 
-El navegador no deja sonar nada sin un gesto. El clic que despega la nave cuenta,
-pero Esc no. Por eso, si se salta la intro con Esc, la cinemática espera en negro
-con el botón «Ver la historia».
+El navegador no deja sonar nada sin un gesto, y la intro es lo primero que se ve.
+No se le pone ningún botón delante (se probó y se descartó): arranca sola, pide audio
+al abrir y otra vez con cada gesto, y la música entra donde vaya la imagen. Quien no
+pulse nada la ve muda hasta el título, y el clic de despegar ya suena. Ese clic llega
+antes de que el audio esté en marcha: lo que tenga que sonar en ese momento va en
+`alArrancar`. En táctil solo cuenta levantar el dedo: por eso `GESTOS` incluye más
+que `pointerdown`. Esc no cuenta como gesto: si se salta la intro con Esc y el audio
+aún no está en marcha, la cinemática espera con el botón «Ver la historia».
+
+**Trampa al comprobarlo:** un navegador automatizado puede dejar sonar sin gesto,
+y entonces no se reproduce el silencio de Chrome o Safari. Para simularlo,
+sustituye `AudioContext` por una clase cuyo `state` y `resume` no dejen pasar hasta
+el `pointerdown` y abre `showIntro` desde `/src/intro.ts?t=…`, una copia con el audio
+sin crear. Para saber si algo suena, engancha un `AnalyserNode` a cada `AudioContext` antes de pulsar: el juego
+abre dos, el de los efectos (`audio.ts`) y el de la intro y la cinemática (`sonar`).
 
 ## Comprobar el trabajo
 
@@ -225,8 +243,8 @@ for (let s = 0; s < 87; s++) {
 ({ pico, rms: rms.join(' ') });
 ```
 
-El pico debe quedar por debajo de 1 y sin `NaN`. El momento más fuerte tiene que
-ser la vuelta del sol, y el cálculo debe tardar menos de 20 s (un tiempo mucho
+Con `m.tocarIntro(oc, 0, 0)` se mide igual la intro. El pico debe quedar por debajo
+de 1 y sin `NaN`. El momento más fuerte tiene que ser la vuelta del sol, y el cálculo debe tardar menos de 20 s (un tiempo mucho
 mayor avisa de cortes en directo). Tarda en acabar: guarda el resultado en `window`
 y consúltalo aparte, porque la herramienta corta a los 45 s. Hay que escucharla
 igualmente: la medida no dice si suena bien.

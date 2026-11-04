@@ -28,6 +28,22 @@ export const PLANOS = {
   mision: [69.5, 83], // diez minutos, la nave, el sol y las siete pruebas
 } as const;
 
+/**
+ * La intro del título, la animación que va antes de todo esto: momentos clave en
+ * segundos. Los leen la imagen (intro.ts) y su música (musica.ts).
+ */
+export const INTRO = {
+  pasada: 1.0, // la nave pasa rozando la cámara
+  tonel: 1.05, // da una vuelta sobre sí misma
+  frena: 4.7, // retros encendidos
+  sector: 5.15, // «SECTOR DELTA» y el título entero
+  llega: 5.45, // la nave se queda flotando
+  lema: 5.75,
+  completo: 6.4, // adonde salta el primer clic
+  pista: 6.5,
+  despegue: 0.95, // lo que dura la salida antes de dar paso a lo siguiente
+} as const;
+
 export type Plano = keyof typeof PLANOS;
 export const DURACION: number = PLANOS.mision[1];
 export const ORDEN = Object.keys(PLANOS) as Plano[];

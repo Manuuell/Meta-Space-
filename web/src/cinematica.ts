@@ -15,7 +15,7 @@ import { crearHeraldo } from './modelos/heraldo.ts';
 import { crearNave } from './modelos/nave.ts';
 import { ALTO_CASCO, crearEntorno, crearNaveModular, fusionarNave } from './modelos/nave-modular.ts';
 import { crearSabueso } from './modelos/sabueso.ts';
-import { azar, cielo, monotona, planeta, punto, sonar, soplido, suave, tono, tramo, velo } from './intro.ts';
+import { audioEnMarcha, azar, cielo, monotona, planeta, punto, sonar, soplido, suave, tono, tramo, velo } from './intro.ts';
 import { tocarBanda } from './musica.ts';
 import { crearPost } from './cinematica-post.ts';
 import type { AcabadoImagen } from './cinematica-post.ts';
@@ -2523,7 +2523,7 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
   // Con un gesto antes (el clic que despega la nave en la intro) suena desde
   // el principio. Sin él (saltar la intro con Esc no cuenta) el navegador no
   // deja sonar: espera en negro a que se pulse, así la música empieza con ella.
-  let gesto = opts.sonido ?? navigator.userActivation?.hasBeenActive ?? false;
+  let gesto = opts.sonido ?? (audioEnMarcha() || (navigator.userActivation?.hasBeenActive ?? false));
   let esperando = opts.fijo === undefined && !gesto;
   puerta.hidden = !esperando;
   let banda: ((suave: boolean) => void) | null = null;

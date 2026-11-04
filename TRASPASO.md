@@ -4,6 +4,18 @@ Estado a 03/11/2026. Pega este archivo al abrir el chat nuevo.
 
 ---
 
+## La intro ya suena (04/11/2026)
+
+La primera animación (`web/src/intro.ts`) tiene banda propia (`componerIntro` en
+`musica.ts`), las letras tocan el tema de Meta y el motor de la nave sigue lo que se
+ve. El navegador no deja sonar nada sin un gesto: la intro arranca sola y el sonido
+entra con el primer clic o tecla, donde vaya la imagen. Sin gesto se ve muda hasta el
+título. Un botón «Empezar» lo evitaba, y se quitó porque no debe haber ninguno.
+Detalles y cómo medirlo sin oírlo en [cinematicas.md](cinematicas.md), «Música y
+sonido».
+
+---
+
 ## Cada partida, un sector distinto (04/11/2026)
 
 Antes el mapa salía siempre con la semilla 2026 y los objetos solo subían números.

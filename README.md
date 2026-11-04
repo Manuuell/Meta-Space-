@@ -174,3 +174,9 @@ The key never reaches the browser. The server only accepts API calls from its ow
 domain (plus any added in `ALLOWED_ORIGINS`), rate-limits requests per IP and has a
 daily quota of paid calls (`AI_DAILY_LIMIT`, 1500 by default), after which it falls
 back to the local script.
+
+## License
+
+Meta Space is open source under the [MIT License](LICENSE). The Supertonic 2 voice
+model is not part of this repository: it is downloaded separately and keeps its own
+[license](web/public/licencias/supertonic-openrail-m.txt).

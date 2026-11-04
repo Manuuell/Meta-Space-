@@ -2,8 +2,8 @@
 
 **Juego para el hackathon de Meta.** Un survivors-like en 3D que se juega en el
 navegador, donde los personajes piensan, hablan y escuchan con las APIs de Meta:
-conversas en voz alta con ellos sin dejar de pelear y conocen el mapa que estás
-explorando.
+conversas en voz alta con ellos sin dejar de pelear, conocen el mapa que estás
+explorando y puedes crear tu propio héroe 3D escribiendo cómo lo quieres.
 
 <p align="center">
   <a href="docs/media/batalla.mp4"><img src="docs/media/batalla.webp" alt="Batalla contra el Cancerbero y el Dragón del Velo que termina con el título de Meta Space" width="100%"></a>
@@ -47,6 +47,27 @@ generan por código.
 | ![Astillero con la nave completa](docs/media/astillero.jpg) | ![Mapa del sector](docs/media/mapa.jpg) |
 | **Astillero:** armas tu propia nave con física real | **Mapa del sector:** lo que descubres y lo que marca ADA |
 
+## Forja de héroes
+
+**Escríbele a la IA cómo quieres a tu personaje y juega con él.** Muse Spark convierte
+tu frase en una receta de piezas y el juego arma con ella un héroe 3D, con el mismo
+estilo y las mismas animaciones que los personajes hechos a mano. Luego puedes pedirle
+cambios («hazlo más alto, ponle una capa azul») o retocarlo pieza a pieza, y la ficha
+enseña qué ganas y qué pierdes con cada cambio. Se abre desde **Operador**, en el menú.
+
+![La forja de héroes, con un pirata espacial diseñado por la IA](docs/media/forja.jpg)
+
+El héroe no es solo un aspecto: la IA le elige un oficio según lo que cuentes, que le
+da arma inicial, habilidad y pasiva, y su silueta decide si aguanta más o corre más.
+Hay 15 categorías y unas 100 opciones, y si algo no existe en el catálogo elige lo más
+parecido. Como la IA elige piezas en lugar de dibujar, el modelo siempre se puede
+animar y siempre encaja en el juego.
+
+| | |
+|---|---|
+| ![Un héroe creado, en partida, levantando su Muro de chatarra](docs/media/heroe-partida.jpg) | ![Doce héroes diseñados por Muse Spark a partir de una frase](docs/media/heroes.jpg) |
+| **En partida:** con su arma, su habilidad y su retrato en el HUD | **Doce héroes de Muse Spark**, cada uno a partir de una frase |
+
 ## Cómo se juega
 
 | Control | Acción |
@@ -61,6 +82,7 @@ generan por código.
 | M | Mapa del sector |
 | G, C | Módulos activos |
 | F | Interactuar: cofres, jaulas, altares y, en la plataforma, el astillero |
+| C (en el menú) | Forja de héroes: crea tu personaje |
 
 Las herramientas se disparan solas: lo tuyo es moverte. Sigue los haces de luz,
 quédate 3 s junto a cada resto y vuelve a la plataforma. Allí, con **F**, tocas la
@@ -86,8 +108,9 @@ Lo que más sale depende del sector, y algunos tienen un mercader de paso.
 |---|---|
 | **Muse Spark** | Personajes: ADA, HELIOS, el operador de radio y los supervivientes hablan y deciden qué hacer |
 | **Muse Spark** | Mapa: ADA y Tali saben qué hay cerca y ADA te marca objetivos; cada partida recibe un brief propio |
-| **Muse Image** | Creador de personaje: genera el sprite de tu héroe |
-| **Visión** | ADA comenta los dibujos que le enseñas en el creador |
+| **Muse Spark** | Forja de héroes: convierte lo que escribes en la receta de un héroe 3D jugable |
+| **Muse Image** | Creador 2D del perfil: genera el sprite de tu héroe |
+| **Visión** | ADA comenta los dibujos que le enseñas en el creador 2D |
 | **Muse Voice** | Transcribe lo que dices por el micrófono |
 
 Los personajes reaccionan al estado real de la partida: saben en qué sector estás,
@@ -103,7 +126,7 @@ deja hablar, y Noa es lo que queda de la ingeniera que escondió a ADA. El model
 responde con la frase, una emoción y una acción de una lista cerrada, y el juego
 comprueba coste y límites antes de aplicarla.
 
-El creador de personaje genera sprites con **Muse Image**, ADA comenta los
+El creador 2D del perfil genera sprites con **Muse Image**, ADA comenta los
 dibujos con visión y **Muse Voice** transcribe el micrófono. Sin conexión con la
 IA, todo funciona con un guion local.
 

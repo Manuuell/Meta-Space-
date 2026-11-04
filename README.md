@@ -1,5 +1,18 @@
 # Meta Space
 
+**Juego para el hackathon de Meta.** Un survivors-like en 3D que se juega en el
+navegador, donde los personajes piensan, hablan y escuchan con las APIs de Meta:
+conversas en voz alta con ellos sin dejar de pelear y conocen el mapa que estás
+explorando.
+
+<p align="center">
+  <a href="docs/media/batalla.mp4"><img src="docs/media/batalla.webp" alt="Batalla contra el Cancerbero y el Dragón del Velo que termina con el título de Meta Space" width="100%"></a>
+</p>
+
+<p align="center"><a href="docs/media/batalla.mp4">▶ Ver el clip con música</a></p>
+
+## La historia
+
 **Meta se congela.** Hace dos siglos, para frenar un calentamiento que lo
 abrasaba, sus habitantes encendieron HELIOS, una IA de geoingeniería que tiende
 un velo de sulfatos en la estratosfera. Nunca se detuvo: hoy el velo tapa el
@@ -11,13 +24,28 @@ nave. Te lo cuenta ADA en la cinemática que sigue al título, de minuto y medio
 con su propia banda sonora sintetizada (se salta con Esc).
 
 Eres especialista de la misión ARES-IX y llevas a **ADA**, el módulo de
-auditoría 7, la única pieza con autoridad para firmar el apagado de HELIOS.
-Aguanta diez minutos contra sus unidades hasta que se abra la ventana de
-lanzamiento: el cohete subirá la orden y el sol volverá a ese sector. Reúne las
-siete reliquias, las pruebas de lo que hizo el velo, y ADA podrá apagarlo en
-todo el planeta.
+auditoría 7, la única pieza con autoridad para firmar el apagado de HELIOS. Por
+el mapa han caído los restos de la flota de Ares: **búscalos, arma tu propia
+nave en el astillero y lánzala antes de diez minutos**. Si cruza el velo, la
+firma de ADA llega a HELIOS y el sol vuelve a ese sector. Reúne las siete
+reliquias, las pruebas de lo que hizo el velo, y ADA podrá apagarlo en todo el
+planeta.
 
-Juego de navegador en 3D (Vite + TypeScript + Three.js), tipo survivors-like.
+Hecho con Vite, TypeScript y Three.js. Modelos, música, efectos y cinemáticas se
+generan por código.
+
+## Capturas
+
+| | |
+|---|---|
+| ![Escáner orbital con tres sectores para elegir](docs/media/escaner.jpg) | ![Sector de un oasis con vegetación y agua limpia](docs/media/oasis.jpg) |
+| **Escáner orbital:** eliges entre tres sectores generados al azar | **Oasis:** uno de los ocho biomas de Meta |
+| ![Glaciar bajo una ventisca](docs/media/glaciar.jpg) | ![Bosque de cristal en la neblina](docs/media/cristal.jpg) |
+| **Glaciar:** cada sector trae su clima y su regla | **Bosque de cristal:** relieve, fauna y jefes cambian en cada partida |
+| ![Pelea contra el Cancerbero de HELIOS](docs/media/jefe.jpg) | ![Conversación con ADA, que responde y marca el objetivo en el mapa](docs/media/conversacion.jpg) |
+| **Jefes:** crecen con el tiempo y con tu nivel | **ADA:** responde con Muse Spark y marca objetivos en el mapa |
+| ![Astillero con la nave completa](docs/media/astillero.jpg) | ![Mapa del sector](docs/media/mapa.jpg) |
+| **Astillero:** armas tu propia nave con física real | **Mapa del sector:** lo que descubres y lo que marca ADA |
 
 ## Cómo se juega
 
@@ -28,16 +56,43 @@ Juego de navegador en 3D (Vite + TypeScript + Three.js), tipo survivors-like.
 | Espacio | Saltar |
 | V (mantener) o el botón 🎙 | Hablar en voz alta con quien esté cerca o, si no hay nadie, con ADA. La partida sigue |
 | T | Ventana de texto, si no tienes micrófono. Aquí la partida espera |
-| Esc | Pausa |
+| Esc o P | Menú de pausa: es el único momento en que sale el ratón |
+| 1, 2, 3 o ratón | Elegir tarjeta al subir de nivel |
+| M | Mapa del sector |
+| G, C | Módulos activos |
+| F | Interactuar: cofres, jaulas, altares y, en la plataforma, el astillero |
 
-Las herramientas se disparan solas. La chatarra sube de nivel y cada nivel
-ofrece mejoras. Las Balizas atraen más unidades: rómpelas pronto.
+Las herramientas se disparan solas: lo tuyo es moverte. Sigue los haces de luz,
+quédate 3 s junto a cada resto y vuelve a la plataforma. Allí, con **F**, tocas la
+nave por donde quieras cambiarla, pruebas cada pieza antes de gastar nada, la
+fabricas con restos y chatarra y la lanzas: despega, se pone de morro y suelta los
+tanques.
+La física es real (empuje entre peso y ecuación de Tsiolkovsky): si falla, es por
+una pieza concreta. Lo recuperado se queda en el almacén aunque caigas, y la
+nave también se arma desde el menú (**Astillero**, tecla B).
 
-## IA
+**Cada partida es un sector distinto de Meta.** Antes de bajar, el escáner orbital
+te enseña tres destinos generados al azar: ocho biomas (del glaciar a la tierra de
+ceniza, pasando por la selva de esporas o un oasis con agua limpia), con su relieve,
+sus lagos, su clima, una regla que cambia cómo se juega, su fauna, sus jefes y la
+gente que queda allí. Por el sector encuentras **objetos que cambian lo que hacen
+tus herramientas** (cortes que rebotan, pulsos que atraen a la horda, bajas que
+estallan, drones que disparan) y **módulos activos** con las teclas **G** y **C**.
+Lo que más sale depende del sector, y algunos tienen un mercader de paso.
 
-ADA, HELIOS y el operador de radio hablan con **Muse Spark** (Meta Model API):
-cada partida recibe un brief único y los personajes reaccionan al estado real de
-la partida.
+## Cómo usamos las APIs de Meta
+
+| API | Dónde se usa |
+|---|---|
+| **Muse Spark** | Personajes: ADA, HELIOS, el operador de radio y los supervivientes hablan y deciden qué hacer |
+| **Muse Spark** | Mapa: ADA y Tali saben qué hay cerca y ADA te marca objetivos; cada partida recibe un brief propio |
+| **Muse Image** | Creador de personaje: genera el sprite de tu héroe |
+| **Visión** | ADA comenta los dibujos que le enseñas en el creador |
+| **Muse Voice** | Transcribe lo que dices por el micrófono |
+
+Los personajes reaccionan al estado real de la partida: saben en qué sector estás,
+qué tienes cerca y cómo te va. El terreno de cada sector lo genera una semilla en
+tu navegador, y la IA de Meta lo convierte en un mundo con el que se puede hablar.
 
 Manteniendo V se habla en voz alta sin dejar de pelear, y la respuesta suena
 mientras la partida sigue. Iris, Tali y Lis tienen su vida, su versión de lo que

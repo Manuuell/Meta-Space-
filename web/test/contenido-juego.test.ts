@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { ContenidoJuego } from '../src/contenido-juego.ts';
+import { DRAGON } from '../src/contenido/mapa.ts';
 import type { World } from '../src/world.ts';
 
 function mundoPlano(): World {
@@ -198,7 +199,7 @@ test('contenido jugable: el aliento del Cancerbero quema dentro del cono y no fu
   assert.ok(quemado(1) < 5, 'el aliento quema fuera del cono');
 });
 
-test('contenido jugable: los duelos dan el Cañón y el segundo despierta al dragón, que solo baja posado', () => {
+test('contenido jugable: los duelos dan el Cañón; el dragón llega sin ellos, una vez por partida, y solo baja posado', () => {
   const efectos: { tipo: string }[] = [];
   const contenido = new ContenidoJuego(new THREE.Scene(), mundoPlano(), {
     toast: () => {},
@@ -217,7 +218,13 @@ test('contenido jugable: los duelos dan el Cañón y el segundo despierta al dra
   ganar(duelos[0]);
   assert.ok(efectos.some((e) => e.tipo === 'canon'), 'el primer duelo no dio el Cañón');
   ganar(duelos[1]);
-  assert.ok(contenido.marcas.some((m) => m.tipo === 'dragon'), 'el segundo duelo no despertó al dragón');
+  assert.equal(contenido.marcas.some((m) => m.tipo === 'dragon'), false, 'los duelos ya no despiertan al dragón');
+
+  const marcaHud = () => contenido.jefesHud.find((j) => j.nombre === DRAGON.nombre);
+  assert.equal(marcaHud()?.minuto, DRAGON.minuto, 'la barra no anuncia al dragón');
+  assert.equal(contenido.llamarDragon(0, 0), true);
+  assert.equal(contenido.llamarDragon(0, 0), false, 'llegó dos veces');
+  assert.ok(contenido.marcas.some((m) => m.tipo === 'dragon'), 'el dragón no llegó');
 
   // En el aire: las herramientas no le llegan, el rayo sí.
   for (let i = 0; i < 80; i++) contenido.update({ ...contexto((t += 0.1)), px: 0, pz: 0 });
@@ -239,6 +246,16 @@ test('contenido jugable: los duelos dan el Cañón y el segundo despierta al dra
     posado = contenido.objetivoJefe.some((x) => x.id === 'dragon');
   }
   assert.ok(posado, 'el dragón no se posó');
+
+  // Vencido no vuelve en esta partida; la siguiente trae el suyo.
+  contenido.objetivoJefe.find((x) => x.id === 'dragon')!.golpear(1e9);
+  assert.equal(marcaHud()?.vencido, true);
+  for (let i = 0; i < 200; i++) contenido.update({ ...contexto((t += 0.1)), px: 0, pz: 0 });
+  assert.equal(contenido.marcas.some((m) => m.tipo === 'dragon'), false, 'el dragón vencido sigue en el mapa');
+  assert.equal(contenido.llamarDragon(0, 0), false, 'el dragón vencido volvió');
+  contenido.reset();
+  assert.equal(marcaHud()?.vencido, false);
+  assert.equal(contenido.llamarDragon(0, 0), true, 'la partida nueva no trajo dragón');
 });
 
 test('restos de cohete: se recuperan quedándose al lado y cambian de sitio en cada sector', () => {

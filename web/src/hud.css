@@ -128,6 +128,8 @@
   position: absolute; top: 15px; left: 50%; transform: translateX(-50%); white-space: nowrap;
   font-size: 10px; font-weight: 800; color: #ffc4b8; text-shadow: 0 1px 0 #000, 0 0 3px #000;
 }
+.h2-barra-marcas b { display: block; font-size: 18px; line-height: 1; filter: drop-shadow(0 0 4px rgba(255, 74, 58, 0.9)); }
+.h2-barra-marcas .vencido b { filter: grayscale(1); opacity: 0.6; }
 .h2-barra-marcas .vencido i { background: #ffd25a; box-shadow: none; }
 .h2-barra-marcas .vencido small { color: #ffe6a0; text-decoration: line-through; }
 .h2-cohete { position: absolute; right: -26px; top: 50%; transform: translateY(-55%); font-size: 20px; }

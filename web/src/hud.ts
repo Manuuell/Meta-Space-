@@ -85,7 +85,7 @@ export interface HudState {
   /** Profundidad del ácido bajo los pies (World.acidoEn): si es > 0, avisa. */
   acido?: number;
   /** Jefes en la barra de la ventana. */
-  jefes?: { minuto: number; nombre: string; vencido?: boolean }[];
+  jefes?: { minuto: number; nombre: string; vencido?: boolean; icono?: string }[];
   /** Jefe que está combatiendo ahora: alimenta su barra de vida. */
   jefeActivo?: { nombre: string; vida?: number; vidaMax?: number };
   /** Aviso de interacción cerca de algo («Mantén V», «F · Abrir cofre · 20»). */
@@ -348,7 +348,7 @@ export function updateHud(s: HudState) {
   if (barra.dataset.k !== marcas) {
     barra.dataset.k = marcas;
     barra.innerHTML = (s.jefes ?? []).map((j) =>
-      `<span class="${j.vencido ? 'vencido' : ''}" style="left:${(j.minuto * 60 / duracion) * 100}%" title="${j.nombre}"><i></i><small>${j.nombre.split(' de ')[0]}</small></span>`).join('');
+      `<span class="${j.vencido ? 'vencido' : ''}" style="left:${(j.minuto * 60 / duracion) * 100}%" title="${j.nombre}">${j.icono ? `<b>${j.icono}</b>` : `<i></i><small>${j.nombre.split(' de ')[0]}</small>`}</span>`).join('');
   }
   q('.h2-bajas').textContent = compact(s.kills);
   q('.h2-chatarra').textContent = compact(s.scrap);

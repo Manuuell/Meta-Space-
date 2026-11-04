@@ -89,6 +89,7 @@ the game.
 | M | Sector map |
 | G, C | Active modules |
 | F | Interact: chests, cages, altars and, on the launch pad, the shipyard |
+| Right click · left click | Aim and fire the Solar Cannon (Z and X also work) |
 | C (in the menu) | Hero Forge: create your character |
 
 Your tools fire on their own: your job is to move. Follow the beams of light, stay
@@ -99,6 +100,10 @@ up and drops its tanks. The physics are real (thrust-to-weight and the Tsiolkovs
 rocket equation): if a launch fails, a specific part is to blame. What you recover
 stays in storage even if you die, and you can also build the ship from the menu
 (**Astillero**, key B).
+
+**The Veil Dragon comes for you in every run**, at minute six, or sooner if you fire
+up your engines first. While it flies only the Solar Cannon can reach it, and ADA
+hands you the cannon if you don't have it yet; when it lands, all your tools can hit it.
 
 **Every run is a different sector of Meta.** Before landing, the orbital scanner
 shows you three randomly generated destinations: eight biomes (from glaciers to ash

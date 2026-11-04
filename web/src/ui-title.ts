@@ -16,6 +16,7 @@
 //
 // Todo el texto visible del juego va en español.
 
+import { DRAGON } from './contenido/mapa';
 import { RELICS } from './data';
 import { iconoMenu } from './iconos';
 import { getOperator, getProfileTitle } from './profile/profile-data';
@@ -395,7 +396,8 @@ const HOW_TO_HTML = `
     <li><b>F</b><span>Abrir un cofre de HELIOS (cuesta chatarra), liberar una jaula, despertar al Guardián, usar la Fragua o pedirle a Iris que desmonte una herramienta</span></li>
     <li><b>Pilones</b><span>Quédate dentro del círculo hasta el 100 % y elige una bendición</span></li>
     <li><b>M</b><span>Mapa del sector: lo descubierto y hasta tres marcas tuyas</span></li>
-    <li><b>Duelos</b><span>F en un altar de duelo: vence a sus campeones en 90 s. El primero te da el Cañón solar; el segundo despierta al Dragón del Velo</span></li>
+    <li><b>Duelos</b><span>F en un altar de duelo: vence a sus campeones en 90 s. Cada duelo sube de nivel el Cañón solar y da premios</span></li>
+    <li><b>Dragón del Velo</b><span>Llega solo en el minuto ${DRAGON.minuto}, o antes si enciendes la nave. Si aún no tienes el Cañón solar, te lo da ADA</span></li>
     <li><b>Clic derecho · Z</b><span>Apuntar el Cañón solar (por encima del hombro, también al cielo)</span></li>
     <li><b>Clic izquierdo · X</b><span>Disparar el Cañón. Al dragón en el aire solo le llega esto; su cabeza es el punto débil</span></li>
     <li><b>Balizas</b><span>Destrúyelas antes de que atraigan más unidades</span></li>

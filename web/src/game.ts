@@ -77,7 +77,7 @@ import {
 import { mostrarMejoras } from './mejoras';
 import { abrirMapa } from './ui-mapa';
 import { alerta, escucha, marcarAcierto } from './hud';
-import { RESTOS, CANON, DESMONTAR, NPCS, aQuienHabla, frase } from './contenido/mapa';
+import { RESTOS, CANON, DESMONTAR, DRAGON, NPCS, aQuienHabla, frase } from './contenido/mapa';
 import type { OpcionHallazgo } from './hallazgos';
 import { pilotar } from './demo';
 import { zonasActivas } from './avisos';
@@ -1839,6 +1839,7 @@ export class Game {
       ui.toast('ADA', 'La ventana se cierra en un minuto. Lo que no esté en la nave ya no sube.', 'info', 5);
     }
     if (this.time >= RUN.length) return this.endRun(false, 'ventana');
+    if (!this.demo && this.time >= DRAGON.minuto * 60) this.llegaDragon();
     // Primero las bendiciones (pilón o cofre), luego las subidas de nivel:
     // nunca dos pantallas de elegir a la vez.
     if (this.bendicionesPendientes.length) this.abrirBendicion();
@@ -3110,18 +3111,35 @@ export class Game {
     if (this.jumpBtn) this.jumpBtn.style.display = 'none';
     if (this.micBtn) this.micBtn.style.display = 'none';
     const quedan = Math.max(0, RUN.length - this.time);
+    const seguir = () => {
+      endFrame();
+      this.state = 'playing';
+      this.clock.getDelta();
+      if (this.jumpBtn) this.jumpBtn.style.display = 'block';
+      if (this.micBtn) this.micBtn.style.display = 'block';
+      lockPointer(this.canvas);
+    };
     this.abrirAstilleroEn({
       subtitulo: `PLATAFORMA · QUEDAN ${Math.floor(quedan / 60)}:${String(Math.floor(quedan % 60)).padStart(2, '0')} DE VENTANA`,
-      lanzar: () => this.lanzar(),
-      volver: () => {
-        endFrame();
-        this.state = 'playing';
-        this.clock.getDelta();
-        if (this.jumpBtn) this.jumpBtn.style.display = 'block';
-        if (this.micBtn) this.micBtn.style.display = 'block';
-        lockPointer(this.canvas);
+      lanzar: () => {
+        // Nadie sale del sector sin verlo: si aún no vino, el encendido lo trae.
+        if (!this.llegaDragon()) return this.lanzar();
+        this.world.montarNave(this.hangar.montadas);
+        seguir();
+        alerta('¡HELIOS ha visto el encendido!', 4);
+        ui.toast('ADA', 'Nos ha delatado el encendido: viene el Dragón del Velo. La nave sigue lista, pulsa F en la plataforma para lanzar.', 'info', 8);
       },
+      volver: seguir,
     });
+  }
+
+  /** El Dragón del Velo llega solo, una vez por partida. Devuelve si acaba de llegar. */
+  private llegaDragon() {
+    const p = this.player.position;
+    if (!this.contenido.llamarDragon(p.x, p.z)) return false;
+    // En el aire solo le alcanza el Cañón: sin él no habría pelea.
+    if (this.canonNivel === 0) this.aplicarEfectos([{ tipo: 'canon' }]);
+    return true;
   }
 
   /** La nave vuela: su diseño decide cómo acaba el sector. */

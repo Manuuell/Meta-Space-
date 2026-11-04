@@ -99,6 +99,8 @@ export interface ObjetivoCombate {
 export interface JefeHud {
   minuto: number;
   nombre: string;
+  /** Se pinta en la barra en lugar del rombo con el nombre. */
+  icono?: string;
   vencido: boolean;
   vida?: number;
   vidaMax?: number;
@@ -366,6 +368,8 @@ export class ContenidoJuego {
   private duelos: EstadoDuelo[] = [];
   private duelosGanados = 0;
   private dragon: JefeVolador | null = null;
+  /** Ya vino en esta partida: vencido, no vuelve. */
+  private dragonLlego = false;
   private ocupados: { x: number; z: number; r: number }[] = [];
   private refugio: Actor | null = null;
   /** El mercader de paso, si en este sector hay uno. */
@@ -479,7 +483,7 @@ export class ContenidoJuego {
   }
 
   get jefesHud(): JefeHud[] {
-    return this.altares.map((altar) => {
+    const altares = this.altares.map((altar) => {
       const activo = this.altarGolem === altar && this.golem && !this.golem.derrotado ? this.golem : null;
       return {
         minuto: altar.def.minuto,
@@ -489,6 +493,8 @@ export class ContenidoJuego {
         vidaMax: activo?.def.vida,
       };
     });
+    const dragon = { minuto: DRAGON.minuto, nombre: DRAGON.nombre, icono: '🐉', vencido: this.dragonLlego && (!this.dragon || this.dragon.derrotado) };
+    return [...altares, dragon];
   }
 
   /** La barra grande del HUD: el gólem si está en pie; si no, el minijefe más cercano. */
@@ -582,6 +588,7 @@ export class ContenidoJuego {
     this.altarGolem = null;
     this.dragon?.dispose();
     this.dragon = null;
+    this.dragonLlego = false;
     this.duelosGanados = 0;
     for (const duelo of this.duelos) {
       for (const r of duelo.retadores) r.dispose();
@@ -787,9 +794,16 @@ export class ContenidoJuego {
     this.altarGolem = null;
   }
 
-  /** Llama al Dragón del Velo ahora mismo (el modo demo no espera a los duelos). */
+  /** El Dragón del Velo llega volando desde lejos, una vez por partida. Devuelve si acaba de llegar. */
   llamarDragon(px: number, pz: number) {
-    if (!this.dragon) this.invocarDragon({ px, pz } as ContextoContenido);
+    if (this.dragonLlego) return false;
+    this.dragonLlego = true;
+    const a = this.rand() * Math.PI * 2;
+    this.dragon = new JefeVolador(this.scene, this.world, px + Math.cos(a) * 70, pz + Math.sin(a) * 70, {
+      empujar: this.eventos.empujar, aviso: this.eventos.aviso, sacudida: this.eventos.sacudida, sonido: this.eventos.sonido,
+    }, this.rand, this.escala);
+    this.eventos.toast('HELIOS', 'Anomalía persistente. Despliego al Dragón del Velo.', 6);
+    return true;
   }
 
   /** En qué punto está la pelea de la demo: si queda gólem o dragón en pie. */
@@ -1197,7 +1211,6 @@ export class ContenidoJuego {
           this.duelosGanados++;
           this.eventos.toast('ADA', 'Duelo ganado. El altar entrega su premio.', 4);
           this.eventos.aplicar(premio);
-          if (this.duelosGanados === DUELOS.dragonAlGanar && !this.dragon) this.invocarDragon(c);
         } else if (duelo.t >= DUELOS.segundos) {
           duelo.estado = 'fallado';
           duelo.t = 0;
@@ -1217,15 +1230,6 @@ export class ContenidoJuego {
       }
     }
     return dano;
-  }
-
-  /** El Dragón del Velo llega volando desde lejos, al otro lado del jugador. */
-  private invocarDragon(c: ContextoContenido) {
-    const a = this.rand() * Math.PI * 2;
-    this.dragon = new JefeVolador(this.scene, this.world, c.px + Math.cos(a) * 70, c.pz + Math.sin(a) * 70, {
-      empujar: this.eventos.empujar, aviso: this.eventos.aviso, sacudida: this.eventos.sacudida, sonido: this.eventos.sonido,
-    }, this.rand, this.escala);
-    this.eventos.toast('HELIOS', 'Has roto demasiados sellos. El Dragón del Velo viene a por ti.', 6);
   }
 
   private actualizarPilones(c: ContextoContenido) {

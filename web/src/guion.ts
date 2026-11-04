@@ -34,7 +34,9 @@ export const REGLAS =
   'Las Balizas no atacan, pero mientras viven llegan más unidades. Cada minuto llega un anillo de ' +
   'Recolectores. Los Segadores aparecen a partir del minuto 2, son lentos y llevan las reliquias dentro. ' +
   'Los Saltadores se agachan antes de saltar; las Avispas pican desde el aire; los Caparazones sueltan ' +
-  'crías al romperse; los Sembradores disparan esporas lentas y esquivables. Manteniendo la tecla V se habla en ' +
+  'crías al romperse; los Sembradores disparan esporas lentas y esquivables. Pasada la mitad de la ventana, o antes si ' +
+  'se enciende la nave, llega solo el Dragón del Velo: en el aire solo le alcanza el Cañón solar, y al posarse le llega todo. ' +
+  'Manteniendo la tecla V se habla en ' +
   'voz alta con ADA o con quien esté cerca, sin parar la partida, y ADA conoce todo el mapa.';
 
 export type Hablante = 'ada' | 'helios' | 'operador';

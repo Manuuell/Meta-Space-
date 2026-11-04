@@ -4,6 +4,14 @@ Estado a 04/11/2026.
 
 ---
 
+## El Dragón del Velo llega solo (04/11/2026)
+
+- Ya no hay que ganar dos duelos: llega en el minuto `DRAGON.minuto` (6) de toda
+  partida, o al pulsar lanzar si vas antes. Ese primer intento se cancela y la nave
+  queda lista para el segundo (`abrirAstilleroPartida` y `llegaDragon` en `game.ts`).
+- Si no tienes el Cañón solar, ADA te lo da. Los duelos ahora solo lo suben de nivel
+  y dan premios. El equilibrio de esta pelea para todo jugador está por probar.
+
 ## Forja de héroes (04/11/2026)
 
 Escribes cómo quieres a tu héroe y entra en la partida como personaje 3D. Se abre con

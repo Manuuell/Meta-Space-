@@ -202,8 +202,6 @@ export const DUELOS = {
     [{ tipo: 'canon' }, { tipo: 'bendicion', elegir: 1, suerte: 0.5 }],
     [{ tipo: 'canon' }, { tipo: 'bendicion', elegir: 3, suerte: 0.8 }],
   ] as Efecto[][],
-  /** Al ganar este duelo (por cuenta) se despierta el dragón. */
-  dragonAlGanar: 2,
 } as const;
 
 /** Cañón solar: daño por disparo y recarga (s) por nivel. Lo multiplica la potencia. */
@@ -223,6 +221,8 @@ export const CANON = {
  */
 export const DRAGON = {
   nombre: 'Dragón del Velo',
+  /** Minuto en que llega solo, en toda partida; si intentas lanzar antes, llega entonces. */
+  minuto: 6,
   vida: 8500,
   altura: 15,
   /** Radio de la órbita alrededor del jugador y velocidad en el aire. */

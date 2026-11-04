@@ -13,8 +13,8 @@
 //                       plataforma define PORT, escucha en 0.0.0.0.
 //   ALLOWED_ORIGINS     otros orígenes que pueden llamar a la API, separados
 //                       por comas. El propio dominio siempre puede.
-//   TRUST_PROXY=1       detrás de un proxy (Render, Fly, nginx…): toma la IP
-//                       del cliente de X-Forwarded-For para los límites.
+//   TRUST_PROXY=1       detrás de un único proxy (Render, Fly, nginx…): toma
+//                       la IP que ese proxy añade al final de X-Forwarded-For.
 //   AI_DAILY_LIMIT      llamadas de pago al día antes de pasar a modo local (1500).
 //   STATIC_DIR          carpeta del juego compilado (por defecto ./dist).
 //   META_API_BASE, META_CHAT_MODEL, META_CHARLA_MODEL, META_IMAGE_MODEL, META_VOICE_MODEL.
@@ -166,7 +166,9 @@ function origenPermitido(req: IncomingMessage): boolean {
   const origen = req.headers.origin;
   if (!origen) return true;
   if (ORIGENES.has(origen)) return true;
-  const host = (TRUST_PROXY && String(req.headers['x-forwarded-host'] || '').split(',')[0].trim()) || req.headers.host;
+  // Nginx conserva el dominio público en Host. No confiar en
+  // X-Forwarded-Host: si el proxy no lo sanea, el cliente puede falsificarlo.
+  const host = req.headers.host;
   try {
     return Boolean(host) && new URL(origen).host === host;
   } catch {
@@ -186,7 +188,11 @@ function cabecerasCors(req: IncomingMessage, res: ServerResponse): void {
 
 function ipDe(req: IncomingMessage): string {
   if (TRUST_PROXY) {
-    const reenviada = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+    // El Nginx de producción usa $proxy_add_x_forwarded_for: conserva lo que
+    // mande el cliente y añade su IP al final. La primera entrada es por tanto
+    // falsificable; la última es la dirección que observó nuestro proxy.
+    const ips = String(req.headers['x-forwarded-for'] || '').split(',').map((ip) => ip.trim()).filter(Boolean);
+    const reenviada = ips.at(-1);
     if (reenviada) return reenviada;
   }
   return req.socket.remoteAddress || 'desconocida';

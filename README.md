@@ -6,6 +6,10 @@ to them out loud without leaving the fight, they know the map you are exploring,
 and you can create your own 3D hero just by writing what you want.
 
 <p align="center">
+  <a href="https://metaspace.sentralabs.co/"><strong>▶ Play Meta Space in your browser</strong></a>
+</p>
+
+<p align="center">
   <a href="docs/media/batalla.mp4"><img src="docs/media/batalla.webp" alt="Battle against the Cancerbero and the Veil Dragon, ending on the Meta Space title" width="100%"></a>
 </p>
 

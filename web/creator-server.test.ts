@@ -8,6 +8,7 @@ import path from 'node:path';
 // y con un juego compilado de prueba en una carpeta temporal.
 delete process.env.MODEL_API_KEY;
 delete process.env.META_API_KEY;
+process.env.TRUST_PROXY = '1';
 const dist = mkdtempSync(path.join(tmpdir(), 'meta-space-dist-'));
 mkdirSync(path.join(dist, 'assets'));
 mkdirSync(path.join(dist, 'art'));
@@ -66,7 +67,10 @@ test('/api/npc-line corrige hablante y evento desconocidos', async () => {
 });
 
 test('solo el propio dominio y los orígenes de desarrollo pueden llamar a la API', async () => {
-  const ajeno = await post('/api/npc-line', {}, { Origin: 'https://malicioso.example' });
+  const ajeno = await post('/api/npc-line', {}, {
+    Origin: 'https://malicioso.example',
+    'X-Forwarded-Host': 'malicioso.example',
+  });
   assert.equal(ajeno.status, 403);
   assert.equal(ajeno.headers.get('access-control-allow-origin'), null);
 
@@ -76,6 +80,16 @@ test('solo el propio dominio y los orígenes de desarrollo pueden llamar a la AP
 
   const propio = await post('/api/npc-line', {}, { Origin: base });
   assert.equal(propio.status, 200);
+});
+
+test('un cliente no evade el límite falsificando X-Forwarded-For', async () => {
+  const codigos: number[] = [];
+  for (let i = 0; i < 7; i++) {
+    const xff = `203.0.113.${i + 1}, 198.51.100.7`;
+    codigos.push((await post('/api/generate-image', { prompt: 'astronauta' }, { 'X-Forwarded-For': xff })).status);
+  }
+  assert.deepEqual(codigos.slice(0, 5), [200, 200, 200, 200, 200]);
+  assert.equal(codigos.at(-1), 429);
 });
 
 test('la generación de imágenes tiene límite por IP', async () => {

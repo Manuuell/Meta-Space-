@@ -1,0 +1,29 @@
+services:
+  meta-space:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: meta-space:latest
+    container_name: meta-space
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env.production
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8787
+      TRUST_PROXY: "1"
+      ALLOWED_ORIGINS: https://metaspace.sentralabs.co
+    ports:
+      - 127.0.0.1:8787:8787
+    cpus: 2.0
+    mem_limit: 2g
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

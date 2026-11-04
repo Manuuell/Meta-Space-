@@ -32,8 +32,8 @@ export const REGLAS =
   'Las Balizas no atacan, pero mientras viven llegan más unidades. Cada minuto llega un anillo de ' +
   'Recolectores. Los Segadores aparecen a partir del minuto 2, son lentos y llevan las reliquias dentro. ' +
   'Los Saltadores se agachan antes de saltar; las Avispas pican desde el aire; los Caparazones sueltan ' +
-  'crías al romperse; los Sembradores disparan esporas lentas y esquivables. El dron ADA obedece órdenes ' +
-  'de voz o con la tecla T: «escanea», «ven», «quieto» y «luz».';
+  'crías al romperse; los Sembradores disparan esporas lentas y esquivables. Manteniendo la tecla V se habla en ' +
+  'voz alta con ADA o con quien esté cerca, sin parar la partida, y ADA conoce todo el mapa.';
 
 export type Hablante = 'ada' | 'helios' | 'operador';
 export type EventoNpc = 'inicio' | 'reliquia' | 'herido' | 'elite' | 'mitad' | 'baliza' | 'victoria' | 'derrota';
@@ -139,7 +139,7 @@ const GIROS = [
   'Los Segadores llegan a partir del minuto 2 y llevan las reliquias dentro.',
   'Cada minuto llega un anillo de Recolectores: no te dejes encerrar contra las ruinas.',
   'Las esporas de los Sembradores son lentas: muévete en lateral y no te alcanzan.',
-  'Di «escanea» al dron y te dirá dónde está lo que buscas.',
+  'Mantén V y pregúntale a ADA: conoce todo el mapa y te marca lo que busques.',
   'La chatarra sube de nivel: recógela entre oleada y oleada.',
 ];
 const LINEAS_OP = [

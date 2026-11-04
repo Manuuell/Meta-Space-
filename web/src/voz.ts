@@ -198,3 +198,13 @@ export function abrirLineaComando(alEnviar: (texto: string) => void): () => void
   });
   return cerrar;
 }
+
+export interface PerfilVoz {
+  /** Voz de Supertonic en el servidor (voces-servidor.ts) y su ritmo. */
+  modelo: string;
+  rapidez: number;
+  /** Respaldo en el navegador: qué voz de la lista le toca, tono y velocidad. */
+  indice: number;
+  tono: number;
+  velocidad: number;
+}

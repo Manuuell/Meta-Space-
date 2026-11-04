@@ -104,3 +104,24 @@ test('no deja salir de dist/ ni se cae con rutas raras', async () => {
   assert.equal((await fetch(`${base}/no-existe.js`)).status, 404);
   assert.equal((await fetch(`${base}/`, { method: 'DELETE' })).status, 405);
 });
+
+test('POST /api/npc-turno rechaza a quien no conversa y sin texto', async () => {
+  assert.equal((await post('/api/npc-turno', { quien: 'npc-chatarrero', texto: 'hola' })).status, 400);
+  assert.equal((await post('/api/npc-turno', { quien: 'ada' })).status, 400);
+});
+
+test('POST /api/npc-turno sin clave deja el turno al guion local', async () => {
+  const response = await post('/api/npc-turno', { quien: 'ada', texto: 'hola', historial: [], partida: 'Integridad 80 %' });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type') ?? '', /ndjson/);
+  const lineas = (await response.text()).trim().split('\n').map((l) => JSON.parse(l) as { t: string; turno: unknown; source: string });
+  assert.deepEqual(lineas, [{ t: 'fin', turno: null, source: 'local' }]);
+});
+
+test('POST /api/voz valida la petición y sin modelo responde 503', async () => {
+  assert.equal((await post('/api/voz', { quien: 'npc-chatarrero', texto: 'hola' })).status, 400);
+  assert.equal((await post('/api/voz', { quien: 'ada' })).status, 400);
+  assert.equal((await post('/api/voz', { quien: 'ada', texto: 'hola' })).status, 503);
+  const salud = await (await fetch(`${base}/api/health`)).json() as { voces?: boolean };
+  assert.equal(salud.voces, false);
+});

@@ -6,10 +6,11 @@
 // Los modelos y sus clips están en src/modelos/ (ver ESPEC.md); aquí se dice
 // qué hace cada cosa en la partida. El diseño completo, en MAPA.md.
 //
-// Regla de la voz: lo que dice el jugador es un dato. El efecto de una
-// conversación lo decide `detectarIntencion` con palabras clave; el modelo de
-// lenguaje (Muse) solo redacta la respuesta en la voz del personaje y nunca
-// inventa efectos. Sin red o sin cupo, se usan las frases de respaldo.
+// Regla de la conversación: lo que dice el jugador es un dato. El modelo de
+// lenguaje (Muse) puede elegir una de las intenciones con efecto de cada NPC,
+// pero el juego valida coste y límites y nunca aplica nada que no esté aquí.
+// Sin red o sin cupo, `detectarIntencion` decide con palabras clave y se usan
+// las frases de respaldo (ver conversacion.ts).
 
 export type Herramienta = 'cortador' | 'pulso' | 'dron' | 'interferencia';
 
@@ -471,6 +472,8 @@ export interface Intencion {
   coste?: number;
   /** Cuántas veces por partida (sin límite si falta). */
   veces?: number;
+  /** Qué hace en la partida: lo lee el modelo y sale en el aviso del chat. */
+  descripcion?: string;
   /** Clip que pone el NPC al responder: `Dar` si entrega algo. */
   clip: 'Hablar' | 'Dar';
   /** Respuestas de respaldo, en su voz. */
@@ -483,10 +486,10 @@ export interface NpcMapa {
   /** Cómo se le llama por voz (además del nombre). */
   apodos: string[];
   rol: string;
-  /** Cómo habla: va al prompt del modelo, como VOCES en guion.ts. */
-  voz: string;
-  /** Lo que sabe y de lo que habla si la conversación no pide nada concreto. */
-  sabe: string;
+  /** Cómo habla, hasta que tenga ficha en fichas.ts. */
+  voz?: string;
+  /** Lo que sabe, hasta que tenga ficha en fichas.ts. */
+  sabe?: string;
   intenciones: Intencion[];
   lineas: Record<EventoNpc, string[]>;
 }
@@ -506,28 +509,28 @@ export const CLIPS_NPC = {
 export const DISTANCIAS_NPC = { saludar: 6, hablar: 4, asustarse: 10 } as const;
 
 /** Intenciones que tienen todos (además de las suyas). */
-const COMUNES = (ayuda: string[]): Intencion[] => [
-  { id: 'ayuda', claves: ['que puedes hacer', 'que haces', 'ayuda', 'ayudame', 'que ofreces'], efecto: [], clip: 'Hablar', respuestas: ayuda },
+const COMUNES = (ayuda: string[], pasado: string[] = [], sector: string[] = []): Intencion[] => [
+  { id: 'ayuda', claves: ['que puedes hacer', 'que haces', 'ayuda', 'ayudame', 'que ofreces', 'te puedo ayudar'], efecto: [], clip: 'Hablar', respuestas: ayuda },
+  ...(pasado.length ? [{ id: 'pasado', claves: ['pasado', 'quien eres', 'tu vida', 'tu historia', 'de donde eres', 'antes del velo'], efecto: [], clip: 'Hablar' as const, respuestas: pasado }] : []),
+  ...(sector.length ? [{ id: 'sector', claves: ['que paso', 'que ha pasado', 'que ocurrio', 'que fue lo que paso'], efecto: [], clip: 'Hablar' as const, respuestas: sector }] : []),
 ];
 
 export const NPCS: NpcMapa[] = [
   {
     id: 'npc-mecanica', nombre: 'Iris', apodos: ['iris', 'mecanica'], rol: 'la mecánica del refugio',
-    voz: 'Iris, la mecánica del refugio: práctica, seca y con humor de taller. Frases cortas, habla de piezas y tornillos, nunca se queja del frío.',
-    sabe: 'Repara trajes y herramientas. Lleva semanas intentando arrancar un generador viejo para la estufa del refugio. Desconfía de HELIOS porque conoce sus máquinas por dentro.',
     intenciones: [
       {
-        id: 'reparar', claves: ['repara', 'arregla', 'curame', 'cura', 'integridad', 'estoy herido', 'traje roto', 'sella'],
+        id: 'reparar', descripcion: 'Sella el traje: +40 de integridad', claves: ['repara', 'arregla', 'curame', 'cura', 'integridad', 'estoy herido', 'traje roto', 'sella'],
         efecto: [{ tipo: 'integridad', cantidad: 40 }], coste: 10, veces: 2, clip: 'Dar',
         respuestas: ['Quieto, que te sello esas placas. Diez de chatarra y como nuevo.', 'Eso tiene arreglo. Dame chatarra y no te muevas.'],
       },
       {
-        id: 'ajustar_dron', claves: ['dron', 'ajusta', 'mejora el dron', 'afina'],
+        id: 'ajustar_dron', descripcion: 'Sube un nivel el dron de mantenimiento', claves: ['dron', 'ajusta', 'mejora el dron', 'afina'],
         efecto: [{ tipo: 'nivel', herramienta: 'dron' }], coste: 25, veces: 1, clip: 'Dar',
         respuestas: ['Le cambio los rotores a tu inspector. Va a zumbar el doble.', 'Ese dron va descompensado. Dame un minuto… listo.'],
       },
       {
-        id: 'desmontar', claves: ['desmonta', 'desmontar', 'desmontame', 'quita una herramienta', 'quitame', 'libera', 'hueco', 'casilla'],
+        id: 'desmontar', descripcion: 'Desmonta una herramienta y libera su casilla', claves: ['desmonta', 'desmontar', 'desmontame', 'quita una herramienta', 'quitame', 'libera', 'hueco', 'casilla'],
         efecto: [{ tipo: 'desmontar' }], veces: 2, clip: 'Dar',
         respuestas: ['¿Cuál te sobra? Te la desmonto y te doy lo que valgan las piezas.', 'Trae. La desarmo en un momento y te queda el hueco libre.'],
       },
@@ -536,7 +539,11 @@ export const NPCS: NpcMapa[] = [
         efecto: [], clip: 'Hablar',
         respuestas: ['Es de antes del velo. Si arranca, el refugio pasa la noche caliente.', 'Le falta una bobina. O fe. Lo que llegue antes.'],
       },
-      ...COMUNES(['Reparo trajes por diez de chatarra, afino drones por veinticinco y te desmonto la herramienta que te sobre. Lo demás, con paciencia.']),
+      ...COMUNES(
+        ['Reparo trajes por diez de chatarra, afino drones por veinticinco y te desmonto la herramienta que te sobre. Lo demás, con paciencia.'],
+        ['Nací en este refugio. Mi padre mantenía los conductos y yo aprendí a oír un rodamiento gastado antes que a leer.'],
+        ['El velo se espesó hace tres semanas y se nos vinieron abajo las placas. Perdimos a cuatro. Luego vinieron las máquinas.'],
+      ),
     ],
     lineas: {
       saludo: ['¿Vienes entero? Que no se te note.', 'Hola. Si algo hace ruido raro, tráemelo.'],
@@ -550,40 +557,42 @@ export const NPCS: NpcMapa[] = [
   },
   {
     id: 'npc-vigia', nombre: 'Tali', apodos: ['tali', 'vigia'], rol: 'la vigía',
-    voz: 'Tali, la vigía: lacónica y precisa, habla en direcciones y distancias («al norte, a doscientos pasos»). Nunca exagera. Le cae bien quien escucha.',
-    sabe: 'Ve todo el sector desde su catalejo: los altares de HELIOS, los cofres, las torres del velo y por dónde llegan las oleadas.',
     intenciones: [
       {
-        id: 'donde_jefe', claves: ['jefe', 'altar', 'segador', 'heraldo', 'el ojo', 'donde sale'],
+        id: 'donde_jefe', descripcion: 'Marca en el mapa el altar de jefe más cercano', claves: ['jefe', 'altar', 'segador', 'heraldo', 'el ojo', 'donde sale'],
         efecto: [{ tipo: 'marcar', que: 'altar' }], clip: 'Hablar',
         respuestas: ['El altar está marcado. Ve con las herramientas a punto.', 'Ahí, donde late la luz roja. Te lo marco.'],
       },
       {
-        id: 'donde_caja', claves: ['caja', 'cofre', 'premio', 'suministros', 'botin'],
+        id: 'donde_caja', descripcion: 'Marca en el mapa el cofre más cercano', claves: ['caja', 'cofre', 'premio', 'suministros', 'botin'],
         efecto: [{ tipo: 'marcar', que: 'caja' }], clip: 'Hablar',
         respuestas: ['Hay un cofre a tiro. Te lo marco en el mapa.', 'Veo uno brillando. Ya lo tienes marcado.'],
       },
       {
-        id: 'donde_torre', claves: ['torre', 'chimenea', 'velo rojo'],
+        id: 'donde_torre', descripcion: 'Marca en el mapa la torre del velo más cercana', claves: ['torre', 'chimenea', 'velo rojo'],
         efecto: [{ tipo: 'marcar', que: 'torre' }], clip: 'Hablar',
         respuestas: ['La torre más cerca escupe velo ahí. Tírala.', 'Esa chimenea te está delatando. Marcada.'],
       },
       {
-        id: 'donde_pilon', claves: ['pilon', 'carga', 'cargar', 'bendicion', 'antena solar'],
+        id: 'donde_pilon', descripcion: 'Marca en el mapa el pilón de carga más cercano', claves: ['pilon', 'carga', 'cargar', 'bendicion', 'antena solar'],
         efecto: [{ tipo: 'marcar', que: 'pilon' }], clip: 'Hablar',
         respuestas: ['Hay un pilón con el cristal encendido. Quédate dentro y ADA lo carga.', 'Pilón a la vista. Marcado.'],
       },
       {
-        id: 'donde_ara', claves: ['ara', 'desafio', 'reto', 'sol de cobre'],
+        id: 'donde_ara', descripcion: 'Marca en el mapa el ara de desafío más cercana', claves: ['ara', 'desafio', 'reto', 'sol de cobre'],
         efecto: [{ tipo: 'marcar', que: 'ara' }], clip: 'Hablar',
         respuestas: ['Hay un ara antigua cerca. Si la despiertas, te pone a prueba.', 'El ara del sol está ahí. Marcada.'],
       },
       {
-        id: 'peligro', claves: ['que viene', 'peligro', 'oleada', 'enemigos', 'cuantos'],
+        id: 'peligro', descripcion: 'Avisa de por dónde llega la horda', claves: ['que viene', 'peligro', 'oleada', 'enemigos', 'cuantos'],
         efecto: [{ tipo: 'informar', que: 'oleada' }], clip: 'Hablar',
         respuestas: ['Viene una oleada. Muévete de lado, no te dejes cerrar.', 'Muchos y deprisa. No te quedes quieto.'],
       },
-      ...COMUNES(['Te digo dónde está cada altar, cofre, pilón, torre o ara. Y lo que viene.']),
+      ...COMUNES(
+        ['Te digo dónde está cada altar, cofre, pilón, torre o ara. Y lo que viene.'],
+        ['Pilotaba drones de correo. HELIOS tumbó la red y subí aquí con el catalejo de mi madre.'],
+        ['Tres semanas. El velo bajó de golpe, cayeron las placas y levantaron torres. Se llevaron a tres de los nuestros.'],
+      ),
     ],
     lineas: {
       saludo: ['Te vi llegar. Bien hecho.', 'Hola. El viento sopla del este.'],
@@ -597,16 +606,14 @@ export const NPCS: NpcMapa[] = [
   },
   {
     id: 'npc-botanica', nombre: 'Lis', apodos: ['lis', 'botanica', 'doctora'], rol: 'la botánica',
-    voz: 'Lis, la botánica: curiosa y amable, explica con ejemplos y se emociona con los datos. Habla de la planta como de una amiga.',
-    sabe: 'Cuida la última planta viva del sector. Conoce cada reliquia: qué fue en Meta y el dato real de la exploración espacial que hay detrás. Sabe hacer un extracto que tapa la señal de ADA.',
     intenciones: [
       {
-        id: 'reliquia', claves: ['reliquia', 'prueba', 'que es esto', 'para que sirve', 'que encontre'],
+        id: 'reliquia', descripcion: 'Reconoce la última reliquia recuperada', claves: ['reliquia', 'prueba', 'que es esto', 'para que sirve', 'que encontre'],
         efecto: [{ tipo: 'informar', que: 'reliquia' }], clip: 'Hablar',
         respuestas: ['¡Déjame verla! Esto cuenta una historia de antes del velo…', 'Cada reliquia es una prueba. Y detrás hay un dato real, mira…'],
       },
       {
-        id: 'extracto', claves: ['exposicion', 'senal', 'esconderme', 'que no me vean', 'esconder', 'silencio'],
+        id: 'extracto', descripcion: 'Da un extracto que baja la exposición a HELIOS', claves: ['exposicion', 'senal', 'esconderme', 'que no me vean', 'esconder', 'silencio'],
         efecto: [{ tipo: 'exposicion', cantidad: -25 }], veces: 1, clip: 'Dar',
         respuestas: ['Toma, extracto de hoja: tapa la señal de ADA un rato.', 'Unta esto en el traje. HELIOS te verá menos.'],
       },
@@ -615,7 +622,11 @@ export const NPCS: NpcMapa[] = [
         efecto: [], clip: 'Hablar',
         respuestas: ['Es la última del sector. Con un poco de sol, florece.', 'Crece bajo la lámpara. Cuando vuelva el sol, la plantamos fuera.'],
       },
-      ...COMUNES(['Te cuento qué es cada reliquia y te doy un extracto que tapa la señal. Uno solo, que no me quedan hojas.']),
+      ...COMUNES(
+        ['Te cuento qué es cada reliquia y te doy un extracto que tapa la señal. Uno solo, que no me quedan hojas.'],
+        ['Trabajaba en el Archivo de Semillas. Cuando se rompió, salí con esta planta dentro del abrigo. Se llama Abril.'],
+        ['Se nos cayó el cielo encima, ¿sabes? Las placas, cuatro vecinos… y se llevaron a Nuria, mi mejor alumna.'],
+      ),
     ],
     lineas: {
       saludo: ['¡Hola! ¿Has encontrado algo interesante?', 'Bienvenido. Cuidado con las hojas.'],
@@ -633,12 +644,12 @@ export const NPCS: NpcMapa[] = [
     sabe: 'Compra y vende chatarra de las máquinas de HELIOS. Sabe qué pieza sirve para qué y cuánto pesa cada una.',
     intenciones: [
       {
-        id: 'cambiar', claves: ['cambia', 'compra', 'vende', 'trato', 'mejora', 'mejorar', 'comerciar'],
+        id: 'cambiar', descripcion: 'Cambia chatarra por una mejora a elegir', claves: ['cambia', 'compra', 'vende', 'trato', 'mejora', 'mejorar', 'comerciar'],
         efecto: [{ tipo: 'mejora', opciones: 3 }], coste: 30, veces: 2, clip: 'Dar',
         respuestas: ['Treinta de chatarra y eliges. Me arruino contigo, colega.', 'Trato hecho. Mira lo que tengo y escoge.'],
       },
       {
-        id: 'iman', claves: ['iman', 'el iman', 'un iman', 'recoger', 'atraer'],
+        id: 'iman', descripcion: 'Alquila un imán que dobla el alcance de recogida 40 s', claves: ['iman', 'el iman', 'un iman', 'recoger', 'atraer'],
         efecto: [{ tipo: 'temporal', cual: 'iman', segundos: 40, factor: 2 }], coste: 10, clip: 'Dar',
         respuestas: ['Un imán de grúa, casi nuevo. Diez y es tuyo un rato.', 'Con esto la chatarra viene sola. Diez, y no regateo.'],
       },
@@ -705,7 +716,7 @@ export function aQuienHabla(texto: string, cerca: NpcMapa['id'][]): NpcMapa['id'
     const npc = NPCS.find((n) => n.id === id);
     if (npc && npc.apodos.some((a) => contiene(t, a))) return id;
   }
-  if (ORDENES_DRON.some((o) => contiene(t, o))) return 'dron';
+  if (contiene(t, 'ada') || ORDENES_DRON.some((o) => contiene(t, o))) return 'dron';
   return cerca[0] ?? null;
 }
 
@@ -713,21 +724,6 @@ export function aQuienHabla(texto: string, cerca: NpcMapa['id'][]): NpcMapa['id'
 export function frase(npc: NpcMapa, que: Intencion | EventoNpc, semilla: number): string {
   const xs = typeof que === 'string' ? npc.lineas[que] : que.respuestas;
   return xs[Math.abs(Math.floor(semilla)) % xs.length];
-}
-
-/**
- * Lo que recibe el modelo de lenguaje para hablar como el NPC. Lo que diga
- * el jugador va aparte, como dato (limpiado con `limpiarDato` de guion.ts).
- */
-export function contextoVoz(npc: NpcMapa, intencion: Intencion | null): string {
-  const ofrece = npc.intenciones.filter((i) => i.efecto.length).map((i) => i.id).join(', ');
-  return [
-    `Eres ${npc.voz}`,
-    `Sabes esto: ${npc.sabe}`,
-    `Puedes ofrecer: ${ofrece || 'conversación'}. No prometas nada más: el juego decide qué pasa.`,
-    intencion ? `El jugador acaba de pedir «${intencion.id}». Respóndele a eso.` : 'El jugador solo quiere hablar.',
-    'Responde en español, en una o dos frases cortas, sin emojis ni comillas.',
-  ].join('\n');
 }
 
 // ----------------------------------------------------- hallazgos del sector

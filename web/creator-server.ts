@@ -1,9 +1,9 @@
 // META SPACE — Servidor del juego y de la IA (Muse Spark, Muse Image y Muse
 // Voice vía Meta Model API).
 //
-// Sin dependencias: solo módulos de Node. Un único proceso sirve el juego ya
-// compilado (dist/) y la API en el mismo dominio, que es lo que necesita el
-// jurado: una URL y nada que instalar.
+// Solo módulos de Node, más el motor opcional de voces (voces-servidor.ts). Un
+// único proceso sirve el juego ya compilado (dist/) y la API en el mismo dominio,
+// que es lo que necesita el jurado: una URL y nada que instalar.
 //
 // Arranque:  npm run build && npm start        (o `node creator-server.ts [puerto]`)
 // Clave:     MODEL_API_KEY (o META_API_KEY), en el entorno o en .env.local / .env.
@@ -17,17 +17,18 @@
 //                       del cliente de X-Forwarded-For para los límites.
 //   AI_DAILY_LIMIT      llamadas de pago al día antes de pasar a modo local (1500).
 //   STATIC_DIR          carpeta del juego compilado (por defecto ./dist).
-//   META_API_BASE, META_CHAT_MODEL, META_IMAGE_MODEL, META_VOICE_MODEL.
+//   META_API_BASE, META_CHAT_MODEL, META_CHARLA_MODEL, META_IMAGE_MODEL, META_VOICE_MODEL.
 //
 // Endpoints:
 //   GET  /api/health            → { ok, meta, modelos, servicio }
 //   POST /api/run-brief         → { ok, brief, source }  (misión + NPCs únicos por partida)
 //   POST /api/npc-line          → { ok, linea, source }  (una línea de un NPC ante un evento)
-//   POST /api/map-npc-line      → { ok, linea, source }  (gente del refugio, con respaldo)
+//   POST /api/npc-turno         → líneas JSON: { t: 'texto', v } y { t: 'fin', turno, source }
 //   POST /api/generate-image    → { ok, pngDataUrl?, semilla, source, aviso? }
 //   POST /api/analyze-drawing   → { ok, opinion, rasgos?, stats?, source }
 //   POST /api/stats             → { ok, stats, source }
 //   POST /api/transcribe        → { ok, texto, source }
+//   POST /api/voz               → audio/wav con la frase dicha por el personaje
 //   GET  /*                     → el juego compilado
 //
 // Sin clave, si la API falla o si se agota el cupo, todo responde en modo
@@ -47,9 +48,13 @@ import {
 } from './src/guion.ts';
 import type { EventoNpc, Hablante, RunBrief } from './src/guion.ts';
 import {
-  NPCS as NPCS_MAPA, aQuienHabla, contextoVoz, detectarIntencion, frase as fraseNpcMapa,
-} from './src/contenido/mapa.ts';
-import type { Intencion as IntencionMapa, NpcMapa } from './src/contenido/mapa.ts';
+  entradaTurno, esquemaTurno, extraerLinea, lectorEventos, limpiarPeticion, normalizarTurno, sistemaTurno,
+} from './src/conversacion.ts';
+import type { PeticionTurno, Turno } from './src/conversacion.ts';
+import { esForma, esInterlocutor, fichaDe } from './src/contenido/fichas.ts';
+import { MAX_TEXTO_VOZ } from './src/habla.ts';
+import { cargarVoces } from './voces-servidor.ts';
+import type { Voces } from './voces-servidor.ts';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const ES_PRINCIPAL = /(^|[/\\])(creator-)?server\.ts$/.test(process.argv[1] ?? '');
@@ -68,6 +73,9 @@ const HOST = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
 const META_API_BASE = (process.env.META_API_BASE || 'https://api.meta.ai/v1').replace(/\/+$/, '');
 const META_API_KEY = process.env.MODEL_API_KEY || process.env.META_API_KEY || '';
 const META_CHAT_MODEL = process.env.META_CHAT_MODEL || 'muse-spark-1.3';
+// En voz, en plena partida, cuenta sobre todo el tiempo hasta la primera frase:
+// medido el 03/11/2026, el 1.2 da 1-3 s y el 1.3, 2-4 s, con el mismo prompt.
+const META_CHARLA_MODEL = process.env.META_CHARLA_MODEL || 'muse-spark-1.2';
 const META_IMAGE_MODEL = process.env.META_IMAGE_MODEL || 'muse-image-1.0';
 const META_VOICE_MODEL = process.env.META_VOICE_MODEL || 'muse-voice-transcribe-1.0';
 const TRUST_PROXY = process.env.TRUST_PROXY === '1';
@@ -76,6 +84,7 @@ const LIMITE_DIARIO = Number(process.env.AI_DAILY_LIMIT || 1500);
 // tope: con 200 se lo comía entero y la respuesta llegaba vacía. Solo se paga
 // lo que se usa, no el tope.
 const META_MAX_TOKENS = 4000;
+let voces: Voces | null = null;
 const DIST = path.resolve(process.env.STATIC_DIR || path.join(DIR, 'dist'));
 
 /** Orígenes de desarrollo (vite dev y vite preview) más los configurados. */
@@ -181,7 +190,7 @@ function ipDe(req: IncomingMessage): string {
   return req.socket.remoteAddress || 'desconocida';
 }
 
-type Clase = 'texto' | 'imagen' | 'vision' | 'voz';
+type Clase = 'texto' | 'imagen' | 'vision' | 'voz' | 'habla';
 
 /** Cubo de fichas por IP y clase: ráfaga máxima y fichas que vuelven por minuto. */
 const LIMITES: Record<Clase, { rafaga: number; porMinuto: number }> = {
@@ -189,6 +198,8 @@ const LIMITES: Record<Clase, { rafaga: number; porMinuto: number }> = {
   imagen: { rafaga: 5, porMinuto: 3 },
   vision: { rafaga: 10, porMinuto: 6 },
   voz: { rafaga: 10, porMinuto: 10 },
+  // Una respuesta son varias frases. No se paga, pero ocupa la CPU del servidor.
+  habla: { rafaga: 40, porMinuto: 120 },
 };
 
 const cubos = new Map<string, { fichas: number; t: number }>();
@@ -436,23 +447,46 @@ async function metaNpcLine(speaker: Hablante, evento: EventoNpc, contexto: strin
   return linea;
 }
 
-/** La IA solo redacta: intención, coste y efecto ya los decidió el juego. */
-async function metaMapaNpcLine(
-  npc: NpcMapa,
-  intencion: IntencionMapa | null,
-  textoJugador: string,
-  resultadoObligatorio: string,
-): Promise<string> {
-  const t = await metaChat(
-    contextoVoz(npc, intencion) + ' ' +
-      'El resultado ya fue resuelto por el juego: conserva exactamente su sentido, sin regalar, cobrar ni aplicar nada distinto. ' +
-      AVISO_DATOS,
-    '<datos>El jugador dijo: ' + textoJugador + '\nResultado obligatorio: ' + resultadoObligatorio + '</datos>\n' +
-      'Redacta la respuesta del NPC en una sola frase, máximo 160 caracteres.',
-  );
-  const linea = limpiarTexto(t.split('\n')[0], 180);
-  if (!linea) throw new Error('Línea de NPC vacía.');
-  return linea;
+/**
+ * Un turno de conversación en streaming: la frase llega según se escribe y la
+ * salida se limita a un esquema estricto. La API no guarda nada (store: false):
+ * el historial viaja en cada petición. Tira excepción si no llega un turno
+ * válido; `alTexto` ya habrá enseñado lo que llegó.
+ */
+async function metaTurno(p: PeticionTurno, alTexto: (delta: string) => void, senal: AbortSignal): Promise<Turno> {
+  const res = await fetch(`${META_API_BASE}/responses`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${META_API_KEY}` },
+    signal: senal,
+    body: JSON.stringify({
+      model: p.modo === 'voz' ? META_CHARLA_MODEL : META_CHAT_MODEL,
+      instructions: sistemaTurno(p.quien, p.forma),
+      input: entradaTurno(p),
+      store: false,
+      stream: true,
+      reasoning: { effort: 'minimal' },
+      max_output_tokens: META_MAX_TOKENS,
+      text: { format: { type: 'json_schema', name: 'turno', strict: true, schema: esquemaTurno(p.quien, p.forma) } },
+    }),
+  });
+  if (!res.ok || !res.body) throw new Error(`Meta devolvió HTTP ${res.status} en /responses.`);
+
+  let crudo = '';
+  let visto = '';
+  const leer = lectorEventos((delta) => {
+    crudo += delta;
+    const linea = extraerLinea(crudo);
+    if (linea.length > visto.length) {
+      alTexto(linea.slice(visto.length));
+      visto = linea;
+    }
+  });
+  const decodificador = new TextDecoder();
+  for await (const trozo of res.body as unknown as AsyncIterable<Uint8Array>) leer(decodificador.decode(trozo, { stream: true }));
+
+  const turno = normalizarTurno(JSON.parse(crudo), p.quien);
+  if (!turno) throw new Error('Turno sin texto.');
+  return turno;
 }
 
 /** Visión de Muse Spark: una frase en español, con la voz de ADA. */
@@ -484,7 +518,11 @@ async function metaTranscribe(wav: Buffer): Promise<string> {
     model: META_VOICE_MODEL,
     audioEncoding: 'WAV',
     languageBias: ['Spanish'],
-    keywords: ['ADA', 'HELIOS', 'Recolector', 'Segador', 'Saltador', 'Avispa', 'Caparazón', 'Sembrador', 'chatarra', 'escanea', 'reliquia'],
+    keywords: [
+      'ADA', 'HELIOS', 'Iris', 'Tali', 'Lis', 'Noa', 'Teo', 'Nuria', 'Ilan', 'Ares', 'Abril', 'Sami',
+      'Recolector', 'Segador', 'Saltador', 'Avispa', 'Caparazón', 'Sembrador', 'Baliza', 'Guardián',
+      'chatarra', 'escanea', 'reliquia', 'pilón', 'ración',
+    ],
   });
   // Cada parte lleva sus cabeceras en líneas separadas, como pide multipart.
   const cuerpo = Buffer.concat([
@@ -494,7 +532,7 @@ async function metaTranscribe(wav: Buffer): Promise<string> {
     Buffer.from(`\r\n--${limite}--\r\n`),
   ]);
   const r = await llamarMeta<{ transcript?: string }>('/asr/transcribe', cuerpo, `multipart/form-data; boundary=${limite}`, 25_000);
-  const t = limpiarTexto(r.transcript, 200);
+  const t = limpiarTexto(r.transcript, 400).replace(/[.?!…]{2,}$/, (m) => (m.includes('?') ? '?' : m.includes('!') ? '!' : '.'));
   if (!t) throw new Error('Transcripción vacía.');
   return t;
 }
@@ -581,11 +619,12 @@ async function servirJuego(req: IncomingMessage, res: ServerResponse, pathname: 
 const CLASES: Record<string, Clase> = {
   '/api/run-brief': 'texto',
   '/api/npc-line': 'texto',
-  '/api/map-npc-line': 'texto',
+  '/api/npc-turno': 'texto',
   '/api/stats': 'texto',
   '/api/generate-image': 'imagen',
   '/api/analyze-drawing': 'vision',
   '/api/transcribe': 'voz',
+  '/api/voz': 'habla',
 };
 
 function semillaDe(valor: unknown): number {
@@ -610,6 +649,7 @@ async function atenderApi(req: IncomingMessage, res: ServerResponse, ruta: strin
     json(res, 200, {
       ok: true,
       meta: META_API_KEY !== '',
+      voces: voces !== null,
       modelos: { chat: META_CHAT_MODEL, imagen: META_IMAGE_MODEL, voz: META_VOICE_MODEL },
       servicio: 'meta-space-ai',
     });
@@ -676,37 +716,54 @@ async function atenderApi(req: IncomingMessage, res: ServerResponse, ruta: strin
     return;
   }
 
-  // ---- POST /api/map-npc-line { npc, texto, intencion?, respaldo, seed? }
-  if (ruta === '/api/map-npc-line') {
-    const npcId = limpiarDato(cuerpo.npc, 40);
-    const npc = NPCS_MAPA.find((n) => n.id === npcId);
-    if (!npc) {
-      json(res, 400, { ok: false, error: 'NPC desconocido.' });
+  // ---- POST /api/npc-turno { quien, texto, historial, partida, recuerdos }
+  // Responde líneas JSON: trozos de texto y, al final, el turno validado. Si no
+  // hay IA, el turno viene a null y el juego responde con `turnoLocal`.
+  if (ruta === '/api/npc-turno') {
+    const peticion = limpiarPeticion(cuerpo);
+    if (!peticion) {
+      json(res, 400, { ok: false, error: 'Falta "quien" o "texto".' });
       return;
     }
-    const textoJugador = limpiarDato(cuerpo.texto, 220);
-    // Repite el enrutado y la detección en el servidor: el texto del jugador
-    // sigue siendo dato y nunca decide efectos por medio del modelo.
-    const destino = aQuienHabla(textoJugador, [npc.id]);
-    const detectada = destino === npc.id ? detectarIntencion(npc, textoJugador) : null;
-    const intencionPedida = limpiarDato(cuerpo.intencion, 50);
-    const intencion = detectada?.id === intencionPedida ? detectada : null;
-    const seed = semillaDe(cuerpo.seed);
-    const respaldo = limpiarDato(cuerpo.respaldo, 180)
-      || (intencion ? fraseNpcMapa(npc, intencion, seed) : fraseNpcMapa(npc, 'noEntiendo', seed));
+    res.writeHead(200, { ...SEGURIDAD, 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' });
+    const enviar = (linea: unknown) => res.write(`${JSON.stringify(linea)}\n`);
+    let turno: Turno | null = null;
     if (conIa()) {
+      // Si el jugador cierra el chat, se corta también la llamada de pago.
+      const corte = new AbortController();
+      const tope = setTimeout(() => corte.abort(), 30_000);
+      res.once('close', () => corte.abort());
+      let escrito = '';
       try {
-        json(res, 200, {
-          ok: true,
-          linea: await metaMapaNpcLine(npc, intencion, textoJugador, respaldo),
-          source: 'meta-spark',
-        });
-        return;
-      } catch {
-        // Cae a la frase local ya resuelta por el juego.
+        turno = await metaTurno(peticion, (v) => { escrito += v; enviar({ t: 'texto', v }); }, corte.signal);
+      } catch (err) {
+        if (!res.destroyed) console.warn(`Turno de ${peticion.quien} sin IA:`, err instanceof Error ? err.message : err);
+        // Lo que llegó antes del fallo ya se ve: mejor acabarlo que cambiarlo.
+        turno = normalizarTurno({ linea: escrito }, peticion.quien);
+      } finally {
+        clearTimeout(tope);
       }
     }
-    json(res, 200, { ok: true, linea: respaldo, source: 'local' });
+    enviar({ t: 'fin', turno, source: turno ? 'meta-spark' : 'local' });
+    res.end();
+    return;
+  }
+
+  // ---- POST /api/voz { quien, forma?, texto }
+  if (ruta === '/api/voz') {
+    const texto = limpiarTexto(cuerpo.texto, MAX_TEXTO_VOZ);
+    if (!esInterlocutor(cuerpo.quien) || !texto) {
+      json(res, 400, { ok: false, error: 'Falta "quien" o "texto".' });
+      return;
+    }
+    const { modelo, rapidez } = fichaDe(cuerpo.quien, esForma(cuerpo.forma) ? cuerpo.forma : undefined).voz;
+    const wav = await voces?.decir(texto, modelo, rapidez).catch(() => null);
+    if (!wav) {
+      json(res, 503, { ok: false, error: 'Voces no disponibles.' });
+      return;
+    }
+    res.writeHead(200, { ...SEGURIDAD, 'Content-Type': 'audio/wav', 'Content-Length': wav.length, 'Cache-Control': 'no-store' });
+    res.end(wav);
     return;
   }
 
@@ -827,4 +884,9 @@ if (ES_PRINCIPAL) {
     const juego = existsSync(path.join(DIST, 'index.html')) ? 'juego + API' : 'solo API (sin dist/)';
     console.log(`[meta-space] ${juego} en http://${HOST}:${PUERTO} · IA de Meta: ${META_API_KEY ? 'sí' : 'no'} · cupo diario ${LIMITE_DIARIO}`);
   });
+  // Tarda un par de segundos: mientras tanto, habla la voz del navegador.
+  cargarVoces().then((cargadas) => {
+    voces = cargadas;
+    console.log(`[meta-space] voces: ${voces ? 'Supertonic 2' : 'las del navegador (ejecuta npm run voces)'}`);
+  }).catch((err) => console.warn('[meta-space] voces no disponibles:', err instanceof Error ? err.message : err));
 }

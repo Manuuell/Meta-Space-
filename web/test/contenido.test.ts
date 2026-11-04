@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CATALOGO } from '../src/modelos/index.ts';
 import {
-  ALTARES_JEFE, CAJAS, CLIPS_ALTAR_JEFE, CLIPS_ARA, CLIPS_CAJA, CLIPS_NPC, CLIPS_PILON, DESAFIOS, ESTRUCTURAS, NPCS, aQuienHabla, contextoVoz, detectarIntencion, frase, normalizar, tirarBotin, type EventoNpc, CAJAS_SUELTAS, EMBOSCADA, FRAGUA, GUARDIAN, IMANES, JAULAS, RACIONES, SUPERVIVIENTES,
+  ALTARES_JEFE, CAJAS, CLIPS_ALTAR_JEFE, CLIPS_ARA, CLIPS_CAJA, CLIPS_NPC, CLIPS_PILON, DESAFIOS, ESTRUCTURAS, NPCS, aQuienHabla, detectarIntencion, frase, normalizar, tirarBotin, type EventoNpc, CAJAS_SUELTAS, EMBOSCADA, FRAGUA, GUARDIAN, IMANES, JAULAS, RACIONES, SUPERVIVIENTES,
 } from '../src/contenido/mapa.ts';
 
 // El contenido del mapa cita modelos y clips por nombre: si alguien renombra
@@ -62,7 +62,6 @@ test('contenido: cada NPC tiene su modelo, sus clips, frases para todo y nodo de
     }
     for (const ev of eventos) assert.ok(npc.lineas[ev]?.length, `${npc.id}: sin frases para ${ev}`);
     for (const i of npc.intenciones) assert.ok(i.claves.length && i.respuestas.length, `${npc.id}/${i.id} incompleta`);
-    assert.ok(contextoVoz(npc, null).includes(npc.voz));
   }
 });
 
@@ -96,6 +95,8 @@ test('voz: decide si habla con un NPC o con el dron', () => {
   assert.equal(aQuienHabla('Tali, escanea el horizonte', ['npc-mecanica', 'npc-vigia']), 'npc-vigia');
   assert.equal(aQuienHabla('¿cuánto por una mejora?', ['npc-chatarrero', 'npc-vigia']), 'npc-chatarrero');
   assert.equal(aQuienHabla('hola', []), null);
+  assert.equal(aQuienHabla('Ada, ¿qué hago?', ['npc-mecanica']), 'dron', 'si nombra a ADA, le habla a ella');
+  assert.equal(aQuienHabla('hola, ¿qué pasó?', ['npc-mecanica']), 'npc-mecanica');
 });
 
 test('voz: frases de respaldo y botín deterministas por semilla', () => {

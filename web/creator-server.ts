@@ -72,6 +72,10 @@ const META_IMAGE_MODEL = process.env.META_IMAGE_MODEL || 'muse-image-1.0';
 const META_VOICE_MODEL = process.env.META_VOICE_MODEL || 'muse-voice-transcribe-1.0';
 const TRUST_PROXY = process.env.TRUST_PROXY === '1';
 const LIMITE_DIARIO = Number(process.env.AI_DAILY_LIMIT || 1500);
+// Tope de salida por llamada. El razonamiento del modelo cuenta dentro de este
+// tope: con 200 se lo comía entero y la respuesta llegaba vacía. Solo se paga
+// lo que se usa, no el tope.
+const META_MAX_TOKENS = 4000;
 const DIST = path.resolve(process.env.STATIC_DIR || path.join(DIR, 'dist'));
 
 /** Orígenes de desarrollo (vite dev y vite preview) más los configurados. */
@@ -363,14 +367,14 @@ async function metaGenerateImage(prompt: string): Promise<string> {
 }
 
 /** Chat con Muse Spark (compatible con OpenAI). Devuelve el texto del asistente. */
-async function metaChat(system: string, user: string, maxTokens: number): Promise<string> {
+async function metaChat(system: string, user: string): Promise<string> {
   const cuerpo = await llamarMeta<RespuestaChat>('/chat/completions', JSON.stringify({
     model: META_CHAT_MODEL,
     messages: [
       { role: 'system', content: system },
       { role: 'user', content: user },
     ],
-    max_tokens: maxTokens,
+    max_tokens: META_MAX_TOKENS,
     temperature: 0.9,
     reasoning_effort: 'minimal',
   }), 'application/json', 15_000);
@@ -397,7 +401,6 @@ async function metaRunBrief(heroName: string, profileName: string, seed: number)
       `{"id":"operador","nombre":"${operador}","rol":"<2-5 palabras>","linea":"<frase inicial, máx 140 caracteres>"}]}\n` +
       `Voces: ${VOCES.ada} ${VOCES.helios} ${VOCES.operador}\n` +
       `El giro es un consejo verdadero basado en estas reglas, sin inventar reglas nuevas: ${REGLAS}`,
-    500,
   );
   const ini = t.indexOf('{');
   const fin = t.lastIndexOf('}');
@@ -427,7 +430,6 @@ async function metaNpcLine(speaker: Hablante, evento: EventoNpc, contexto: strin
     `<datos>evento: ${EVENTOS_TEXTO[evento]}; ${contexto}</datos>\n` +
       (recientes.length ? `No repitas ni parafrasees estas líneas recientes: ${recientes.join(' | ')}\n` : '') +
       `Escribe ahora la frase de ${nombre}.`,
-    200,
   );
   const linea = limpiarTexto(t.split('\n')[0], 160);
   if (!linea) throw new Error('Línea vacía.');
@@ -447,7 +449,6 @@ async function metaMapaNpcLine(
       AVISO_DATOS,
     '<datos>El jugador dijo: ' + textoJugador + '\nResultado obligatorio: ' + resultadoObligatorio + '</datos>\n' +
       'Redacta la respuesta del NPC en una sola frase, máximo 160 caracteres.',
-    200,
   );
   const linea = limpiarTexto(t.split('\n')[0], 180);
   if (!linea) throw new Error('Línea de NPC vacía.');
@@ -467,7 +468,7 @@ async function metaVisionOpinion(pngDataUrl: string): Promise<string> {
         ],
       },
     ],
-    max_tokens: 200,
+    max_tokens: META_MAX_TOKENS,
     reasoning_effort: 'minimal',
   }), 'application/json', 20_000);
   const opinion = limpiarTexto(cuerpo.choices?.[0]?.message?.content, 200);

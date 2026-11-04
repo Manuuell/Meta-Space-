@@ -32,10 +32,14 @@ import { Companero } from './companero';
 import { COMPANEROS, fijarEstiloBruno, perfilDe, type FormaAda } from './companeros';
 import type { OpcionesPerro } from './modelos/perro';
 import { abrirSelectorCompanero } from './ui-companero';
+import { grabarVoz, reconocimientoLocal, soltarMicro, transcribirServidor, webmAWav16k } from './voz';
+import { callar, decir as decirEnVoz, hablando } from './locutor';
+import { iaDisponible } from './ia';
+import { Charlas, type PuenteCharlas, type ResultadoAccion } from './charlas';
 import {
-  AYUDA_COMANDOS, abrirLineaComando, callar, grabarVoz, hablar,
-  parsearComando, reconocimientoLocal, transcribirServidor, webmAWav16k,
-} from './voz';
+  CLIP_EMOCION, resumirHorda, resumirMapa, rumbo as rumboDe, type AccionDisponible, type DatosPartida, type Lugar, type Turno,
+} from './conversacion';
+import { esInterlocutor, fichaDe, type Interlocutor } from './contenido/fichas';
 import { Radio, type EventoNpc, type Hablante, type RunBrief } from './npcs';
 import { Camara } from './camara';
 import { crearAstronauta } from './modelos/astronauta';
@@ -50,9 +54,8 @@ import {
   CUPO, NubeEsporas, angulosDePatron, criasAlMorir, oleadaEspecial, quiereDisparar, tasaEspecial,
 } from './enemies-nuevos';
 import { multChatarraElite, type EliteMod } from './enemies';
-import { ContenidoJuego, VISTA_MAPA, type RespuestaNpc } from './contenido-juego';
+import { ContenidoJuego, VISTA_MAPA } from './contenido-juego';
 import type { Efecto } from './contenido/mapa';
-import { lineaNpcMapa } from './npcs';
 import { NumerosDano } from './numeros';
 import {
   BENDICIONES, RAREZAS, describir, tirarBendiciones, totalesVacios,
@@ -60,8 +63,8 @@ import {
 } from './bendiciones';
 import { mostrarMejoras } from './mejoras';
 import { abrirMapa } from './ui-mapa';
-import { alerta, marcarAcierto } from './hud';
-import { CANON, DESMONTAR } from './contenido/mapa';
+import { alerta, escucha, marcarAcierto } from './hud';
+import { CANON, DESMONTAR, NPCS, aQuienHabla, frase } from './contenido/mapa';
 import type { OpcionHallazgo } from './hallazgos';
 import { pilotar } from './demo';
 import { zonasActivas } from './avisos';
@@ -78,7 +81,7 @@ const MODELOS_PERSONAJE: Record<PersonajeId, () => Modelo> = {
   'amara-keita': crearAmara,
 };
 
-type State = 'title' | 'playing' | 'levelup' | 'paused' | 'results' | 'mapa';
+type State = 'title' | 'playing' | 'levelup' | 'paused' | 'results' | 'mapa' | 'chat';
 
 // Cámara en tercera persona, detrás y algo por encima, como en PokéBonk.
 const PITCH_MIN = 0.12;
@@ -178,7 +181,12 @@ export class Game {
   private micBtn: HTMLButtonElement | null = null;
   private grabando: (() => void) | null = null;
   private vozConV = false;
-  private vozApagada = false;
+  private vozSoltada = false;
+  private oyendo = false;
+  private sinMicro = false;
+  private charlas = new Charlas(this.puenteCharlas());
+  /** Lo que abre una ventana propia espera a que la partida esté libre. */
+  private efectosAlCerrar: Efecto[] = [];
   private explorando = false;
   private brief: RunBrief | null = null;
   private heridoAvisado = false;
@@ -275,11 +283,12 @@ export class Game {
     ui.onToast((quien) => { if (quien === 'ADA') this.dron.hablar(); });
     const mic = document.createElement('button');
     mic.textContent = '🎙';
-    mic.setAttribute('aria-label', 'Hablar con el dron (o tecla T para escribir)');
+    mic.setAttribute('aria-label', 'Mantén pulsado para hablar con ADA o con quien esté cerca');
     mic.style.cssText = 'position:fixed;left:18px;bottom:120px;width:64px;height:64px;border-radius:50%;'
       + 'border:2px solid rgba(94,224,255,.7);background:rgba(20,26,44,.72);color:#fff;font-size:26px;'
       + 'z-index:30;display:none;touch-action:none;';
-    mic.addEventListener('pointerdown', (e) => { e.preventDefault(); this.hablarAlDron(); });
+    mic.addEventListener('pointerdown', (e) => { e.preventDefault(); void this.hablarPorVoz(); });
+    for (const fin of ['pointerup', 'pointercancel', 'pointerleave']) mic.addEventListener(fin, () => this.soltarVoz());
     document.body.appendChild(mic);
     this.micBtn = mic;
     this.camara = new Camara(this.camera, {
@@ -410,6 +419,9 @@ export class Game {
       if (this.expectUnlock) { this.expectUnlock = false; return; }
       if (this.state === 'playing') this.pause();
     });
+
+    // Chrome carga la lista de voces la primera vez que se le pide.
+    window.speechSynthesis?.getVoices();
 
     if (opciones.demo) this.empezarDemo();
     else this.toTitle();
@@ -588,6 +600,8 @@ export class Game {
   // --------------------------------------------------------- Estados
 
   private toTitle() {
+    this.charlas.interrumpir();
+    void soltarMicro();
     this.destroyTitle?.();
     this.destroyTitle = null;
     // Entrada: la nave trae el nombre de META SPACE y, al despegar, la historia
@@ -646,123 +660,238 @@ export class Game {
     ui.toast('ADA', `Héroe listo${who}. Pulsa JUGAR para despegar.`, 'info', 5);
   }
 
-  /** Hablar con el dron: micrófono → Meta/local → comando. */
-  private async hablarAlDron() {
-    if (this.state !== 'playing') return;
-    if (this.grabando) {
-      this.grabando();
+  /**
+   * Mientras se mantiene V: oye, transcribe y responde en voz alta. La partida
+   * no se para: con la horda encima no hay tiempo de escribir.
+   */
+  private async hablarPorVoz() {
+    if (this.state !== 'playing' || this.oyendo) return;
+    this.oyendo = true;
+    this.vozSoltada = false;
+    this.sinMicro = false;
+    this.charlas.interrumpir();
+    // Te oye quien tenías a mano al empezar, aunque sigas corriendo mientras hablas.
+    const p = this.player.position;
+    const aMano = this.contenido.aMano(p.x, p.z);
+    const cerca = this.contenido.npcCercano(p.x, p.z);
+    if (cerca) this.contenido.reaccionNpc(cerca, 'Escuchar');
+    escucha(`Te escucha ${this.ficha(cerca ?? 'ada').nombre}…`);
+    const texto = await this.escuchar();
+    this.oyendo = false;
+    if (!texto) {
+      escucha(null);
+      if (this.sinMicro) {
+        ui.toast('ADA', 'No tengo acceso a tu micrófono. Te abro el chat de texto.', 'info', 4);
+        this.abrirChatCercano();
+      }
       return;
     }
+    const destino = aQuienHabla(texto, aMano);
+    const quien = esInterlocutor(destino) ? destino : 'ada';
+    ui.decir('jugador', 'Tú', texto, 3);
+    escucha(`${this.ficha(quien).nombre} está pensando…`);
+    this.charlas.hablar(quien, texto);
+  }
+
+  /** Graba hasta soltar y transcribe. Null si no se oyó nada que valga. */
+  private async escuchar(): Promise<string | null> {
     unlockAudio();
+    const inicio = performance.now();
+    if (!(await iaDisponible())) {
+      // Sin servidor o sin clave: reconocimiento local del navegador.
+      const local = reconocimientoLocal();
+      if (!local) {
+        this.sinMicro = true;
+        return null;
+      }
+      this.grabando = local.parar;
+      if (this.vozSoltada) local.parar();
+      const oido = await local.promesa;
+      this.grabando = null;
+      return oido;
+    }
     try {
-      const g = grabarVoz(6000);
+      const g = grabarVoz(12000);
       this.grabando = g.parar;
-      ui.toast('ADA', 'Te escucho… habla ahora (toca de nuevo para terminar).', 'info', 3);
+      if (this.vozSoltada) g.parar();
       const blob = await g.promesa;
       this.grabando = null;
+      // Un toque sin querer no es una frase, ni gasta una llamada.
+      if (performance.now() - inicio < 300) return null;
       const wav = await webmAWav16k(blob).catch(() => null);
-      if (wav) {
-        const texto = await transcribirServidor(wav);
-        if (texto) {
-          this.ejecutarComando(texto);
-          return;
-        }
-      }
+      return wav ? await transcribirServidor(wav) : null;
     } catch {
       this.grabando = null;
+      this.sinMicro = true;
+      return null;
     }
-    // Sin servidor o sin clave: reconocimiento local del navegador.
-    const local = reconocimientoLocal();
-    if (local) {
-      ui.toast('ADA', 'Te escucho… habla ahora.', 'info', 3);
-      const texto = await local.reconocer();
-      if (texto) {
-        this.ejecutarComando(texto);
-        return;
-      }
-    }
-    // Último recurso: escribir la orden.
-    this.abrirLineaVoz();
   }
 
-  /** Línea de comando escrita (tecla T): respaldo cuando no hay micro. */
-  private abrirLineaVoz() {
+  private soltarVoz() {
+    this.vozSoltada = true;
+    this.grabando?.();
+  }
+
+  /** T: la ventana de texto, con quien esté cerca y, si no hay nadie, con ADA. */
+  private abrirChatCercano() {
+    const p = this.player.position;
+    this.abrirChat(this.contenido.npcCercano(p.x, p.z) ?? 'ada');
+  }
+
+  /** En la ventana de texto la partida espera: no se puede escribir y esquivar. */
+  private abrirChat(quien: Interlocutor, primero?: string) {
     if (this.state !== 'playing') return;
-    abrirLineaComando((texto) => this.ejecutarComando(texto));
+    this.state = 'chat';
+    this.expectUnlock = isLocked();
+    unlockPointer();
+    if (this.jumpBtn) this.jumpBtn.style.display = 'none';
+    if (this.micBtn) this.micBtn.style.display = 'none';
+    this.charlas.abrir(quien, primero);
   }
 
-  /** Ejecuta un comando de voz o texto sobre el dron. */
-  private ejecutarComando(texto: string) {
-    const t = texto.toLowerCase();
-    if (/(silencio|calla|mudo)/.test(t)) {
-      this.vozApagada = true;
-      callar();
-      ui.toast('ADA', 'Entendido: solo texto.', 'info', 3);
-      return;
+  private puenteCharlas(): PuenteCharlas {
+    return {
+      datos: (quien) => this.datosCharla(quien),
+      forma: () => this.dron.forma,
+      subtitular: (quien, texto, final) => {
+        escucha(null);
+        ui.decir(quien === 'ada' ? 'ada' : 'npc', this.ficha(quien).nombre, texto, final ? Math.max(4, texto.length / 14) : 30);
+      },
+      avisar: (quien, texto) => ui.toast(this.ficha(quien).nombre, texto, 'info', 4),
+      saludo: (quien) => {
+        const npc = NPCS.find((n) => n.id === quien);
+        return npc ? frase(npc, 'saludo', Math.floor(this.time)) : this.ficha('ada').saludo!;
+      },
+      aplicar: (quien, turno) => this.aplicarTurno(quien, turno),
+      reaccionar: (quien, turno) => {
+        if (quien === 'ada') return;
+        const dar = NPCS.find((n) => n.id === quien)?.intenciones.find((i) => i.id === turno.accion)?.clip === 'Dar';
+        this.contenido.reaccionNpc(quien, dar ? 'Dar' : CLIP_EMOCION[turno.emocion]);
+      },
+      decir: (quien, texto) => decirEnVoz(quien, texto, this.dron.forma),
+      callar,
+      escuchar: () => this.escuchar(),
+      dejarDeEscuchar: () => this.grabando?.(),
+      alCerrar: () => {
+        endFrame();
+        this.state = 'playing';
+        this.clock.getDelta();
+        if (this.jumpBtn) this.jumpBtn.style.display = 'block';
+        if (this.micBtn) this.micBtn.style.display = 'block';
+        const pendientes = this.efectosAlCerrar.splice(0);
+        if (pendientes.length) this.aplicarEfectos(pendientes);
+        if (this.state === 'playing') lockPointer(this.canvas);
+      },
+    };
+  }
+
+  private ficha(quien: Interlocutor) {
+    return fichaDe(quien, this.dron.forma);
+  }
+
+  /** Lo que sabe quien te habla: todo sale del estado real de la partida. */
+  private datosCharla(quien: Interlocutor): DatosPartida {
+    const p = this.player.position;
+    const e = this.enemies;
+    const unidades = Array.from({ length: e.count }, (_, i) => ({ nombre: e.defOf(i).name, x: e.x[i], z: e.z[i] }));
+    const { nave, padPosition: cohete } = this.world;
+    return {
+      operador: `${this.heroName || this.personajeActual.nombre}, ${this.personajeActual.rol}`,
+      forma: `${perfilDe(this.dron.forma).nombre}. ${perfilDe(this.dron.forma).quien}`,
+      segundos: Math.max(0, RUN.length - this.time),
+      integridad: Math.round((this.hp / this.maxHp) * 100),
+      nivel: this.level,
+      chatarra: Math.floor(this.scrap),
+      exposicion: Math.round(this.contenido.exposicion * 100),
+      herramientas: [...this.weapons.levels].map(([id, nivel]) => `${WEAPONS[id].name} nivel ${nivel}`),
+      reliquias: RELICS
+        .filter((r) => this.save.relics.includes(r.id) || this.relicsFound.includes(r.id))
+        .map((r) => ({ nombre: r.name, dato: `${r.lore} ${r.fact}` })),
+      totalReliquias: RELICS.length,
+      horda: resumirHorda(unidades, p.x, p.z),
+      mapa: resumirMapa([
+        ...this.contenido.marcas,
+        { tipo: 'cohete', x: cohete.x, z: cohete.z },
+        { tipo: 'nave', x: nave.x, z: nave.z },
+      ], p.x, p.z),
+      acciones: this.accionesDisponibles(quien),
+    };
+  }
+
+  private accionesDisponibles(quien: Interlocutor): AccionDisponible[] {
+    const npc = NPCS.find((n) => n.id === quien);
+    return (npc?.intenciones ?? []).filter((i) => i.efecto.length).map((i) => {
+      const usadas = this.usosNpc.get(`${quien}:${i.id}`) ?? 0;
+      return {
+        id: i.id,
+        coste: i.coste,
+        pagable: !i.coste || this.scrap >= i.coste,
+        quedan: i.veces === undefined ? undefined : Math.max(0, i.veces - usadas),
+      };
+    });
+  }
+
+  /** El modelo elige, pero el coste y los límites los comprueba el juego. */
+  private aplicarTurno(quien: Interlocutor, turno: Turno): ResultadoAccion | null {
+    if (turno.accion === 'ninguna') return null;
+    return quien === 'ada' ? this.ordenDeAda(turno) : this.accionDeNpc(quien, turno.accion);
+  }
+
+  private accionDeNpc(quien: Interlocutor, accion: string): ResultadoAccion | null {
+    const npc = NPCS.find((n) => n.id === quien);
+    const intencion = npc?.intenciones.find((i) => i.id === accion && i.efecto.length);
+    if (!npc || !intencion) return null;
+    const clave = `${quien}:${accion}`;
+    const usadas = this.usosNpc.get(clave) ?? 0;
+    if (intencion.veces !== undefined && usadas >= intencion.veces) return { texto: frase(npc, 'yaNoQueda', usadas), bien: false };
+    if (intencion.coste && this.scrap < intencion.coste) return { texto: `No te llega la chatarra: cuesta ${intencion.coste}.`, bien: false };
+    if (intencion.coste) this.scrap -= intencion.coste;
+    this.usosNpc.set(clave, usadas + 1);
+    const conVentana = intencion.efecto.filter((e) => e.tipo === 'desmontar');
+    this.efectosAlCerrar.push(...conVentana);
+    this.aplicarEfectos(intencion.efecto.filter((e) => e.tipo !== 'desmontar'));
+    if (conVentana.length) return this.state === 'chat' ? { texto: 'Al cerrar el chat eliges qué desmontar.', bien: true } : null;
+    return { texto: `${intencion.descripcion}${intencion.coste ? ` · −${intencion.coste} de chatarra` : ''}`, bien: true };
+  }
+
+  /** Lo que ADA hace con el mapa y con el dron. */
+  private ordenDeAda(turno: Turno): ResultadoAccion {
+    const p = this.player.position;
+    const donde = (m: { x: number; z: number }) => `${Math.round(Math.hypot(m.x - p.x, m.z - p.z))} m al ${rumboDe(m.x - p.x, m.z - p.z)}`;
+    const que = turno.que === 'ninguno' ? null : (turno.que as Lugar);
+    if (turno.accion === 'marcar' && que) {
+      const m = this.contenido.marcar(que, p.x, p.z);
+      return m ? { texto: `Marcado en tu minimapa: ${donde(m)}`, bien: true } : { texto: 'No queda ninguno en el mapa.', bien: false };
     }
-    if (/(habla|con voz|sonido)/.test(t)) {
-      this.vozApagada = false;
-      this.decible('ADA', 'De vuelta en línea.');
-      return;
+    if (turno.accion === 'explorar') {
+      const m = que && this.contenido.marcaCercana(que, p.x, p.z);
+      if (que && !m) return { texto: 'No queda ninguno en el mapa.', bien: false };
+      const objetivo = this.ordenarExploracion(m ? { x: m.x, z: m.z, etiqueta: que! } : undefined);
+      return { texto: `El dron sale a explorar: ${donde(objetivo)}`, bien: true };
     }
-    const respuestaNpc = this.contenido.responderVoz(texto, this.player.position.x, this.player.position.z);
-    if (respuestaNpc.destino && respuestaNpc.destino !== 'dron') {
-      void this.responderNpc(respuestaNpc, texto);
-      return;
-    }
-    const cmd = parsearComando(texto);
-    if (cmd === 'seguir') {
+    if (turno.accion === 'seguir') {
       this.dron.setModo('seguir');
       this.explorando = false;
-      this.decible('ADA', 'Vuelvo a tu lado.');
-    } else if (cmd === 'quieto') {
+      return { texto: 'El dron vuelve contigo', bien: true };
+    }
+    if (turno.accion === 'quieto') {
       this.dron.setModo('quieto');
       this.explorando = false;
-      this.decible('ADA', 'Mantengo posición.');
-    } else if (cmd === 'luz') {
-      const on = !this.dron.luz;
-      this.dron.setLuz(on);
-      this.decible('ADA', on ? 'Luz encendida: veo mejor la chatarra.' : 'Luz apagada.');
-    } else if (cmd === 'explorar') {
-      this.ordenarExploracion();
-    } else if (cmd === 'ayuda') {
-      ui.toast('ADA', AYUDA_COMANDOS, 'info', 6);
-    } else {
-      this.decible('ADA', `No te entendí. ${AYUDA_COMANDOS}`);
+      return { texto: 'El dron mantiene posición', bien: true };
     }
+    const luz = !this.dron.luz;
+    this.dron.setLuz(luz);
+    return { texto: luz ? 'Luz del dron encendida' : 'Luz del dron apagada', bien: true };
   }
 
-  /** La intención decide el efecto; Muse solo redacta la respuesta del NPC. */
-  private async responderNpc(respuesta: RespuestaNpc, texto: string) {
-    const npc = respuesta.npc;
-    if (!npc) return;
-    const intencion = respuesta.intencion ?? null;
-    let respaldo = respuesta.respaldo ?? npc.lineas.noEntiendo[0];
-    if (intencion) {
-      const clave = npc.id + ':' + intencion.id;
-      const usadas = this.usosNpc.get(clave) ?? 0;
-      if (intencion.coste && this.scrap < intencion.coste) {
-        respaldo = npc.lineas.sinChatarra[usadas % npc.lineas.sinChatarra.length];
-      } else if (intencion.veces !== undefined && usadas >= intencion.veces) {
-        respaldo = npc.lineas.yaNoQueda[usadas % npc.lineas.yaNoQueda.length];
-      } else {
-        if (intencion.coste) this.scrap -= intencion.coste;
-        this.usosNpc.set(clave, usadas + 1);
-        this.aplicarEfectos(intencion.efecto);
-      }
-    }
-    const linea = await lineaNpcMapa(npc, intencion, texto, respaldo);
-    if (this.state === 'playing') this.decible(npc.nombre, linea);
-  }
-
-  /** El dron informa por voz y texto (respeta "silencio"). */
+  /** ADA informa por voz y texto (respeta el altavoz del chat). */
   private decible(quien: string, texto: string) {
     ui.toast(quien, texto, 'info', 4);
     const mayus = quien.toUpperCase();
     const tipo = mayus === 'ADA' ? 'ada' : mayus === 'HELIOS' ? 'helios'
       : mayus === 'OPERADOR' || mayus === this.radio.nombreOperador(this.brief).toUpperCase() ? 'operador' : 'npc';
     ui.decir(tipo, quien, texto, 4);
-    if (!this.vozApagada) hablar(texto);
+    if (this.charlas.voz) decirEnVoz('ada', texto);
   }
 
   /** Aplica daño al traje y resuelve los especiales que reaccionan al golpe. */
@@ -858,10 +987,10 @@ export class Game {
   }
 
   /** Manda al dron a la reliquia, amenaza o zona más interesante. */
-  private ordenarExploracion() {
-    let objetivo: { x: number; z: number; etiqueta: string } | null = null;
+  private ordenarExploracion(destino?: { x: number; z: number; etiqueta: string }) {
+    let objetivo = destino ?? null;
     let mejor = Infinity;
-    for (const r of this.relicDrops) {
+    for (const r of destino ? [] : this.relicDrops) {
       const d = Math.hypot(r.group.position.x - this.player.position.x, r.group.position.z - this.player.position.z);
       if (d < mejor) {
         mejor = d;
@@ -883,7 +1012,7 @@ export class Game {
     this.dron.escanear(objetivo.x, this.player.position.y, objetivo.z);
     this.dron.setModo('explorar', objetivo);
     this.explorando = true;
-    this.decible('ADA', `Explorando: ${objetivo.etiqueta}. Te aviso lo que vea.`);
+    return objetivo;
   }
 
   /** Al llegar el dron, informa lo que ve a su alrededor. */
@@ -903,24 +1032,11 @@ export class Game {
         cz += dz;
       }
     }
-    const rumbo = contactos > 0 ? this.rumboA(cx / contactos, cz / contactos) : '';
+    const rumbo = contactos > 0 ? rumboDe(cx / contactos, cz / contactos) : '';
     const partes: string[] = [];
     if (reliquias > 0) partes.push(`${reliquias} ${reliquias === 1 ? 'reliquia' : 'reliquias'}`);
     if (contactos > 0) partes.push(`${contactos} contactos${rumbo ? ` al ${rumbo}` : ''}`);
     this.decible('ADA', partes.length ? `Escáner: ${partes.join(', ')}.` : 'Escáner: zona limpia. Ni rastro de HELIOS.');
-  }
-
-  /** Rumbo en palabras desde un vector (norte = -z, hacia el cohete). */
-  private rumboA(dx: number, dz: number): string {
-    const a = (Math.atan2(dx, -dz) * 180) / Math.PI;
-    if (a > -22.5 && a <= 22.5) return 'norte';
-    if (a > 22.5 && a <= 67.5) return 'noreste';
-    if (a > 67.5 && a <= 112.5) return 'este';
-    if (a > 112.5 && a <= 157.5) return 'sureste';
-    if (a > 157.5 || a <= -157.5) return 'sur';
-    if (a > -157.5 && a <= -112.5) return 'suroeste';
-    if (a > -112.5 && a <= -67.5) return 'oeste';
-    return 'noroeste';
   }
 
   /** Hooks del contrato del creador (`player-contract.ts`). */
@@ -1027,6 +1143,8 @@ export class Game {
     this.noDamageTime = 0;
     this.acidoAcumulado = 0;
     this.usosNpc.clear();
+    this.charlas.reset();
+    this.efectosAlCerrar = [];
     this.temporales.clear();
     this.spawnDebt = 0;
     this.nextSegador = 120;
@@ -1066,6 +1184,11 @@ export class Game {
     this.weapons.upgrade(this.customSprite ? 'cortador' : this.personajeActual.armaInicial);
     this.state = 'playing';
     ui.showHud();
+    if (!this.demo) {
+      const { nombre, presentacion } = this.ficha('ada');
+      ui.toast(nombre, presentacion!, 'info', 6);
+      if (this.charlas.voz) decirEnVoz('ada', presentacion!, this.dron.forma);
+    }
     this.vestirEquipo();
     if (this.jumpBtn) this.jumpBtn.style.display = 'block';
     if (this.abilityBtn) this.abilityBtn.style.display = this.habilidad ? 'block' : 'none';
@@ -1118,6 +1241,17 @@ export class Game {
       + `${this.enemies.countOf('baliza')} balizas vivas, pruebas ${this.save.relics.length + this.relicsFound.length}/${RELICS.length}`;
   }
 
+  /** ADA se adelanta: con el traje tocado, marca la ración más cercana. */
+  private marcarRacion() {
+    const p = this.player.position;
+    const racion = this.contenido.marcar('racion', p.x, p.z);
+    if (!racion) return '';
+    const dx = racion.x - p.x, dz = racion.z - p.z;
+    const donde = `${Math.round(Math.hypot(dx, dz))} m al ${rumboDe(dx, dz)}`;
+    ui.toast('ADA', `Ración marcada en el minimapa: ${donde}.`, 'info', 4);
+    return `; hay una ración a ${donde}`;
+  }
+
   /** Pide una línea de un NPC ante un evento (con cooldown y respaldo local). */
   private decir(hablante: Hablante, evento: EventoNpc, detalle: string) {
     void this.radio.linea(hablante, evento, `${detalle}. Estado: ${this.estadoPartida()}`).then((r) => {
@@ -1125,6 +1259,8 @@ export class Game {
       const quien = hablante === 'operador' ? this.radio.nombreOperador(this.brief).toUpperCase() : r.quien;
       ui.toast(quien, r.texto, 'info', 5);
       ui.decir(hablante, quien, r.texto, 5);
+      // En pleno combate nadie lee: ADA avisa en voz alta si nadie está hablando.
+      if (hablante === 'ada' && this.charlas.voz && !hablando()) decirEnVoz('ada', r.texto);
     });
   }
 
@@ -1254,6 +1390,9 @@ export class Game {
       } else {
         this.update(dt);
       }
+    } else if (this.state === 'chat') {
+      const quien = this.charlas.interlocutor;
+      if (quien && quien !== 'ada') this.contenido.animarCharla(dt, quien);
     } else if (this.state === 'title') {
       // De fondo, la cámara gira despacio alrededor del punto de inicio.
       const t = performance.now() / 14000;
@@ -1262,7 +1401,7 @@ export class Game {
       this.world.follow(this.player.position);
     }
 
-    if (this.state !== 'paused' && this.state !== 'levelup' && this.state !== 'mapa') {
+    if (this.state !== 'paused' && this.state !== 'levelup' && this.state !== 'mapa' && this.state !== 'chat') {
       this.mezclador.update(dt);
       this.mezcladorEquipo.update(dt);
       this.mezcladorTabla.update(dt);
@@ -1307,7 +1446,8 @@ export class Game {
     // Prueba de formas de ADA: K pasa a la siguiente (se recuerda en este navegador).
     if (wasPressed('KeyK')) this.cambiarFormaAda();
     if (wasPressed('KeyT') && !(document.activeElement instanceof HTMLInputElement)) {
-      this.abrirLineaVoz();
+      this.abrirChatCercano();
+      return;
     }
     if (wasPressed('KeyM')) {
       this.abrirMapaSector();
@@ -1319,11 +1459,16 @@ export class Game {
     this.touchAbility = false;
     if (wasPressed('KeyV') && !this.vozConV) {
       this.vozConV = true;
-      void this.hablarAlDron();
+      void this.hablarPorVoz();
     }
     if (this.vozConV && !isHeld('KeyV')) {
       this.vozConV = false;
-      this.grabando?.();
+      this.soltarVoz();
+    }
+    // Lo que abre una ventana propia (Iris desmontando) se hace con la partida libre.
+    if (this.efectosAlCerrar.length) {
+      this.aplicarEfectos(this.efectosAlCerrar.splice(0));
+      if (this.state !== 'playing') return;
     }
 
     const look = consumeLook(dt);
@@ -1402,7 +1547,7 @@ export class Game {
     this.hp = Math.min(this.maxHp, this.hp + (this.passive('reparacion') * 0.7 + this.totales.regen + botanica) * dt);
     if (!this.heridoAvisado && this.hp < this.maxHp * 0.7) {
       this.heridoAvisado = true;
-      this.decir('ada', 'herido', 'el traje ha perdido un tercio de su integridad');
+      this.decir('ada', 'herido', `el traje ha perdido un tercio de su integridad${this.marcarRacion()}`);
     }
     if (!this.mitadAvisada && this.time >= RUN.length / 2) {
       this.mitadAvisada = true;
@@ -2517,6 +2662,9 @@ export class Game {
 
   private endRun(victory: boolean) {
     this.state = 'results';
+    this.charlas.interrumpir();
+    escucha(null);
+    void soltarMicro();
     this.expectUnlock = isLocked();
     unlockPointer();
     ui.hideHud();

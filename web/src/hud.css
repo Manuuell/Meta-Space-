@@ -273,8 +273,9 @@
 }
 
 .h2-subtitulo {
-  display: none; max-width: 640px; padding: 8px 16px 10px;
-  background: var(--h2-fondo); border: 3px solid var(--h2-borde); border-left: 7px solid #5ee0ff;
+  display: none; max-width: 640px; padding: 8px 16px 10px; pointer-events: none;
+  /* Translúcido: se habla en pleno combate y no puede tapar al personaje. */
+  background: rgba(22, 16, 32, 0.62); border: 3px solid var(--h2-borde); border-left: 7px solid #5ee0ff;
   border-radius: 14px; box-shadow: var(--h2-sombra);
 }
 .h2-subtitulo.on { display: block; animation: h2-entra 0.25s ease-out; }
@@ -286,6 +287,16 @@
 .h2-subtitulo[data-quien='operador'] .h2-quien { color: #ffd25a; }
 .h2-subtitulo[data-quien='npc'] { border-left-color: #7fffd0; }
 .h2-subtitulo[data-quien='npc'] .h2-quien { color: #7fffd0; }
+.h2-subtitulo[data-quien='jugador'] { border-left-color: #ffd25a; }
+.h2-subtitulo[data-quien='jugador'] .h2-quien { color: #ffd25a; }
+
+.h2-escucha {
+  display: none; align-items: center; gap: 9px; padding: 7px 16px 7px 12px; font-size: 14px; font-weight: 800;
+  background: var(--h2-fondo); border: 3px solid var(--h2-borde); border-radius: 999px; box-shadow: var(--h2-sombra);
+}
+.h2-escucha.on { display: flex; animation: h2-entra 0.15s ease-out; }
+.h2-escucha i { width: 12px; height: 12px; border-radius: 50%; background: #ff5a6a; animation: h2-oye 0.9s ease-in-out infinite; }
+@keyframes h2-oye { 50% { transform: scale(1.35); opacity: 0.6; } }
 @keyframes h2-entra { from { opacity: 0; transform: translateY(8px); } }
 
 .h2-interaccion {

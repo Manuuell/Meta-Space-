@@ -38,17 +38,15 @@ import {
   NPCS,
   PILON,
   RADIO_ARA,
-  aQuienHabla,
-  detectarIntencion,
   frase,
   tirarBotin,
   type AltarJefe,
   type JefeAltarId,
   type Desafio,
   type Efecto,
-  type Intencion,
   type NpcMapa,
 } from './contenido/mapa.ts';
+import { esInterlocutor, type Interlocutor } from './contenido/fichas.ts';
 
 export type TipoMarca = 'altar' | 'ara' | 'caja' | 'suelta' | 'torre' | 'refugio' | 'npc' | 'pilon' | 'duelo' | 'dragon' | TipoHallazgo;
 
@@ -100,13 +98,6 @@ export interface JefeHud {
   vencido: boolean;
   vida?: number;
   vidaMax?: number;
-}
-
-export interface RespuestaNpc {
-  destino: NpcMapa['id'] | 'dron' | null;
-  npc?: NpcMapa;
-  intencion?: Intencion | null;
-  respaldo?: string;
 }
 
 interface Actor {
@@ -661,15 +652,44 @@ export class ContenidoJuego {
     return Math.hypot(x, z) > this.world.arena ? 'Tierras altas' : 'Llanura de Meta';
   }
 
-  interaccionNpc(x: number, z: number) {
-    const cerca = this.npcs
+  /** A quién tienes a mano para hablar, el más cercano primero. */
+  private npcsAMano(x: number, z: number) {
+    return this.npcs
       .map((n) => ({ n, d: Math.hypot(x - n.actor.x, z - n.actor.z) }))
       .filter((v) => v.d <= DISTANCIAS_NPC.saludar)
-      .sort((a, b) => a.d - b.d)[0];
-    if (cerca?.n.def.id === 'npc-mecanica' && cerca.d <= DISTANCIAS_NPC.hablar) {
-      return { tecla: 'F', texto: 'Iris te desmonta una herramienta · mantén V para hablar' };
-    }
-    return cerca ? { tecla: 'V', texto: 'Mantén V para hablar con ' + cerca.n.def.nombre } : undefined;
+      .sort((a, b) => a.d - b.d);
+  }
+
+  interaccionNpc(x: number, z: number): Interaccion | undefined {
+    const cerca = this.npcsAMano(x, z)[0];
+    if (!cerca) return undefined;
+    const iris = cerca.n.def.id === 'npc-mecanica' && cerca.d <= DISTANCIAS_NPC.hablar;
+    return { tecla: 'V', texto: `Mantén para hablar con ${cerca.n.def.nombre}${iris ? ' · F para desmontar una herramienta' : ''}` };
+  }
+
+  /** El NPC con el que se habla ahora. Null: se habla con ADA. */
+  npcCercano(x: number, z: number): Interlocutor | null {
+    const cerca = this.npcsAMano(x, z)[0]?.n.def.id;
+    return esInterlocutor(cerca) ? cerca : null;
+  }
+
+  /** Quiénes te oyen ahora, el más cercano primero. */
+  aMano(x: number, z: number) {
+    return this.npcsAMano(x, z).map((v) => v.n.def.id);
+  }
+
+  /** El gesto de un NPC al responder. */
+  reaccionNpc(id: Interlocutor, clip: string) {
+    const npc = this.npcs.find((n) => n.def.id === id);
+    if (npc) this.reproducir(npc.actor, clip, true);
+  }
+
+  /** Con la partida en espera, solo se mueve quien te está hablando. */
+  animarCharla(dt: number, id: Interlocutor) {
+    const actor = this.npcs.find((n) => n.def.id === id)?.actor;
+    if (!actor) return;
+    actor.mixer.update(dt);
+    if (!actor.acciones.get(actor.actual)?.isRunning()) this.reproducir(actor, CLIPS_NPC.quieto);
   }
 
   /** ¿Está Iris a mano? (F le pide que desmonte una herramienta). */
@@ -844,31 +864,16 @@ export class ContenidoJuego {
     return coste;
   }
 
-  responderVoz(texto: string, x: number, z: number): RespuestaNpc {
-    const cerca = this.npcs
-      .map((n) => ({ n, d: Math.hypot(x - n.actor.x, z - n.actor.z) }))
-      .filter((v) => v.d <= DISTANCIAS_NPC.hablar)
-      .sort((a, b) => a.d - b.d)
-      .map((v) => v.n.def.id);
-    const destino = aQuienHabla(texto, cerca);
-    if (!destino || destino === 'dron') return { destino };
-    const npc = NPCS.find((n) => n.id === destino);
-    if (!npc) return { destino: null };
-    const intencion = detectarIntencion(npc, texto);
-    const actor = this.npcs.find((n) => n.def.id === destino)?.actor;
-    if (actor) this.reproducir(actor, intencion?.clip ?? CLIPS_NPC.hablar, true);
-    return {
-      destino,
-      npc,
-      intencion,
-      respaldo: intencion ? frase(npc, intencion, texto.length) : frase(npc, 'noEntiendo', texto.length),
-    };
-  }
-
-  marcar(que: 'altar' | 'caja' | 'torre' | 'ara' | 'refugio' | 'pilon', px: number, pz: number) {
+  /** Lo más cercano de ese tipo que siga pendiente. */
+  marcaCercana(que: TipoMarca, px: number, pz: number): MarcaContenido | null {
     const candidatos = this.marcas.filter((m) => m.tipo === que && !m.hecho);
     candidatos.sort((a, b) => Math.hypot(a.x - px, a.z - pz) - Math.hypot(b.x - px, b.z - pz));
-    this.marcaActiva = candidatos[0] ?? null;
+    return candidatos[0] ?? null;
+  }
+
+  marcar(que: TipoMarca, px: number, pz: number) {
+    this.marcaActiva = this.marcaCercana(que, px, pz);
+    return this.marcaActiva;
   }
 
   cambiarExposicion(puntos: number) {

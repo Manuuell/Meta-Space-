@@ -10,35 +10,33 @@
 //   const { brief } = await radio.brief(heroName, profileName); // una vez por run
 //   radio.linea('ada', 'reliquia', ctx).then((r) => r && toast(r.quien, r.texto));
 
-import { postIa } from './ia';
+import { normalizarTurno, type PeticionTurno, type Turno } from './conversacion';
+import { postIa, postIaLineas } from './ia';
 import { briefLocal, lineaLocal, normalizarBrief, type EventoNpc, type Hablante, type RunBrief } from './guion';
-import type { Intencion, NpcMapa } from './contenido/mapa';
 
 export type { EventoNpc, Hablante, NpcDef, RunBrief } from './guion';
 
 /**
- * Una línea de la gente del refugio. El juego ya resolvió coste, límite y
- * efecto antes de llamar: la IA solo redacta y el respaldo siempre gana si
- * no hay red, clave o cupo.
+ * Un turno de conversación: `alTexto` recibe lo escrito según llega. Devuelve
+ * null si no hay IA, y entonces responde el guion local (`turnoLocal`).
  */
-export async function lineaNpcMapa(
-  npc: NpcMapa,
-  intencion: Intencion | null,
-  textoJugador: string,
-  respaldo: string,
-): Promise<string> {
-  const r = await postIa<{ ok: boolean; linea?: string }>(
-    '/api/map-npc-line',
-    {
-      npc: npc.id,
-      intencion: intencion?.id ?? null,
-      texto: textoJugador,
-      respaldo,
-      seed: Date.now() % 100000,
-    },
-    8000,
-  );
-  return r?.ok && r.linea?.trim() ? r.linea.trim() : respaldo;
+export async function pedirTurno(
+  peticion: PeticionTurno,
+  alTexto: (escrito: string) => void,
+  senal?: AbortSignal,
+): Promise<Turno | null> {
+  let escrito = '';
+  let final: unknown = null;
+  await postIaLineas<{ t?: string; v?: unknown; turno?: unknown }>('/api/npc-turno', peticion, (linea) => {
+    if (linea.t === 'texto' && typeof linea.v === 'string') {
+      escrito += linea.v;
+      alTexto(escrito);
+    } else if (linea.t === 'fin') {
+      final = linea.turno;
+    }
+  }, senal);
+  // Si se cortó a medias, lo que ya se ve se queda: mejor que cambiarlo.
+  return normalizarTurno(final ?? { linea: escrito }, peticion.quien);
 }
 
 /** Líneas recientes que se mandan al modelo para que no se repita. */

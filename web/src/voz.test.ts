@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bytesABase64, grabarVoz } from './voz.ts';
+import { bytesABase64, grabarVoz, soltarMicro } from './voz.ts';
 
 test('bytesABase64 admite un WAV de varios segundos sin desbordar la pila', () => {
   const bytes = new Uint8Array(192_044);
@@ -51,5 +51,7 @@ test('parar funciona aunque se pulse antes de conceder el micrófono', async (t)
   const blob = await recording.promesa;
 
   assert.equal(blob.type, 'audio/webm');
+  assert.equal(trackStopped, false, 'el micrófono sigue abierto para la siguiente frase');
+  await soltarMicro();
   assert.equal(trackStopped, true);
 });

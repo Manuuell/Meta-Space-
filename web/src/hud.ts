@@ -194,6 +194,7 @@ export function showHud() {
 
       <div class="h2-abajo">
         <div class="h2-subtitulo"><span class="h2-quien"></span><p></p></div>
+        <div class="h2-escucha"><i></i><span></span></div>
         <div class="h2-interaccion"><kbd></kbd><span></span><em class="h2-coste"></em></div>
         <div class="h2-pista">Haz clic para girar la cámara con el ratón · <b>Q</b>/<b>E</b> también giran</div>
         <div class="h2-canon"><span class="h2-canon-icono">${iconoMejora('b-critico')}</span><b>Cañón solar</b><small></small><i class="h2-canon-recarga"></i></div>
@@ -231,7 +232,7 @@ let finSubtitulo = 0;
  * Subtítulo de quien habla (ADA, HELIOS, el operador o un NPC). Texto plano:
  * puede venir de la IA o del jugador.
  */
-export function decir(quien: 'ada' | 'helios' | 'operador' | 'npc', nombre: string, texto: string, segundos = 5) {
+export function decir(quien: 'ada' | 'helios' | 'operador' | 'npc' | 'jugador', nombre: string, texto: string, segundos = 5) {
   if (!hud) return;
   const el = hud.querySelector('.h2-subtitulo') as HTMLElement;
   el.dataset.quien = quien;
@@ -240,6 +241,14 @@ export function decir(quien: 'ada' | 'helios' | 'operador' | 'npc', nombre: stri
   el.classList.add('on');
   const fin = (finSubtitulo = performance.now() + segundos * 1000);
   setTimeout(() => { if (finSubtitulo === fin) el.classList.remove('on'); }, segundos * 1000);
+}
+
+/** Mientras se mantiene V y se espera la respuesta. Null lo quita. */
+export function escucha(texto: string | null) {
+  if (!hud) return;
+  const el = hud.querySelector('.h2-escucha') as HTMLElement;
+  el.classList.toggle('on', texto !== null);
+  (el.querySelector('span') as HTMLElement).textContent = texto ?? '';
 }
 
 let finAlerta = 0;

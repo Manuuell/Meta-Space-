@@ -1,30 +1,16 @@
-// META SPACE — Voz del dron ADA.
+// META SPACE — Voz de las conversaciones.
 //
-// Tres caminos para hablar con ADA, de mejor a peor:
+// Se habla manteniendo una tecla, sin parar la partida. Dos caminos para oír,
+// de mejor a peor:
 //   1. Micrófono → WAV 16 kHz mono → /api/transcribe (Muse Voice Transcribe).
 //   2. Reconocimiento local del navegador (Chrome, sin clave).
-//   3. Línea de comando escrita (tecla T).
-// Y una voz para que ADA responda: speechSynthesis del navegador.
+// Si ninguno funciona, queda la ventana de texto (tecla T). Para responder en voz
+// alta se usa speechSynthesis: la API de Meta aún no tiene voz de salida.
 //
 // Todo falla hacia lo siguiente sin romper el juego.
 
 // Con extensión: los tests cargan este módulo directamente en Node.
 import { postIa } from './ia.ts';
-
-export type ComandoDron = 'seguir' | 'quieto' | 'explorar' | 'luz' | 'ayuda' | 'desconocido';
-
-/** Clasifica una frase (hablada o escrita) en un comando del dron. */
-export function parsearComando(texto: string): ComandoDron {
-  const t = texto.toLowerCase();
-  if (/(escanea|explora|reconoce|busca|rastrea)/.test(t)) return 'explorar';
-  if (/(quieto|quieta|espera|alto|quédate|quedate|detente|para)/.test(t)) return 'quieto';
-  if (/(ven|sígueme|sigueme|regresa|vuelve|aquí|aqui|conmigo)/.test(t)) return 'seguir';
-  if (/(luz|linterna|ilumina|alumbra|oscuridad)/.test(t)) return 'luz';
-  if (/(ayuda|comandos|qué puedes|que puedes|opciones)/.test(t)) return 'ayuda';
-  return 'desconocido';
-}
-
-export const AYUDA_COMANDOS = 'Di: "escanea", "ven", "quieto" o "luz".';
 
 /** Codifica binario grande sin desbordar la pila de argumentos del navegador. */
 export function bytesABase64(bytes: Uint8Array): string {
@@ -33,6 +19,26 @@ export function bytesABase64(bytes: Uint8Array): string {
     binario += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   }
   return btoa(binario);
+}
+
+let microfono: Promise<MediaStream> | null = null;
+
+// El micrófono se queda abierto durante la partida: abrirlo a cada pulsación
+// tarda lo bastante para comerse la primera palabra de la frase.
+function abrirMicro() {
+  microfono ??= navigator.mediaDevices.getUserMedia({ audio: true }).catch((err) => {
+    microfono = null;
+    throw err;
+  });
+  return microfono;
+}
+
+/** Cierra el micrófono: al acabar la partida no se deja abierto. */
+export async function soltarMicro() {
+  const abierto = microfono;
+  microfono = null;
+  const flujo = await abierto?.catch(() => null);
+  flujo?.getTracks().forEach((p) => p.stop());
 }
 
 /** Graba del micrófono hasta maxMs (o hasta que stop() se llame). */
@@ -44,7 +50,7 @@ export function grabarVoz(maxMs = 6000): { promesa: Promise<Blob>; parar: () => 
     if (grabadora && grabadora.state !== 'inactive') grabadora.stop();
   };
   const promesa = (async (): Promise<Blob> => {
-    const flujo = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const flujo = await abrirMicro();
     try {
       const opciones = MediaRecorder.isTypeSupported?.('audio/webm')
         ? { mimeType: 'audio/webm' }
@@ -62,7 +68,6 @@ export function grabarVoz(maxMs = 6000): { promesa: Promise<Blob>; parar: () => 
       return new Blob(partes, { type: actual.mimeType || 'audio/webm' });
     } finally {
       grabadora = null;
-      flujo.getTracks().forEach((p) => p.stop());
     }
   })();
   return { promesa, parar };
@@ -107,32 +112,31 @@ export async function transcribirServidor(wavDataUrl: string): Promise<string | 
   return cuerpo?.ok && cuerpo.texto ? cuerpo.texto : null;
 }
 
-interface ReconocimientoLocal {
-  reconocer: () => Promise<string | null>;
-}
-
-/** Reconocimiento local del navegador (Chrome, español). null si no existe. */
-export function reconocimientoLocal(): ReconocimientoLocal | null {
+/**
+ * Reconocimiento del navegador (Chrome, español), mientras se mantiene la tecla.
+ * Null si no existe. Se usa cuando no hay servidor de voz.
+ */
+export function reconocimientoLocal(): { promesa: Promise<string | null>; parar: () => void } | null {
   const w = window as unknown as { webkitSpeechRecognition?: new () => WebkitRec };
   if (!w.webkitSpeechRecognition) return null;
-  return {
-    reconocer: () => new Promise((res) => {
-      try {
-        const r = new w.webkitSpeechRecognition!();
-        r.lang = 'es-ES';
-        r.interimResults = false;
-        r.maxAlternatives = 1;
-        const fin = (texto: string | null) => { try { r.stop(); } catch { /* ya parado */ } res(texto); };
-        const t = setTimeout(() => fin(null), 8000);
-        r.onresult = (e: WebkitRecEvent) => { clearTimeout(t); fin(e.results[0][0].transcript ?? null); };
-        r.onerror = () => { clearTimeout(t); fin(null); };
-        r.onend = () => { clearTimeout(t); res(null); };
-        r.start();
-      } catch {
-        res(null);
-      }
-    }),
-  };
+  let parar = () => {};
+  const promesa = new Promise<string | null>((res) => {
+    try {
+      const r = new w.webkitSpeechRecognition!();
+      r.lang = 'es-ES';
+      r.interimResults = false;
+      r.maxAlternatives = 1;
+      let oido: string | null = null;
+      parar = () => { try { r.stop(); } catch { /* ya parado */ } };
+      r.onresult = (e: WebkitRecEvent) => { oido = e.results[0][0].transcript ?? null; };
+      r.onerror = () => res(null);
+      r.onend = () => res(oido);
+      r.start();
+    } catch {
+      res(null);
+    }
+  });
+  return { promesa, parar };
 }
 
 // Tipos mínimos para el reconocimiento web (solo lo que usamos).
@@ -150,55 +154,6 @@ interface WebkitRecEvent {
   results: { [i: number]: { [j: number]: { transcript?: string } } };
 }
 
-/** ADA habla: usa la voz en español del navegador, si la hay. */
-export function hablar(texto: string) {
-  try {
-    const synth = window.speechSynthesis;
-    if (!synth) return;
-    synth.cancel();
-    const u = new SpeechSynthesisUtterance(texto.slice(0, 160));
-    u.lang = 'es-ES';
-    u.rate = 1.05;
-    const voz = synth.getVoices().find((v) => v.lang.startsWith('es'));
-    if (voz) u.voice = voz;
-    synth.speak(u);
-  } catch {
-    // Sin voz no pasa nada: el texto ya está en pantalla.
-  }
-}
-
-export function callar() {
-  try { window.speechSynthesis?.cancel(); } catch { /* sin voz */ }
-}
-
-/** Línea de comando escrita (respaldo cuando no hay micrófono). Tecla T. */
-export function abrirLineaComando(alEnviar: (texto: string) => void): () => void {
-  const caja = document.createElement('div');
-  caja.style.cssText = 'position:fixed;left:50%;bottom:110px;transform:translateX(-50%);z-index:60;'
-    + 'display:flex;gap:8px;background:rgba(20,26,44,.95);border:2px solid #5ee0ff;border-radius:12px;padding:8px 10px;';
-  const entrada = document.createElement('input');
-  entrada.placeholder = 'Ordena al dron: escanea, ven, quieto, luz…';
-  entrada.setAttribute('aria-label', 'Comando de voz escrito para el dron');
-  entrada.style.cssText = 'width:min(320px,70vw);background:transparent;border:none;outline:none;color:#fff;font:inherit;font-size:14px;';
-  const boton = document.createElement('button');
-  boton.textContent = '↵';
-  boton.setAttribute('aria-label', 'Enviar comando');
-  boton.style.cssText = 'background:#5ee0ff;border:none;border-radius:8px;width:36px;font-size:16px;cursor:pointer;';
-  caja.append(entrada, boton);
-  document.body.appendChild(caja);
-  entrada.focus();
-  let cerrada = false;
-  const cerrar = () => { if (!cerrada) { cerrada = true; caja.remove(); } };
-  const enviar = () => { const t = entrada.value.trim(); cerrar(); if (t) alEnviar(t); };
-  boton.addEventListener('click', enviar);
-  entrada.addEventListener('keydown', (e) => {
-    e.stopPropagation();
-    if (e.key === 'Enter') enviar();
-    if (e.key === 'Escape') cerrar();
-  });
-  return cerrar;
-}
-
 export interface PerfilVoz {
   /** Voz de Supertonic en el servidor (voces-servidor.ts) y su ritmo. */
   modelo: string;
@@ -207,4 +162,54 @@ export interface PerfilVoz {
   indice: number;
   tono: number;
   velocidad: number;
+}
+
+// Las voces de novedad de macOS se oyen en la lista de español, pero son las que
+// suenan a robot. Bajar o subir mucho el tono tampoco ayuda: por eso los perfiles
+// se mueven poco y lo que cambia a cada personaje es la voz.
+const VOCES_ROBOTICAS = /\b(eddy|flo|grandma|grandpa|reed|rocko|sandy|shelley|albert|zarvox|trinoids|whisper)\b/i;
+
+/** Cuánto gusta una voz. Negativo: no se usa. */
+export function puntuarVoz(voz: { name: string; lang: string }): number {
+  const idioma = voz.lang.replace('_', '-').toLowerCase();
+  if (!idioma.startsWith('es') || VOCES_ROBOTICAS.test(voz.name)) return -1;
+  let puntos = 1;
+  if (/natural|neural|online|premium|mejorada|enhanced|siri/i.test(voz.name)) puntos += 4;
+  if (/google/i.test(voz.name)) puntos += 3;
+  if (/^es-(mx|us|419|co|ar|cl|pe)/.test(idioma)) puntos += 1;
+  return puntos;
+}
+
+/** Las voces en español que suenan bien, de mejor a peor. */
+export function mejoresVoces<T extends { name: string; lang: string }>(voces: readonly T[]): T[] {
+  return voces
+    .map((voz) => ({ voz, puntos: puntuarVoz(voz) }))
+    .filter((v) => v.puntos >= 0)
+    .sort((a, b) => b.puntos - a.puntos)
+    .map((v) => v.voz);
+}
+
+/** Añade una frase a lo que se esté diciendo, sin cortarlo. */
+export function decirVoz(texto: string, perfil: Pick<PerfilVoz, 'indice' | 'tono' | 'velocidad'>) {
+  try {
+    const synth = window.speechSynthesis;
+    if (!synth || !texto.trim()) return;
+    const u = new SpeechSynthesisUtterance(texto.slice(0, 900));
+    u.lang = 'es-ES';
+    u.rate = perfil.velocidad;
+    u.pitch = perfil.tono;
+    const voces = mejoresVoces(synth.getVoices());
+    const voz = voces[perfil.indice % Math.max(1, voces.length)];
+    if (voz) {
+      u.voice = voz;
+      u.lang = voz.lang;
+    }
+    synth.speak(u);
+  } catch {
+    // Sin voz no pasa nada: el texto ya está en pantalla.
+  }
+}
+
+export function callar() {
+  try { window.speechSynthesis?.cancel(); } catch { /* sin voz */ }
 }

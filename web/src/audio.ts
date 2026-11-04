@@ -31,6 +31,11 @@ export function unlockAudio() {
   master.connect(ctx.destination);
 }
 
+/** El contexto de audio, si ya hubo un gesto que lo permita. */
+export function audioDelJuego() {
+  return ctx;
+}
+
 function tone(type: OscillatorType, from: number, to: number, duration: number, volume: number, delay = 0) {
   if (!ctx || !master) return;
   const t = ctx.currentTime + delay;

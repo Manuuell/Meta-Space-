@@ -1,3 +1,4 @@
+import type { Forma } from './contenido/fichas';
 import { crearAdaDron, crearAdaMedusa, crearAdaNoa, crearAdaOrbe, crearAdaZorro } from './modelos/ada';
 import type { Modelo } from './modelos/kit';
 import { crearPerro, type OpcionesPerro } from './modelos/perro';
@@ -6,7 +7,8 @@ import { crearPerro, type OpcionesPerro } from './modelos/perro';
 // en el caso de Bruno): siguen, escanean, obedecen la voz, atacan solos y
 // tienen una habilidad con recarga. Equilibrar es tocar números aquí.
 
-export type FormaAda = 'dron' | 'zorro' | 'noa' | 'medusa' | 'orbe' | 'bruno';
+/** La lista vive en fichas.ts: el servidor la lee y aquí hay modelos 3D. */
+export type FormaAda = Forma;
 
 /** Estilo de Bruno: lo elige el jugador en el selector y se guarda. */
 export const estiloBruno: OpcionesPerro = { pajarita: 'cuadros', gorra: false, gafas: false };

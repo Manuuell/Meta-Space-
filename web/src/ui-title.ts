@@ -359,6 +359,7 @@ export function renderTitleHtml(save: TitleSave, opts?: TitleOptions): string {
         <span><i class="ms-key">C</i> OPERADOR</span>
         <span><i class="ms-key">X</i> CÓDICE</span>
         <span><i class="ms-key">H</i> AYUDA</span>
+        <a class="ms-footer__voces" href="licencias/supertonic-openrail-m.txt" target="_blank" rel="noopener">Voces sintéticas generadas por ordenador · Supertonic 2</a>
         <span class="ms-footer__build">META SPACE · v0.1.0</span>
       </footer>`;
 }

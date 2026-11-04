@@ -336,6 +336,9 @@ button.ms-pill:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 }
 .ms-key { min-width: 22px; height: 19px; display: inline-grid; place-items: center; margin-right: 5px; color: #fff; border: 1px solid #59617b; border-radius: 5px; background: #2f3651; box-shadow: 0 2px #111526; font-style: normal; }
 .ms-footer__build { margin-left: auto; color: #8b93ad; }
+.ms-footer__voces { margin-left: auto; color: #8b93ad; text-decoration: none; pointer-events: auto; }
+.ms-footer__voces:hover { color: #f4efe8; text-decoration: underline; }
+.ms-footer__voces + .ms-footer__build { margin-left: 16px; }
 
 /* ---- 9. Diálogos -------------------------------------------------------- */
 .ms-dialog-backdrop { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; padding: 20px; background: rgba(9, 10, 28, .78); backdrop-filter: blur(7px); }

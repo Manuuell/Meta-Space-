@@ -1,22 +1,7 @@
 # Cómo hacer cinemáticas en Meta Space
 
-Traspaso para seguir en otro chat o hacer más cinemáticas. Refleja el estado del
-03/11/2026, con la cinemática de la historia ya integrada en el juego.
-
-## Prompt para el chat nuevo
-
-Pega esto como primer mensaje, abierto en `~/Developer/Meta Space`:
-
-```
-Seguimos con Meta Space. Lee cinematicas.md y la Parte 1 de lore-y-mecanicas.md
-(las partes 2 y 3 y buena parte de TRASPASO.md describen el juego antiguo).
-Quiero hacer esta cinemática: <qué pasa, cuándo sale y cuánto dura>.
-Antes de escribir código, propónme el guion plano a plano (tiempos, qué se ve,
-qué se dice y qué suena) y espera mi visto bueno. Todo el texto en español.
-Música y sonido sintetizados, sin assets ni nada con derechos de terceros.
-Commits solo cuando te lo pida, sin coautoría ni marcas de IA. Pregúntame antes
-de fusionar o de hacer push.
-```
+Guía para hacer más cinemáticas. Refleja el estado del 04/11/2026, con la cinemática
+de la historia ya integrada en el juego.
 
 ## Qué hay hoy
 
@@ -191,7 +176,7 @@ abre dos, el de los efectos (`audio.ts`) y el de la intro y la cinemática (`son
 ## Comprobar el trabajo
 
 Antes de dar algo por hecho: `npx tsc --noEmit`, `npm test`, `npm run build` y
-verlo en el navegador. Arranca con `preview_start` y el nombre `web`.
+verlo en el navegador con `npm run dev`.
 
 Fotograma congelado, en la consola con `npm run dev`:
 
@@ -202,7 +187,7 @@ window.__ver = async (s) => {
   const m = await import('/src/cinematica.ts?t=' + Date.now());
   window.__cin = m.showCinematica(document.body, () => {}, { fijo: s });
   await new Promise((r) => setTimeout(r, 900));
-  // En el panel del navegador, la captura no se refresca hasta que cambia algo.
+  // Con la ventana en segundo plano, la imagen no se refresca hasta que cambia algo.
   const d = document.createElement('div');
   d.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;z-index:99';
   document.body.appendChild(d);
@@ -246,32 +231,13 @@ for (let s = 0; s < 87; s++) {
 Con `m.tocarIntro(oc, 0, 0)` se mide igual la intro. El pico debe quedar por debajo
 de 1 y sin `NaN`. El momento más fuerte tiene que ser la vuelta del sol, y el cálculo debe tardar menos de 20 s (un tiempo mucho
 mayor avisa de cortes en directo). Tarda en acabar: guarda el resultado en `window`
-y consúltalo aparte, porque la herramienta corta a los 45 s. Hay que escucharla
-igualmente: la medida no dice si suena bien.
-
-## Actualizar el artifact
-
-El visor es **[La caída de Ares](https://claude.ai/artifact/GVgKxq2wra3RvJ3aY4Evqy)**
-(privado) y aún tiene la versión anterior, de 63 s. La página y su `cinematica.js`
-no están en el repositorio: viven en un directorio temporal que puede borrarse.
-
-1. Recupera la página con la acción `read` de la herramienta Artifact.
-2. Empaqueta con Vite en modo librería, sin minificar y con `copyPublicDir: false`.
-   La entrada exporta `showCinematica`, `PLANOS`, `ROTULOS`, `DURACION`, `planoEn`
-   y `sonar`. Marca `three` como externo con `rolldownOptions: { external: ['three'] }`.
-3. Cambia en el resultado los dos `from "three"` por
-   `https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js`.
-4. Actualiza en la página la barra de planos y la escaleta.
-5. Publica la página, con `cinematica.js` en `files`.
-
-Antes de publicar módulos nuevos hay que haberlos leído enteros. Busca además
-URLs, claves y `fetch` en el paquete.
+y consúltalo aparte. Hay que escucharla igualmente: la medida no dice si suena bien.
 
 ## Trampas que ya costaron tiempo
 
-- **Capturas viejas:** con el panel oculto, las capturas no se actualizan, y a veces
-  enseñan el juego de fondo en vez de la cinemática. Muestra el panel y toca el DOM
-  antes de capturar; si quitas el truco del `div` de `__ver`, fallan casi todas.
+- **Capturas viejas:** con la ventana en segundo plano, las capturas no se actualizan,
+  y a veces enseñan el juego de fondo en vez de la cinemática. Tráela al frente y toca
+  el DOM antes de capturar; si quitas el truco del `div` de `__ver`, fallan casi todas.
 - **Recarga de Vite:** al guardar, la página se recarga y `__ver` desaparece.
 - **Colores en shaders:** `THREE.Color` pasa a lineal y los `ShaderMaterial` no
   convierten de vuelta. Por eso las paletas de planeta van en números 0–1.
@@ -290,8 +256,8 @@ URLs, claves y `fetch` en el paquete.
 - **Dependencias circulares:** `musica.ts` no puede importar `cinematica.ts`. Lo
   compartido va en `cinematica-guion.ts`.
 - **Nombres:** `baliza` es el sprite de la señal de ADA; la unidad es `balizaHelios`.
-- **Móvil:** el campo de visión se abre en vertical. Compruébalo con
-  `resize_window` en `mobile`.
+- **Móvil:** el campo de visión se abre en vertical. Compruébalo con la vista de
+  móvil del navegador.
 
 ## Para hacer otra cinemática
 

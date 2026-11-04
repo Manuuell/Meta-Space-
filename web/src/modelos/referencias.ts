@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { CATALOGO, type Modelo } from './index';
 
-// Imágenes de referencia y GLB para pasárselos a otra IA de modelos 3D (solo
+// Imágenes de referencia y GLB de los modelos (solo
 // desarrollo, /referencias.html). Fondo neutro, cámara ortográfica y luz que
 // sigue a la cámara, para que todas las vistas se lean igual.
 //

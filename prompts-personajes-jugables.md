@@ -142,8 +142,6 @@ Reglas:
 - Antes de terminar: `npx tsc --noEmit`, `npm test` y `npm run build` en web/
   sin errores, y mirarlo en el navegador (npm run dev): /modelos.html para el
   modelo y una partida para la habilidad y el arma.
-- Commits sin líneas Co-Authored-By, sin "Generated with" ni ninguna marca de
-  IA. No hagas commit si no te lo piden.
 ```
 
 ### Prompt 1 — Sistema de personajes (va primero)

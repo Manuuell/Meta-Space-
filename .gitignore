@@ -46,10 +46,6 @@ Assets/Plugins/Sirenix.meta
 Assets/SyntyStudios/
 Assets/SyntyStudios.meta
 
-# Asistentes IA / orquestación local — no subir
-.claude/
-.codex/
-.opencode/
 .herdr/
 auditoria-meta/
 orquestador-ia/

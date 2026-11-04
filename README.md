@@ -26,7 +26,8 @@ Juego de navegador en 3D (Vite + TypeScript + Three.js), tipo survivors-like.
 | WASD / flechas | Moverse |
 | Ratón (clic para capturar) · Q / E | Girar la cámara |
 | Espacio | Saltar |
-| T o el botón 🎙 | Dar órdenes al dron ADA: «escanea», «ven», «quieto», «luz» |
+| V (mantener) o el botón 🎙 | Hablar en voz alta con quien esté cerca o, si no hay nadie, con ADA. La partida sigue |
+| T | Ventana de texto, si no tienes micrófono. Aquí la partida espera |
 | Esc | Pausa |
 
 Las herramientas se disparan solas. La chatarra sube de nivel y cada nivel
@@ -36,9 +37,27 @@ ofrece mejoras. Las Balizas atraen más unidades: rómpelas pronto.
 
 ADA, HELIOS y el operador de radio hablan con **Muse Spark** (Meta Model API):
 cada partida recibe un brief único y los personajes reaccionan al estado real de
-la partida. El creador de personaje genera sprites con **Muse Image**, ADA
-comenta los dibujos con visión y el dron entiende órdenes de voz con **Muse
-Voice**. Sin conexión con la IA, todo funciona con un guion local.
+la partida.
+
+Manteniendo V se habla en voz alta sin dejar de pelear, y la respuesta suena
+mientras la partida sigue. Iris, Tali y Lis tienen su vida, su versión de lo que
+pasó en el sector y cosas que solo cuentan si te ganas su confianza. ADA conoce
+todo el mapa: te aconseja, marca objetivos y manda el dron a buscar lo que le
+pidas. Cada compañero habla a su manera: Bruno es un perro con un chip que le
+deja hablar, y Noa es lo que queda de la ingeniera que escondió a ADA. El modelo
+responde con la frase, una emoción y una acción de una lista cerrada, y el juego
+comprueba coste y límites antes de aplicarla.
+
+El creador de personaje genera sprites con **Muse Image**, ADA comenta los
+dibujos con visión y **Muse Voice** transcribe el micrófono. Sin conexión con la
+IA, todo funciona con un guion local.
+
+La API de Meta aún no tiene voz de salida: las voces de los personajes son
+sintéticas, generadas por ordenador en el servidor con **Supertonic 2**
+(Supertone Inc.). El modelo se usa bajo la licencia
+[BigScience Open RAIL-M](web/public/licencias/supertonic-openrail-m.txt), y usar
+estas voces implica aceptar las restricciones de uso de esa licencia. Sin el
+modelo, habla la voz del navegador.
 
 ## Ejecutar
 
@@ -47,6 +66,7 @@ Requiere Node 22.18 o posterior.
 ```bash
 cd web
 npm install
+npm run voces        # una vez: descarga las voces (267 MB)
 npm run build
 npm start            # juego + IA en http://127.0.0.1:8787
 ```
@@ -63,7 +83,9 @@ Desarrollo: `npm run dev` (juego en http://127.0.0.1:5173) y, en otra terminal,
 `npm start` sirve el juego y la API desde el mismo proceso, así que basta un
 hosting de Node (Render, Railway, Fly, un VPS):
 
-- Build: `npm ci && npm run build` · Start: `npm start` · carpeta raíz: `web/`
+- Build: `npm ci && npm run voces && npm run build` · Start: `npm start` ·
+  carpeta raíz: `web/`. Las voces necesitan unos 600 MB de disco en `node_modules`
+  y `.voces`, y unos 500 MB de memoria
 - Variables: `MODEL_API_KEY`, y `TRUST_PROXY=1` si va detrás de un proxy.
   Si la plataforma define `PORT`, el servidor escucha en `0.0.0.0` solo.
 

@@ -4,6 +4,55 @@ Estado a 03/11/2026. Pega este archivo al abrir el chat nuevo.
 
 ---
 
+## Conversaciones con IA (03/11/2026)
+
+Manteniendo V se habla en voz alta, sin parar la partida, con Iris, Tali o Lis si
+están cerca y, si no, con ADA, que conoce todo el mapa. Meta transcribe en 1-2 s,
+responde con `muse-spark-1.2` (más rápido que el 1.3) y la voz arranca con la
+primera frase completa. T abre la ventana de texto, en pausa, por si no hay
+micrófono. Ambas comparten el historial de la partida.
+
+| Archivo | Qué contiene |
+|---|---|
+| `web/src/contenido/fichas.ts` | Quién es cada uno y cómo suena, incluidas las seis mascotas. Para cambiar a un personaje, se toca aquí. |
+| `web/src/conversacion.ts` | Prompt, esquema, validación, resumen del mapa y respaldo local. |
+| `web/creator-server.ts` | `/api/npc-turno`: API `/v1/responses` en streaming, sin guardar nada. |
+| `web/src/charlas.ts` y `ui-chat.ts` | Turnos, historial de la partida y ventana. |
+| `web/src/voz.ts` | Micrófono (se queda abierto durante la partida) y voz del navegador. |
+| `web/src/locutor.ts` | Cola de frases: las pide al servidor y las reproduce en orden. |
+| `web/src/game.ts` | `datosCharla` (lo que sabe) y `aplicarTurno` (valida y aplica). |
+
+Regla: el modelo elige, el juego decide. Una acción nueva se añade como
+intención con efecto y `descripcion` en `contenido/mapa.ts`.
+
+Trampa: el razonamiento del modelo cuenta dentro de `max_tokens`. Con 200, se lo
+comía entero y la respuesta llegaba vacía, sin error (`META_MAX_TOKENS`).
+
+La API de Meta aún no tiene voz de salida. Las voces son Supertonic 2 en el
+servidor (`voces-servidor.ts`, `/api/voz`): `npm run voces` baja el modelo a
+`web/.voces`, fuera de git, con la versión y las huellas fijadas. La voz y el
+ritmo de cada personaje se cambian en `voz` de `fichas.ts`. Sin modelo o sin
+`onnxruntime-node`, habla el navegador (`mejoresVoces`).
+
+El modelo aprendió español con rasgos rioplatenses. `sinSheismo` (`habla.ts`)
+escribe la ll y la y como i antes de generar la voz, pero la entonación no se
+puede cambiar sin cambiar de modelo.
+
+Licencia OpenRAIL-M: hay que conservar `web/public/licencias`, el aviso del pie
+del título y el de README.
+
+Pendiente: memoria entre partidas y afinidad, encargos, HELIOS como director de
+la horda, un filtro de moderación y un aviso de edad antes de publicar: los
+términos de Meta exigen 18 años.
+
+**Estado al cerrar este chat:** todo lo anterior está en `main`, con el punto de
+restauración `v0.3.0-restauracion`. Falta confirmar si las voces ya suenan neutras:
+la última versión quitó el sonido parecido a «sh», pero la entonación no cambia. Si
+siguen sonando argentinas, las opciones son un servicio de pago o probar Supertonic
+3. `npm run voces` se ejecuta una vez en cada máquina para bajar el modelo.
+
+---
+
 ## Cinemática de la historia (03/11/2026)
 
 Al abrir el juego salen la intro con el nombre de META SPACE, la historia de Meta

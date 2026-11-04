@@ -55,7 +55,7 @@ sistema y la escondió antes de que HELIOS bloqueara todos los accesos.
 
 El jugador la lleva físicamente, en el soporte dorsal del traje: es la luz cyan
 de la mochila. También vuela a su lado como dron de mantenimiento reprogramado,
-escanea la zona y obedece órdenes de voz.
+escanea la zona y responde cuando le hablas (manteniendo **V**): conoce todo el mapa.
 
 Tres capas, reveladas poco a poco:
 
@@ -140,7 +140,7 @@ Explorando, además de altares y cofres, se encuentra:
   funde en la otra, que sale **forjada** (más daño, una carga más, menos
   recarga) y libera su casilla. Una vez por sector, 40 de chatarra.
 - **Iris**, la mecánica del refugio, te **desmonta** una herramienta (F a su
-  lado, o pídeselo por voz): devuelve chatarra y libera la casilla. Se llevan
+  lado, o pídeselo hablando con ella): devuelve chatarra y libera la casilla. Se llevan
   **cuatro herramientas a la vez** como mucho.
 
 Todo sale en el mapa (**M**) en cuanto lo has tenido cerca.
@@ -186,8 +186,14 @@ través del servidor del juego:
 - Durante la partida, **líneas con contexto** ante eventos (reliquia, daño, élite,
   mitad de la ventana, balizas, victoria, derrota). El servidor recibe el estado
   real de la partida y las últimas frases para no repetirse.
+- Manteniendo **V**, **conversaciones en voz alta** con Iris, Tali, Lis y ADA, sin
+  parar la partida (con **T**, en una ventana de texto y en pausa). Cada una tiene su ficha (`web/src/contenido/fichas.ts`): su vida, lo
+  que pasó en el sector y lo que calla. El modelo recibe el historial y el estado
+  real de la partida, y elige una acción de una lista cerrada; el juego comprueba
+  coste y límites antes de aplicarla. ADA y Tali ven el mapa; ADA además marca
+  objetivos y manda el dron.
 - El **creador de personaje** genera el sprite con **Muse Image** y ADA comenta el
-  dibujo con visión; el dron obedece órdenes de voz con **Muse Voice**.
+  dibujo con visión; **Muse Voice** transcribe lo que se dice por micrófono.
 
 Sin clave, sin red o con el cupo agotado, todo cae a un guion local por semilla:
 la partida nunca espera a la IA.

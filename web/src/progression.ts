@@ -20,6 +20,7 @@
 
 import type { SpecialId } from './creator/stats.ts';
 import type { PersonajeId } from './personajes.ts';
+import type { DefGolem } from './contenido/mapa.ts';
 
 // ---------------------------------------------------------------- Constantes
 // Toda la parametrización del sistema, arriba y a la vista.
@@ -663,6 +664,45 @@ export function directorParams(
     escalaVida: escalaVidaBase(tiempoSeg) * (0.9 + elastico * 0.1),
     anillo: Math.round((18 + Math.floor(m * 4)) * elastico),
     cadaSegador: m < 5 ? 90 : 60,
+  };
+}
+
+// ------------------------------------------------------------------ Jefes
+
+export interface EscalaJefe {
+  /** Multiplica su vida. */
+  vida: number;
+  /** Multiplica el daño de sus golpes. */
+  dano: number;
+  /** Divide sus descansos; también le acelera un poco. */
+  tempo: number;
+}
+
+/**
+ * Lo que crece un jefe según cuándo despierte y el nivel de quien lo despierta.
+ * El daño real contra un jefe, medido con tarjetas al azar y sin objetos, va de 300
+ * por segundo a nivel 10 a 780 a nivel 25: con vida fija, a ese nivel el Coloso caía
+ * en 10 s y el Titán en 18. Por eso la vida se dispara a partir del nivel 20. Daño y
+ * tempo tienen techo: un golpe tiene que seguir pudiéndose encajar y esquivar.
+ */
+export function escalaJefe(tiempoSeg: number, nivel: number): EscalaJefe {
+  const m = tiempoSeg / 60, niveles = Math.max(0, nivel - 5), tardios = Math.max(0, nivel - 20);
+  return {
+    vida: 1 + m * 0.08 + niveles * 0.03 + tardios * 0.12,
+    dano: Math.min(2, 1 + m * 0.05 + niveles * 0.02),
+    tempo: Math.min(1.8, 1 + m * 0.05 + niveles * 0.01),
+  };
+}
+
+/** Un jefe con la fuerza que le toca a esta altura de la partida. */
+export function escalarGolem(def: DefGolem, e: EscalaJefe): DefGolem {
+  return {
+    ...def,
+    vida: Math.round(def.vida * e.vida),
+    fuerza: e.dano,
+    descanso: def.descanso / e.tempo,
+    ritmo: def.ritmo * (1 + (e.tempo - 1) * 0.25),
+    velocidad: def.velocidad * (1 + (e.tempo - 1) * 0.35),
   };
 }
 

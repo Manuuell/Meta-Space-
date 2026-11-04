@@ -93,6 +93,8 @@ export const CAM = {
   TRAUMA_DANO: 0.45,
   /** Trauma que añade disparar el pulso EMP. */
   TRAUMA_PULSO: 0.25,
+  /** Trauma de lo que hace el propio jugador: armas, módulos y rayos que caen. */
+  TRAUMA_ARMA: 0.3,
   /** Cuánto tarda en desaparecer el trauma (1/s). */
   DECAIMIENTO_TRAUMA: 1.6,
   /** Giro máximo de la sacudida (rad). Micro: se nota, no marea. */
@@ -215,6 +217,14 @@ export class Camara {
   /** Micro-sacudida al disparar el pulso EMP de ADA. */
   sacudidaPulso(): void {
     this.trauma = Math.min(1, this.trauma + CAM.TRAUMA_PULSO);
+  }
+
+  /**
+   * Temblor de un golpe propio o lejano. No se suma: la Lanza solar a tope suelta
+   * cuatro rayos cada 1,5 s y, sumando, la cámara no dejaba de temblar nunca.
+   */
+  sacudidaArma(): void {
+    this.trauma = Math.max(this.trauma, CAM.TRAUMA_ARMA);
   }
 
   /** Solo para pruebas: trauma actual (0..1). */

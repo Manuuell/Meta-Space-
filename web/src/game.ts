@@ -1119,7 +1119,7 @@ export class Game {
     this.habilidad?.dispose();
     this.weapons = new Weapons(this.scene, this.enemies, this.world, () => this.contenido.objetivoJefe, {
       dano: (x, z, cantidad, critico) => this.numeros.sumar(x, this.world.heightAt(x, z) + 1.7, z, cantidad, critico),
-      sacudida: () => this.camara.sacudidaPulso(),
+      sacudida: () => this.camara.sacudidaArma(),
     });
     if (!this.customSprite) {
       const s = this.personajeActual.stats;
@@ -1419,7 +1419,7 @@ export class Game {
       hacerIntocable: (segundos) => { this.habilidadIntocableHasta = Math.max(this.habilidadIntocableHasta, this.time + segundos); },
       aturdirJefes: (x, z, radio, segundos) => this.contenido.aturdirJefes(x, z, radio, segundos),
       alerta: (texto) => alerta(texto),
-      sacudida: () => this.camara.sacudidaPulso(),
+      sacudida: () => this.camara.sacudidaArma(),
       sfx: (nombre) => sfx(nombre),
       temporal: (cual, segundos, factor) => this.temporales.set(cual, { hasta: this.time + segundos, factor }),
       atraerChatarra: () => this.pickups.atraer(this.player.position.x, this.player.position.z, 9999),
@@ -1663,6 +1663,7 @@ export class Game {
       dt,
       px,
       pz,
+      nivel: this.level,
       bajas: this.kills,
       danoRecibido: this.hpLost,
       balizas: this.enemies.countOf('baliza'),
@@ -2422,7 +2423,7 @@ export class Game {
       this.dashZ = dz;
       this.dashTime = MOVE.dashTime;
       this.dashCd = GEAR.botas.levels[botasNv - 1].valor;
-      this.camara.sacudidaPulso();
+      this.camara.sacudidaArma();
       sfx('jump');
     }
     this.touchDash = false;
@@ -2606,7 +2607,7 @@ export class Game {
     this.camaraDeMira();
     // Disparo del pulso: trauma menor al del daño.
     const dmgPulso = this.weapons.damageDealt.pulso;
-    if (dmgPulso > this.lastPulsoDmg) this.camara.sacudidaPulso();
+    if (dmgPulso > this.lastPulsoDmg) this.camara.sacudidaArma();
     this.lastPulsoDmg = dmgPulso;
   }
 
@@ -2671,7 +2672,7 @@ export class Game {
       const y = this.world.heightAt(r.x, r.z);
       this.weapons.efectos.columna(r.x, y, r.z, 70, { color: '#fff27a', duracion: 0.3, desde: 0.5, hasta: 1.3 });
       this.weapons.danoHabilidad(r.x, r.z, 3.6, 60, 0.8);
-      this.camara.sacudidaPulso();
+      this.camara.sacudidaArma();
       if (Math.hypot(r.x - px, r.z - pz) < 2.8) this.receiveDamage(18);
     }
     for (let k = this.charcosToxicos.length - 1; k >= 0; k--) {

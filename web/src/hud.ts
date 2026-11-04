@@ -191,6 +191,12 @@ export function showHud() {
           <b class="h2-jefe-nombre"></b>
           <div class="h2-jefe-vida"><i></i><span></span></div>
         </div>
+        <div class="h2-objetivo h2-panel">
+          <small>Restos de la flota</small>
+          <b class="h2-obj-cuenta"></b>
+          <div class="h2-obj-fila h2-obj-resto"><i>▲</i><span></span></div>
+          <div class="h2-obj-fila h2-obj-pad"><i>▲</i><span></span></div>
+        </div>
       </div>
 
       <div class="h2-mapa">
@@ -200,12 +206,6 @@ export function showHud() {
       </div>
 
       <div class="h2-sector"><b></b><small></small></div>
-      <div class="h2-objetivo h2-panel">
-        <small>Restos de la flota</small>
-        <b class="h2-obj-cuenta"></b>
-        <div class="h2-obj-fila h2-obj-resto"><i>▲</i><span></span></div>
-        <div class="h2-obj-fila h2-obj-pad"><i>▲</i><span></span></div>
-      </div>
 
       <div class="h2-exposicion h2-panel">
         <small>Señal</small>
@@ -241,11 +241,17 @@ export function hideHud() {
   minimap = null;
 }
 
-/** Misión y operador del brief. */
+let finMision = 0;
+
+/** Misión y operador del brief: se ven un momento al empezar y dejan sitio a lo demás. */
 export function setMision(mision: string, operador: string) {
   if (!hud) return;
   (hud.querySelector('.h2-mision-nombre') as HTMLElement).textContent = mision;
   (hud.querySelector('.h2-operador') as HTMLElement).textContent = operador ? `📻 ${operador}` : '';
+  const rotulo = hud.querySelector('.h2-mision') as HTMLElement;
+  rotulo.classList.add('on');
+  window.clearTimeout(finMision);
+  finMision = window.setTimeout(() => rotulo.classList.remove('on'), 5000);
 }
 
 let finSubtitulo = 0;
@@ -333,7 +339,8 @@ export function updateHud(s: HudState) {
     q('.h2-reliquias').innerHTML = Array.from({ length: 7 }, (_, k) => `<i class="${k < reliquias ? 'si' : ''}"></i>`).join('');
   }
 
-  // Ventana de lanzamiento: lo que falta, y la barra con los jefes.
+  // Ventana de lanzamiento: lo que falta, y la barra con los jefes. Sus marcas van
+  // cada dos minutos, a 64 px: solo cabe el nombre corto («Gólem», «Coloso»…).
   q('.h2-tiempo').textContent = `T−${formatTime(duracion - s.time)}`;
   q('.h2-barra-relleno').style.width = `${Math.min(1, s.time / duracion) * 100}%`;
   const marcas = JSON.stringify(s.jefes ?? []);
@@ -341,7 +348,7 @@ export function updateHud(s: HudState) {
   if (barra.dataset.k !== marcas) {
     barra.dataset.k = marcas;
     barra.innerHTML = (s.jefes ?? []).map((j) =>
-      `<span class="${j.vencido ? 'vencido' : ''}" style="left:${(j.minuto * 60 / duracion) * 100}%" title="${j.nombre}"><i></i><small>${j.nombre}</small></span>`).join('');
+      `<span class="${j.vencido ? 'vencido' : ''}" style="left:${(j.minuto * 60 / duracion) * 100}%" title="${j.nombre}"><i></i><small>${j.nombre.split(' de ')[0]}</small></span>`).join('');
   }
   q('.h2-bajas').textContent = compact(s.kills);
   q('.h2-chatarra').textContent = compact(s.scrap);

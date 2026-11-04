@@ -4,6 +4,22 @@ Estado a 03/11/2026. Pega este archivo al abrir el chat nuevo.
 
 ---
 
+## Primera partida de prueba (04/11/2026)
+
+- **Jefes:** antes tenían vida fija. Ahora `escalaJefe(tiempo, nivel)` en
+  `web/src/progression.ts` les sube vida, daño y ritmo según cuándo despierten y el
+  nivel del jugador, y la vida se dispara desde el nivel 20. Vale para gólems,
+  campeones, minijefes y dragón. El daño real contra un jefe, medido con tarjetas al
+  azar y sin objetos, fue de 300 por segundo a nivel 10, 480 a nivel 20 y 780 a nivel
+  25. Los números hay que afinarlos jugando: se tocan solo ahí.
+- **Rayos:** la Lanza solar sumaba una sacudida por rayo y la cámara no paraba. Lo
+  que hace el propio jugador usa `sacudidaArma`, que no se acumula.
+- **HUD:** el objetivo va dentro de `.h2-ventana`, en flujo, y ya no lo tapan ni el
+  rótulo de la misión, que dura 5 s, ni la barra del jefe. Las marcas de jefe llevan
+  el nombre corto porque están a 64 px: el completo sale al pasar el ratón.
+
+---
+
 ## El ratón solo sale en el menú de Esc (04/11/2026)
 
 Cada captura del ratón hace que Safari saque su tira de «pulsa Esc», que ninguna

@@ -220,6 +220,10 @@ export class JefeGolem {
 
   /** Avanza al gólem un fotograma y devuelve el daño que recibe el jugador. */
   update(j: JugadorGolem): number {
+    return this.avanzar(j) * (this.def.fuerza ?? 1);
+  }
+
+  private avanzar(j: JugadorGolem): number {
     const dt = j.dt;
     this.mixer.update(dt);
     this.t += dt;

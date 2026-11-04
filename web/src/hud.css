@@ -142,10 +142,11 @@
 .h2-chip.potencia b { color: #ff9a5a; }
 
 .h2-mision {
-  margin-top: 6px; max-width: 360px; text-align: center;
+  display: none; margin-top: 6px; max-width: 360px; text-align: center;
   background: var(--h2-fondo); border: 2px solid var(--h2-borde); border-bottom: 3px solid #5ee0ff;
   border-radius: 12px; padding: 4px 14px 5px;
 }
+.h2-mision.on { display: block; animation: h2-entra 0.2s ease-out; }
 .h2-mision b { display: block; font-size: 13px; color: #fff; }
 .h2-mision span { font-size: 11px; font-weight: 700; color: #5ee0ff; }
 .h2-mision span:empty { display: none; }
@@ -431,7 +432,7 @@
   .h2-barra { width: 190px; }
   .h2-barra-marcas small { display: none; }
   .h2-chips { margin-top: 8px; }
-  .h2-mision { display: none; }
+  .h2-mision.on { display: none; }
   .h2-jefe { width: 210px; margin-top: 5px; padding: 4px 7px 5px; }
   .h2-jefe-nombre { font-size: 9px; margin-bottom: 2px; }
   .h2-mapa, .h2-minimapa { width: 120px; height: 120px; }
@@ -523,7 +524,7 @@
 .h2-sector { position: absolute; right: 12px; top: 282px; width: 205px; text-align: right; color: #f0f4ff; text-shadow: 0 1px 3px #000c; pointer-events: auto; }
 .h2-sector b { display: block; font-size: 15px; font-weight: 900; }
 .h2-sector small { display: block; font-size: 11px; color: #d6dcf0; }
-.h2-objetivo { position: absolute; left: 50%; top: 158px; transform: translateX(-50%); display: none; align-items: center; gap: 12px; padding: 5px 14px 6px; white-space: nowrap; }
+.h2-objetivo { display: none; align-items: center; gap: 12px; margin-top: 6px; padding: 5px 14px 6px; white-space: nowrap; }
 .h2-objetivo.on { display: flex; }
 .h2-objetivo small { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--h2-gris, #b8bdd6); }
 .h2-obj-cuenta { font-size: 19px; font-weight: 900; color: #5ee0ff; font-variant-numeric: tabular-nums; }
@@ -532,7 +533,7 @@
 .h2-obj-pad i { color: #ff8a3d; }
 .h2-obj-pad.listo, .h2-obj-pad.listo i { color: #8fffa8; }
 @media (max-width: 700px) {
-  .h2-objetivo { top: 146px; gap: 8px; padding: 4px 9px; }
+  .h2-objetivo { gap: 8px; padding: 4px 9px; }
   .h2-objetivo small { display: none; }
   .h2-obj-cuenta { font-size: 15px; }
   .h2-obj-fila { font-size: 11px; }

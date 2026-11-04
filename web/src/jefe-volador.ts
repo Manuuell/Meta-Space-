@@ -4,6 +4,7 @@ import { crearDragon, TIEMPOS_DRAGON } from './modelos/dragon.ts';
 import { halo } from './modelos/brillo.ts';
 import { AvisosSuelo, type Aviso } from './avisos.ts';
 import { DRAGON } from './contenido/mapa.ts';
+import type { EscalaJefe } from './progression.ts';
 import type { EventosGolem, JugadorGolem } from './jefe-golem.ts';
 
 // Dragón del Velo: el jefe volador. Da vueltas sobre el jugador a 15 m y
@@ -29,8 +30,9 @@ const SULFATO = '#d6ff5a';
 
 export class JefeVolador {
   readonly nombre = DRAGON.nombre;
-  readonly vidaMax: number = DRAGON.vida;
-  vida: number = DRAGON.vida;
+  readonly vidaMax: number;
+  vida: number;
+  private readonly fuerza: number;
   x: number;
   z: number;
   /** Altura sobre el suelo. */
@@ -80,7 +82,9 @@ export class JefeVolador {
   private eventos: EventosGolem;
   private rand: () => number;
 
-  constructor(scene: THREE.Scene, world: World, x: number, z: number, eventos: EventosGolem = {}, rand: () => number = Math.random) {
+  constructor(scene: THREE.Scene, world: World, x: number, z: number, eventos: EventosGolem = {}, rand: () => number = Math.random, escala: Pick<EscalaJefe, 'vida' | 'dano'> = { vida: 1, dano: 1 }) {
+    this.vidaMax = this.vida = Math.round(DRAGON.vida * escala.vida);
+    this.fuerza = escala.dano;
     this.scene = scene;
     this.world = world;
     this.eventos = eventos;
@@ -157,6 +161,10 @@ export class JefeVolador {
   }
 
   update(j: JugadorGolem): number {
+    return this.avanzar(j) * this.fuerza;
+  }
+
+  private avanzar(j: JugadorGolem): number {
     const dt = j.dt;
     this.mixer.update(dt);
     this.t += dt;

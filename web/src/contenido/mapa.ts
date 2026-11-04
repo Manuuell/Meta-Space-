@@ -110,6 +110,8 @@ export type AtaqueGolem = 'pisoton' | 'roca' | 'embestida' | 'salto' | 'lluvia' 
 
 export interface DefGolem {
   id: GolemId;
+  /** Multiplica el daño de sus golpes (ver `escalarGolem`). */
+  fuerza?: number;
   /** Modelo: una de las tres variantes del gólem o el sabueso de tres cabezas. */
   variante: 'escoria' | 'escarcha' | 'titan' | 'sabueso';
   nombre: string;
@@ -273,7 +275,7 @@ export const MINIJEFES = {
   bajaPorMinuto: 3,
   cadaMinimo: 55,
   maximoVivos: 2,
-  /** Vida base de cada uno; se multiplica por 1 + 0,12 por minuto. */
+  /** Vida base de cada uno; crece con el tiempo y el nivel (`escalaJefe`). */
   tipos: [
     { id: 'segador-jefe', nombre: 'Segador, Jefe de Cosecha', vida: 900, desde: 0 },
     { id: 'heraldo', nombre: 'Heraldo del Velo', vida: 1300, desde: 150 },

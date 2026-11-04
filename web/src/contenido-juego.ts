@@ -49,6 +49,7 @@ import { DESPIERTA_ALTAR,
   type Efecto,
   type NpcMapa,
 } from './contenido/mapa.ts';
+import { escalaJefe, escalarGolem, type EscalaJefe } from './progression.ts';
 import { esInterlocutor, type Interlocutor } from './contenido/fichas.ts';
 
 export type TipoMarca = 'altar' | 'ara' | 'caja' | 'suelta' | 'torre' | 'refugio' | 'npc' | 'pilon' | 'duelo' | 'dragon' | TipoHallazgo;
@@ -222,6 +223,8 @@ interface EstadoJefe {
 
 export interface ContextoContenido {
   tiempo: number;
+  /** Nivel del jugador: los jefes crecen con él. */
+  nivel?: number;
   dt: number;
   px: number;
   pz: number;
@@ -356,6 +359,8 @@ export class ContenidoJuego {
   private minijefesCreados = 0;
   private siguienteMinijefe: number = MINIJEFES.primero;
   private golem: JefeGolem | null = null;
+  /** Lo que crecen los jefes que despierten ahora; se actualiza cada fotograma. */
+  private escala: EscalaJefe = escalaJefe(0, 1);
   private altarGolem: EstadoAltar | null = null;
   private jugador = { x: 0, z: 0 };
   private duelos: EstadoDuelo[] = [];
@@ -631,6 +636,7 @@ export class ContenidoJuego {
   }
 
   update(c: ContextoContenido): number {
+    this.escala = escalaJefe(c.tiempo, c.nivel ?? 1);
     for (const actor of this.actores) {
       const altarActivo = this.altares.some((a) =>
         a.actor === actor && a.estado !== 'dormido' && a.estado !== 'agotado');
@@ -832,7 +838,7 @@ export class ContenidoJuego {
     quienes.forEach((id, k) => {
       const a = (k / quienes.length) * Math.PI * 2 + this.rand();
       const p = this.world.resolve(duelo.actor.x + Math.cos(a) * 8, duelo.actor.z + Math.sin(a) * 8, 2, { x: 0, z: 0 });
-      duelo.retadores.push(new JefeGolem(this.scene, this.world, CAMPEONES[id], p.x, p.z, Math.atan2(x - p.x, z - p.z), {
+      duelo.retadores.push(new JefeGolem(this.scene, this.world, escalarGolem(CAMPEONES[id], this.escala), p.x, p.z, Math.atan2(x - p.x, z - p.z), {
         empujar: this.eventos.empujar, sacudida: this.eventos.sacudida, sonido: this.eventos.sonido,
         aviso: this.eventos.aviso,
       }, this.rand));
@@ -1218,7 +1224,7 @@ export class ContenidoJuego {
     const a = this.rand() * Math.PI * 2;
     this.dragon = new JefeVolador(this.scene, this.world, c.px + Math.cos(a) * 70, c.pz + Math.sin(a) * 70, {
       empujar: this.eventos.empujar, aviso: this.eventos.aviso, sacudida: this.eventos.sacudida, sonido: this.eventos.sonido,
-    }, this.rand);
+    }, this.rand, this.escala);
     this.eventos.toast('HELIOS', 'Has roto demasiados sellos. El Dragón del Velo viene a por ti.', 6);
   }
 
@@ -1349,7 +1355,7 @@ export class ContenidoJuego {
     this.golem?.dispose();
     const ang = altar.actor.modelo.raiz.rotation.y;
     const p = this.world.resolve(altar.actor.x + Math.sin(ang) * 6, altar.actor.z + Math.cos(ang) * 6, 3, { x: 0, z: 0 });
-    const def = GOLEMS[altar.def.jefe];
+    const def = escalarGolem(GOLEMS[altar.def.jefe], this.escala);
     this.golem = new JefeGolem(this.scene, this.world, def, p.x, p.z, ang, {
       empujar: this.eventos.empujar,
       aviso: this.eventos.aviso,
@@ -1360,7 +1366,7 @@ export class ContenidoJuego {
     this.eventos.toast('HELIOS', def.nombre + ' despierta en el ' + altar.def.nombre.toLowerCase() + '.', 5);
   }
 
-  /** Un minijefe nuevo a 26 m del jugador, con más vida cuanto más avanzada la partida. */
+  /** Un minijefe nuevo a 26 m del jugador, con más vida cuanto más avanzada la partida y más nivel. */
   private crearMinijefe(c: ContextoContenido) {
     const disponibles = MINIJEFES.tipos.filter((t) => c.tiempo >= t.desde);
     const tipo = disponibles[this.minijefesCreados % disponibles.length];
@@ -1368,7 +1374,7 @@ export class ContenidoJuego {
     const a = this.rand() * Math.PI * 2;
     const p = this.world.resolve(c.px + Math.cos(a) * 26, c.pz + Math.sin(a) * 26, 3, { x: 0, z: 0 });
     const ang = Math.atan2(c.px - p.x, c.pz - p.z);
-    const vidaMax = Math.round(tipo.vida * (1 + 0.12 * c.tiempo / 60));
+    const vidaMax = Math.round(tipo.vida * this.escala.vida);
     let modelo: () => Modelo;
     let datos: Pick<EstadoJefe, 'velocidad' | 'radio' | 'entrada' | 'clipMover' | 'clipEntrada' | 'clipFase' | 'clipDerrota' | 'ataques'>;
     if (tipo.id === 'segador-jefe') {

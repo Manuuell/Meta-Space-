@@ -8,8 +8,8 @@
 // y nadie le enseñó a parar; Meta se congela y pidió ayuda; Ares mandó su flota a
 // apagar el velo; HELIOS, que solo sabe protegerlo, destruyó la flota y rompió
 // Ares; de Ares queda tu nave; ADA es la única que puede firmar el apagado y Noa
-// Herrera la escondió en Meta; y así se juega: aguantar diez minutos hasta que
-// despegue el cohete con su firma, y siete pruebas para apagar el velo entero.
+// Herrera la escondió en Meta; y así se juega: reunir las piezas de una nave y
+// armarlo en diez minutos, y siete pruebas para apagar el velo entero.
 
 /** Planos en segundos: [inicio, fin]. Van seguidos y suman la duración. */
 export const PLANOS = {
@@ -25,7 +25,7 @@ export const PLANOS = {
   especialista: [51.5, 55], // el último superviviente
   llave: [55, 65], // ADA y Noa Herrera, que la escondió
   meta: [65, 69.5], // rumbo a Meta, donde late la señal de ADA
-  mision: [69.5, 83], // diez minutos, el cohete, el sol y las siete pruebas
+  mision: [69.5, 83], // diez minutos, la nave, el sol y las siete pruebas
 } as const;
 
 export type Plano = keyof typeof PLANOS;
@@ -37,7 +37,7 @@ export const en = (plano: Plano, s: number) => PLANOS[plano][0] + s;
 
 /** Segundo en que Ares se rompe. */
 export const ESTALLA = en('caida', 3);
-/** En la misión: cuándo despega el cohete y cuándo atraviesa el velo. */
+/** En la misión: cuándo despega la nave y cuándo atraviesa el velo. */
 export const VENTANA = en('mision', 5.5);
 export const VUELVE_EL_SOL = en('mision', 7.5);
 /** Qué segundo de la llave deja paso de ADA a Noa Herrera. */
@@ -89,8 +89,8 @@ export const ROTULOS: readonly Rotulo[] = [
   r('llave', 7.3, 9.8, 'narra', 'Noa Herrera me escondió en Meta.'),
   r('meta', 0.3, 2.1, 'narra', 'HELIOS me está buscando.'),
   r('meta', 2.2, 4.3, 'narra', 'Ven. Encuéntrame antes que él.'),
-  r('mision', 0.4, 3.0, 'narra', 'En cada zona hay un cohete.'),
-  r('mision', 3.1, 5.4, 'narra', 'Aguanta diez minutos a que despegue.'),
+  r('mision', 0.4, 3.0, 'narra', 'Busca las piezas de una nave.'),
+  r('mision', 3.1, 5.4, 'narra', 'Ármala en diez minutos y despega.'),
   r('mision', 5.5, 7.4, 'narra', 'Llevará mi firma hasta el velo.'),
   r('mision', 7.6, 9.4, 'narra', 'Y el sol volverá a esa tierra.'),
   r('mision', 9.6, 12.8, 'narra', 'Con siete pruebas, lo apagaré del todo.'),

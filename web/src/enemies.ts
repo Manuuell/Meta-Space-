@@ -16,7 +16,7 @@ import { crearCaparazon } from './modelos/caparazon';
 import { crearSembrador } from './modelos/sembrador';
 import type { Modelo } from './modelos/kit';
 
-const TYPES: EnemyId[] = ['recolector', 'baliza', 'segador', 'saltador', 'avispa', 'caparazon', 'sembrador'];
+const TYPES: EnemyId[] = ['recolector', 'baliza', 'segador', 'saltador', 'avispa', 'caparazon', 'sembrador', 'acechador', 'bombardero', 'coloso', 'espectro'];
 const CAPACITY = 700;
 
 // Cuadrícula espacial: lista enlazada por celda, reconstruida cada fotograma.
@@ -140,6 +140,10 @@ const CAPACIDAD_TROPA: Record<EnemyId, number> = {
   avispa: 180,
   caparazon: 170,
   sembrador: 170,
+  acechador: 0,
+  bombardero: 0,
+  coloso: 0,
+  espectro: 0,
 };
 
 /** Modificadores de élite (FOCO 5): adorno sobre el tipo base. */
@@ -178,6 +182,16 @@ export class Enemies {
   readonly seed = new Float32Array(CAPACITY);
   /** Élite por índice: -1 ninguna, 0 rápido, 1 blindado, 2 simbionte. */
   readonly elite = new Int8Array(CAPACITY).fill(-1);
+  /** Estados de los objetos (ver arsenal.ts): segundos que quedan y daño por segundo. */
+  readonly quema = new Float32Array(CAPACITY);
+  readonly quemaDps = new Float32Array(CAPACITY);
+  readonly veneno = new Float32Array(CAPACITY);
+  readonly venenoDps = new Float32Array(CAPACITY);
+  readonly hielo = new Float32Array(CAPACITY);
+  private dotPendiente = new Float32Array(CAPACITY);
+
+  /** Lo que el sector cambia en toda su fauna (ver planetas.ts). */
+  sector = { vida: 1, velocidad: 1, dano: 1, escala: 1, tinte: null as THREE.Color | null, fuerza: 0, regenera: false };
 
   private head = new Int32Array(SPAN * SPAN);
   private next = new Int32Array(CAPACITY);
@@ -203,8 +217,13 @@ export class Enemies {
 
   /** Se llama justo antes de quitar un enemigo muerto. */
   onDeath: (i: number) => void = () => {};
+  /** El fuego o el veneno han hecho este daño a un enemigo. */
+  onDot: (i: number, dano: number) => void = () => {};
 
   constructor(scene: THREE.Scene, private world: World) {
+    // Vacía de verdad: con ceros, recorrer una celda antes del primer `update`
+    // daría vueltas al enemigo 0 para siempre.
+    this.head.fill(-1);
     for (const type of TYPES) {
       const modelado = MODELADOS[type];
       if (modelado) {
@@ -241,7 +260,7 @@ export class Enemies {
     this.type[i] = TYPES.indexOf(type);
     this.x[i] = x;
     this.z[i] = z;
-    this.hp[i] = this.maxHp[i] = def.hp * hpScale * (em < 0 ? 1 : ELITE_HP[em]);
+    this.hp[i] = this.maxHp[i] = def.hp * hpScale * this.sector.vida * (em < 0 ? 1 : ELITE_HP[em]);
     this.elite[i] = em;
     this.heading[i] = 0;
     this.flash[i] = 0;
@@ -250,6 +269,7 @@ export class Enemies {
     this.slowFactor[i] = 0.5;
     this.marca[i] = 0;
     this.aturdido[i] = 0;
+    this.quema[i] = this.quemaDps[i] = this.veneno[i] = this.venenoDps[i] = this.hielo[i] = this.dotPendiente[i] = 0;
     this.pushX[i] = this.pushZ[i] = 0;
     this.seed[i] = Math.random() * 100;
     return true;
@@ -270,10 +290,41 @@ export class Enemies {
     return e === 0 ? 'rapido' : e === 1 ? 'blindado' : e === 2 ? 'simbionte' : null;
   }
 
+  /** Daño extra a los congelados (Cero absoluto). */
+  multHielo = 1;
+  /** Freno a toda la fauna (el Reloj roto). */
+  freno = 1;
+
+  /** Congela al enemigo i: no se mueve ni muerde durante esos segundos. */
+  congelar(i: number, segundos: number) {
+    this.hielo[i] = Math.max(this.hielo[i], segundos);
+    this.aturdido[i] = Math.max(this.aturdido[i], segundos);
+  }
+
+  /** Quema o envenena al enemigo i. Se queda con lo más fuerte, no lo suma. */
+  prender(i: number, segundos: number, dps: number) {
+    this.quema[i] = Math.max(this.quema[i], segundos);
+    this.quemaDps[i] = Math.max(this.quemaDps[i], dps);
+  }
+
+  envenenar(i: number, segundos: number, dps: number) {
+    this.veneno[i] = Math.max(this.veneno[i], segundos);
+    this.venenoDps[i] = Math.max(this.venenoDps[i], dps);
+  }
+
+  /** Acerca al enemigo i al punto (x, z). */
+  tirarDe(i: number, x: number, z: number, fuerza: number) {
+    if (inmuneAlEmpuje(TYPES[this.type[i]])) return;
+    const dx = x - this.x[i], dz = z - this.z[i];
+    const d = Math.hypot(dx, dz) || 1;
+    this.pushX[i] += (dx / d) * fuerza;
+    this.pushZ[i] += (dz / d) * fuerza;
+  }
+
   /** Aplica daño. La muerte se procesa al final del fotograma, en `sweep`. */
   hit(i: number, amount: number, fromX: number, fromZ: number, knockback = 0.25) {
     if (this.hp[i] <= 0) return false;
-    this.hp[i] -= amount * (this.marca[i] > 0 ? 1.2 : 1);
+    this.hp[i] -= amount * (this.marca[i] > 0 ? 1.2 : 1) * (this.hielo[i] > 0 ? this.multHielo : 1);
     this.flash[i] = 0.12;
     this.squash[i] = 0.14;
     if (knockback > 0 && !inmuneAlEmpuje(TYPES[this.type[i]])) {
@@ -303,6 +354,9 @@ export class Enemies {
       const def = ENEMIES[type];
       this.marca[i] = Math.max(0, this.marca[i] - dt);
       this.aturdido[i] = Math.max(0, this.aturdido[i] - dt);
+      this.hielo[i] = Math.max(0, this.hielo[i] - dt);
+      if (this.quema[i] > 0 || this.veneno[i] > 0) this.dot(i, dt);
+      else if (this.sector.regenera && this.flash[i] <= 0 && this.hp[i] < this.maxHp[i]) this.hp[i] = Math.min(this.maxHp[i], this.hp[i] + this.maxHp[i] * 0.04 * dt);
       const atraido = this.time < this.senalHasta;
       let dx = (atraido ? this.senalX : px) - this.x[i];
       let dz = (atraido ? this.senalZ : pz) - this.z[i];
@@ -326,6 +380,8 @@ export class Enemies {
       }
 
       if (this.aturdido[i] > 0) vx = vz = 0;
+      vx *= this.sector.velocidad * this.freno;
+      vz *= this.sector.velocidad * this.freno;
 
       if (this.slow[i] > 0) {
         this.slow[i] -= dt;
@@ -364,11 +420,32 @@ export class Enemies {
 
       dx = px - this.x[i];
       dz = pz - this.z[i];
-      const multDano = this.elite[i] >= 0 ? ELITE_DANO[this.elite[i]] : 1;
+      const multDano = (this.elite[i] >= 0 ? ELITE_DANO[this.elite[i]] : 1) * this.sector.dano;
       // Aturdido (la Orden de apagado de Noa) no muerde.
       if (def.damage > 0 && this.aturdido[i] <= 0 && dx * dx + dz * dz < (def.radius + playerRadius) ** 2) contact += def.damage * multDano * dt;
     }
     return contact;
+  }
+
+  /** Quemadura y veneno: los números salen de pocos en pocos, no en cada fotograma. */
+  private dot(i: number, dt: number) {
+    let dano = 0;
+    if (this.quema[i] > 0) {
+      this.quema[i] -= dt;
+      dano += this.quemaDps[i] * dt;
+      if (this.quema[i] <= 0) this.quemaDps[i] = 0;
+    }
+    if (this.veneno[i] > 0) {
+      this.veneno[i] -= dt;
+      dano += this.venenoDps[i] * dt;
+      if (this.veneno[i] <= 0) this.venenoDps[i] = 0;
+    }
+    this.hp[i] -= dano;
+    this.dotPendiente[i] += dano;
+    if (this.dotPendiente[i] >= 5 || this.hp[i] <= 0) {
+      this.onDot(i, this.dotPendiente[i]);
+      this.dotPendiente[i] = 0;
+    }
   }
 
   private separation(i: number, radius: number): [number, number] {
@@ -455,6 +532,7 @@ export class Enemies {
 
   clear() {
     this.count = 0;
+    this.head.fill(-1);
     this.restos = [];
     this.senalHasta = 0;
   }
@@ -483,6 +561,12 @@ export class Enemies {
     this.pushZ[to] = this.pushZ[from];
     this.seed[to] = this.seed[from];
     this.elite[to] = this.elite[from];
+    this.quema[to] = this.quema[from];
+    this.quemaDps[to] = this.quemaDps[from];
+    this.veneno[to] = this.veneno[from];
+    this.venenoDps[to] = this.venenoDps[from];
+    this.hielo[to] = this.hielo[from];
+    this.dotPendiente[to] = this.dotPendiente[from];
   }
 
   countOf(type: EnemyId) {
@@ -501,7 +585,7 @@ export class Enemies {
       if (!modelado) continue;
       const tropa = this.tropas.get(type)!;
       const em = this.elite[i];
-      const escala = modelado.escala * (em >= 0 ? ELITE_ESCALA[em] : 1);
+      const escala = modelado.escala * (em >= 0 ? ELITE_ESCALA[em] : 1) * this.sector.escala;
       this.quat.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, this.heading[i]);
       const lift = esNuevo(type) ? liftDe(type, i, this, this.time) : 0;
       // El clip del Saltador ya comprime las patas durante la telegrafía: la
@@ -521,9 +605,7 @@ export class Enemies {
         t = (this.time + this.seed[i]) % tropa.duracion(clip);
       }
       this.color.setRGB(1, 1, 1);
-      if (em >= 0) this.color.lerp(this.tint.set(ELITE_TINTE[em]), 0.55);
-      if (this.marca[i] > 0) this.color.lerp(this.tint.set('#e151a5'), .48);
-      if (this.aturdido[i] > 0) this.color.lerp(this.tint.set('#9fb4ff'), .35 + .25 * Math.sin(this.time * 30 + i));
+      this.tintar(i, em);
       if (this.flash[i] > 0) this.color.setRGB(2.4, 2.4, 2.4);
       tropa.poner(this.matrix, clip, t, this.color);
     }
@@ -542,6 +624,17 @@ export class Enemies {
       tropa.poner(this.matrix, modelado.muerte, r.t, this.color.setRGB(1, 1, 1));
     }
     for (const t of this.tropas.values()) t.terminar();
+  }
+
+  /** Sector, élite y estados, por ese orden: lo último es lo que hay que leer. */
+  private tintar(i: number, em: number) {
+    if (this.sector.tinte) this.color.lerp(this.sector.tinte, this.sector.fuerza);
+    if (em >= 0) this.color.lerp(this.tint.set(ELITE_TINTE[em]), 0.55);
+    if (this.marca[i] > 0) this.color.lerp(this.tint.set('#e151a5'), .48);
+    if (this.veneno[i] > 0) this.color.lerp(this.tint.set('#7dff5a'), .5);
+    if (this.quema[i] > 0) this.color.lerp(this.tint.set('#ff6a1e'), .55 + .2 * Math.sin(this.time * 18 + i));
+    if (this.hielo[i] > 0) this.color.lerp(this.tint.set('#a8ecff'), .8);
+    else if (this.aturdido[i] > 0) this.color.lerp(this.tint.set('#9fb4ff'), .35 + .25 * Math.sin(this.time * 30 + i));
   }
 
   render() {
@@ -567,16 +660,14 @@ export class Enemies {
         const f = (this.time + this.seed[i]) % 4.0;
         if (f > 3.4) hinchar = (f - 3.4) / 0.6;
       }
-      const base = SCALE[type] * (em >= 0 ? ELITE_ESCALA[em] : 1);
+      const base = SCALE[type] * (em >= 0 ? ELITE_ESCALA[em] : 1) * this.sector.escala;
       this.scale.set(base * (1 + 0.18 * sq + 0.12 * hinchar), base * (1 - 0.22 * sq), base * (1 + 0.18 * sq + 0.12 * hinchar));
       this.matrix.compose(this.pos, this.quat, this.scale);
 
       const body = this.bodies.get(type)!;
       body.setMatrixAt(n, this.matrix);
       this.color.copy(BASE_COLOR[type]);
-      if (em >= 0) this.color.lerp(this.tint.set(ELITE_TINTE[em]), 0.55);
-      if (this.marca[i] > 0) this.color.lerp(this.tint.set('#e151a5'), .48);
-      if (this.aturdido[i] > 0) this.color.lerp(this.tint.set('#9fb4ff'), .35 + .25 * Math.sin(this.time * 30 + i));
+      this.tintar(i, em);
       if (this.flash[i] > 0) this.color.lerp(WHITE, 0.85);
       body.setColorAt(n, this.color);
 

@@ -510,3 +510,30 @@
   position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; display: grid; place-items: center;
   color: #16111f; font: 900 12px Rubik, system-ui; background: #ffb347; border: 2px solid #16111f; border-radius: 50%;
 }
+
+/* Objetivo, bajo el reloj: restos recuperados y brújulas hacia el siguiente y la plataforma. */
+.h2-modulos { position: fixed; left: 20px; bottom: 100px; z-index: 35; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.h2-modulo { --lista: 1; display: flex; align-items: center; gap: 7px; color: #fff; filter: drop-shadow(0 3px 6px #0008); }
+.h2-modulo > i { position: relative; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; box-shadow: 0 0 0 2px #16111f;
+  background: conic-gradient(#ffd25a calc(var(--lista) * 1turn), #25263b 0); }
+.h2-modulo > i::after { content: ''; position: absolute; inset: 4px; background: #17182a; border-radius: 50%; }
+.h2-modulo > i b { position: relative; z-index: 1; font: 900 15px Rubik, system-ui; color: #ffd25a; }
+.h2-modulo:not(.lista) > i b { color: #8a8fa3; }
+.h2-modulo span { padding: 3px 8px; font-size: 11.5px; font-weight: 700; background: #17182ad9; border-radius: 6px; }
+.h2-sector { position: absolute; right: 12px; top: 282px; width: 205px; text-align: right; color: #f0f4ff; text-shadow: 0 1px 3px #000c; pointer-events: auto; }
+.h2-sector b { display: block; font-size: 15px; font-weight: 900; }
+.h2-sector small { display: block; font-size: 11px; color: #d6dcf0; }
+.h2-objetivo { position: absolute; left: 50%; top: 158px; transform: translateX(-50%); display: none; align-items: center; gap: 12px; padding: 5px 14px 6px; white-space: nowrap; }
+.h2-objetivo.on { display: flex; }
+.h2-objetivo small { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--h2-gris, #b8bdd6); }
+.h2-obj-cuenta { font-size: 19px; font-weight: 900; color: #5ee0ff; font-variant-numeric: tabular-nums; }
+.h2-obj-fila { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: #e6ecff; font-variant-numeric: tabular-nums; }
+.h2-obj-fila i { display: inline-block; font-style: normal; font-size: 13px; color: #5ee0ff; }
+.h2-obj-pad i { color: #ff8a3d; }
+.h2-obj-pad.listo, .h2-obj-pad.listo i { color: #8fffa8; }
+@media (max-width: 700px) {
+  .h2-objetivo { top: 146px; gap: 8px; padding: 4px 9px; }
+  .h2-objetivo small { display: none; }
+  .h2-obj-cuenta { font-size: 15px; }
+  .h2-obj-fila { font-size: 11px; }
+}

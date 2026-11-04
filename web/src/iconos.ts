@@ -351,6 +351,18 @@ export const ICONOS: Record<string, string> = {
 // piezas del mismo idioma que los modelos: gruesas, con contorno oscuro,
 // dos tonos y brillo blanco. La clave es el id que usa `ui-title.ts`.
 
+// Familias de objetos: el medallón de lo que no es de una herramienta concreta.
+Object.assign(ICONOS, {
+  'o-fuego': svg(`<path d="M32 6 C40 18 52 24 52 40 A20 20 0 0 1 12 40 C12 30 18 26 22 18 C24 24 28 26 30 26 C32 20 30 12 32 6 Z" fill="${NARANJA}"/><path d="M32 30 C36 36 42 40 42 46 A10 10 0 0 1 22 46 C22 40 28 38 32 30 Z" fill="${CREMA}"/>`),
+  'o-hielo': svg(`${linea('M32 8 V56 M11 20 L53 44 M53 20 L11 44', ADA, 6)}${linea('M32 16 L25 10 M32 16 L39 10 M32 48 L25 54 M32 48 L39 54', ADA, 3)}`),
+  'o-veneno': svg(`<path d="M32 6 C44 24 52 32 52 42 A20 20 0 0 1 12 42 C12 32 20 24 32 6 Z" fill="#7dff5a"/><circle cx="26" cy="42" r="6" fill="${BLANCO}"/><circle cx="40" cy="36" r="3" fill="${BLANCO}"/>`),
+  'o-rayo': svg(`<path d="M38 4 L14 36 H30 L24 60 L50 26 H34 Z" fill="#fff27a"/>`),
+  'o-cristal': svg(`<path d="M32 4 L52 24 L32 60 L12 24 Z" fill="#c77dff"/><path d="M12 24 H52 M32 4 L24 24 L32 60 L40 24 Z" fill="none"/>${brillo(26, 18, 5, 2.5, -40)}`),
+  'o-metal': svg(`<path d="M32 8 L38 16 L48 12 L50 24 L60 28 L54 38 L60 46 L48 50 L44 58 L32 54 L20 58 L16 50 L4 46 L10 38 L4 28 L14 24 L16 12 L26 16 Z" fill="${METAL}"/><circle cx="32" cy="34" r="10" fill="${OSCURO}"/>`),
+  'o-vida': svg(`<path d="M32 56 C8 38 6 22 16 14 C24 8 30 14 32 20 C34 14 40 8 48 14 C58 22 56 38 32 56 Z" fill="#ff7a8a"/>${brillo(20, 24, 5, 3, -40)}`),
+  'o-gravedad': svg(`<circle cx="32" cy="32" r="11" fill="${VISOR}"/>${linea('M8 34 C8 16 28 10 40 14 M56 30 C56 48 36 54 24 50', '#b8a8ff', 5)}`),
+});
+
 export const ICONOS_MENU: Record<string, string> = {
   /** Jugar: el triángulo gordito del mando, con corazón de plasma. */
   jugar: svg(

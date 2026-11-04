@@ -38,6 +38,10 @@ export interface ContextoHabilidad {
   alerta: (texto: string) => void;
   sacudida: () => void;
   sfx: (nombre: Sound) => void;
+  /** Efecto temporal sobre el jugador (lo usan los módulos). */
+  temporal?: (cual: 'velocidad', segundos: number, factor: number) => void;
+  /** Toda la chatarra del suelo viene hacia ti. */
+  atraerChatarra?: () => void;
 }
 
 export interface Habilidad {

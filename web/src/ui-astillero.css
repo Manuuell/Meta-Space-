@@ -1,0 +1,152 @@
+/* El astillero: paneles de instrumento sobre la nave, con esquinas cortadas, y la
+ * nave siempre a la vista. */
+
+.hv {
+  --tinta: #effaf5; --suave: #a9d3cc; --panel: rgba(6, 26, 30, .78); --linea: rgba(190, 255, 235, .2);
+  --coral: #ff7a45; --cian: #5ee0ff; --ok: #7df0a6; --mal: #ff9a85;
+  position: fixed; inset: 0; z-index: 120; overflow: hidden; color: var(--tinta); background: #07181c;
+  font-family: Rubik, system-ui, sans-serif; display: grid; gap: 12px; padding: 14px;
+  grid-template-columns: minmax(0, 1fr) 286px; grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: 'cab cab' '. vuelo' 'dique dique';
+}
+.hv__lienzo { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.hv__lienzo:active { cursor: grabbing; }
+.hv__pines { position: absolute; inset: 0; pointer-events: none; }
+.hv__cabecera, .hv__vuelo, .hv__dique { position: relative; z-index: 2; }
+
+/* Pines sobre la nave. */
+.hv-pin {
+  --c: #5ee0ff; position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none;
+  color: #fff; cursor: pointer; pointer-events: auto; font: 800 12px/1 Rubik, system-ui, sans-serif; will-change: transform;
+}
+.hv-pin i {
+  display: grid; place-items: center; width: 24px; height: 24px; font-style: normal; color: #06201f; background: var(--c);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
+.hv-pin span { opacity: 0; padding: 4px 7px; background: rgba(6, 26, 30, .86); border-left: 2px solid var(--c); transition: opacity .15s; white-space: nowrap; }
+.hv-pin:hover span, .hv-pin:focus-visible span, .hv-pin.activo span { opacity: 1; }
+.hv-pin.activo i { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* Cabecera. */
+.hv__cabecera { grid-area: cab; display: flex; align-items: flex-start; gap: 12px; pointer-events: none; }
+.hv__placa { display: flex; align-items: center; gap: 12px; }
+.hv__clase {
+  display: grid; place-items: center; width: 62px; height: 62px; font-size: 34px; font-weight: 900; color: #06201f; background: var(--mal);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
+.hv__clase[data-c='B'] { background: #ffd27a; }
+.hv__clase[data-c='A'] { background: var(--ok); }
+.hv__clase[data-c='S'] { background: var(--cian); }
+.hv__placa small { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: .16em; color: #d7fff2; text-shadow: 0 1px 6px rgba(0, 20, 22, .8); }
+.hv__placa h1 { margin: 0; font-size: clamp(26px, 3.6vw, 42px); font-weight: 900; line-height: 1; color: #fff; text-shadow: 0 2px 0 rgba(0, 30, 30, .6), 0 2px 14px rgba(0, 20, 22, .6); }
+.hv__placa em { font-style: normal; font-size: 13px; font-weight: 800; color: #ffe6c9; text-shadow: 0 1px 6px rgba(0, 20, 22, .9); }
+.hv__placa { pointer-events: none; }
+.hv__entera { pointer-events: auto; align-self: flex-end; margin-left: 8px; padding: 6px 10px; border: 1px solid var(--linea); color: #fff; background: var(--panel); font: 700 12px/1 Rubik, system-ui, sans-serif; cursor: pointer; }
+.hv__entera kbd { margin-left: 4px; font: inherit; color: var(--cian); }
+.hv__entera:hover, .hv__entera:focus-visible { background: rgba(16, 58, 62, .96); outline: none; }
+.hv__almacen {
+  margin: 0 0 0 auto; padding: 7px 12px; display: flex; gap: 12px; list-style: none; background: var(--panel); border: 1px solid var(--linea);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+.hv__almacen li { --c: #fff; display: grid; justify-items: center; min-width: 40px; }
+.hv__almacen small { max-width: 62px; font-size: 9px; line-height: 1.05; text-align: center; color: var(--suave); }
+.hv__almacen b { order: -1; font-size: 18px; color: var(--c); font-variant-numeric: tabular-nums; }
+.hv__almacen .chatarra { padding-right: 12px; border-right: 1px solid var(--linea); }
+.hv__almacen .chatarra b { color: #ffcf6a; }
+.hv__cerrar { pointer-events: auto; width: 42px; height: 42px; border: 0; color: #fff; font-size: 24px; background: rgba(6, 26, 30, .78); cursor: pointer;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); }
+.hv__cerrar:hover, .hv__cerrar:focus-visible { background: var(--coral); outline: none; }
+
+/* Simulación. */
+.hv__vuelo { grid-area: vuelo; align-self: start; padding: 12px 14px; background: var(--panel); border: 1px solid var(--linea);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px); }
+.hv__vuelo h2 { margin: 0 0 8px; font-size: 11px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: var(--suave); }
+.hv-medida { margin-bottom: 9px; }
+.hv-medida span { display: flex; justify-content: space-between; font-size: 12.5px; color: #d9efe9; }
+.hv-medida b { color: var(--mal); font-variant-numeric: tabular-nums; }
+.hv-medida.ok b { color: var(--ok); }
+.hv-barra { position: relative; height: 8px; margin-top: 4px; background: rgba(255, 255, 255, .12); }
+.hv-barra i { position: absolute; top: 0; bottom: 0; transition: width .22s, left .22s; }
+.hv-barra .base { left: 0; background: var(--mal); }
+.hv-medida.ok .base { background: var(--ok); }
+.hv-barra .cambio.gana { background: #fff; }
+.hv-barra .cambio.pierde { background: repeating-linear-gradient(45deg, #ff5a4a 0 3px, transparent 3px 6px); }
+.hv-barra u { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #fff; }
+.hv__ada { margin: 10px 0 0; padding: 8px 10px; font-size: 12.5px; line-height: 1.35; color: #ffdcd4; background: rgba(255, 90, 74, .13); border-left: 2px solid var(--mal); }
+.hv__ada.ok { color: #d7ffe6; background: rgba(125, 240, 166, .13); border-color: var(--ok); }
+.hv__lanzar { width: 100%; margin-top: 10px; padding: 12px; border: 0; color: #06201f; background: var(--cian); font: 900 15px/1 Rubik, system-ui, sans-serif; cursor: pointer;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+.hv__lanzar.riesgo { color: #fff; background: #7c352e; }
+.hv__lanzar:hover, .hv__lanzar:focus-visible { filter: brightness(1.15); outline: none; }
+
+/* Dique: partes y piezas. */
+.hv__dique { grid-area: dique; display: grid; gap: 8px; }
+.hv__pestanas { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.hv-pestana {
+  --c: #5ee0ff; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 9px; border: 0; color: #fff; text-align: left; cursor: pointer;
+  background: var(--panel); border-bottom: 3px solid transparent; font-family: inherit;
+}
+.hv-pestana i { font-style: normal; font-size: 11px; font-weight: 800; color: var(--c); }
+.hv-pestana span { display: grid; min-width: 0; }
+.hv-pestana b { font-size: 13.5px; font-weight: 800; }
+.hv-pestana em { font-style: normal; font-size: 11px; color: var(--suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hv-pestana:hover, .hv-pestana:focus-visible { background: rgba(14, 50, 54, .92); outline: none; }
+.hv-pestana.activa { background: rgba(16, 58, 62, .96); border-bottom-color: var(--c); }
+.hv__fila { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 8px; }
+.hv__cartas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.hv-carta {
+  --c: #5ee0ff; display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 10px; align-items: center; min-width: 0; padding: 7px; border: 1px solid var(--linea); color: #fff; text-align: left;
+  cursor: pointer; background: var(--panel); font-family: inherit; transition: background .12s, border-color .12s;
+}
+.hv-carta__foto { display: block; height: 72px; background: radial-gradient(circle at 50% 40%, rgba(94, 224, 255, .22), rgba(0, 0, 0, 0) 70%); }
+.hv-carta__foto img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.hv-carta__texto { display: grid; gap: 2px; min-width: 0; }
+.hv-carta small { font-size: 10.5px; font-weight: 700; color: #ffcf6a; }
+.hv-carta.montada small { color: var(--ok); }
+.hv-carta b { font-size: 14px; line-height: 1.1; }
+.hv-carta ul { display: flex; flex-wrap: wrap; gap: 2px 8px; margin: 2px 0 0; padding: 0; list-style: none; font-size: 11px; font-weight: 700; }
+.hv-carta li.mas { color: var(--ok); }
+.hv-carta li.menos { color: var(--mal); }
+.hv-carta:hover, .hv-carta:focus-visible { background: rgba(14, 50, 54, .94); outline: none; }
+.hv-carta.elegida { border-color: var(--c); box-shadow: inset 0 0 0 1px var(--c); background: rgba(16, 58, 62, .96); }
+.hv__accion { display: flex; flex-direction: column; padding: 9px 12px; background: var(--panel); border: 1px solid var(--linea); }
+.hv__accion small { font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--cian); }
+.hv__accion h3 { margin: 0; font-size: 15px; }
+.hv__accion p { margin: 2px 0 8px; font-size: 12px; line-height: 1.3; color: #cfe6e0; }
+.hv__accion button { margin-top: auto; padding: 9px; border: 0; color: #06201f; background: var(--coral); font: 800 13.5px/1 Rubik, system-ui, sans-serif; cursor: pointer; }
+.hv__accion button:hover:not([disabled]), .hv__accion button:focus-visible { filter: brightness(1.12); outline: none; }
+.hv__accion button[disabled] { color: var(--suave); background: rgba(255, 255, 255, .1); cursor: default; }
+
+@media (max-width: 960px) {
+  .hv { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto; grid-template-areas: 'cab' '.' 'vuelo' 'dique'; padding: 8px; gap: 6px; }
+  .hv__almacen, .hv__entera kbd { display: none; }
+  .hv__cerrar { margin-left: auto; }
+  .hv__vuelo { display: grid; grid-template-columns: minmax(0, 1fr) 118px; gap: 6px 10px; align-items: center; padding: 7px 9px; }
+  .hv__vuelo h2 { display: none; }
+  .hv__medidas { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; }
+  .hv-medida { margin: 0; }
+  .hv-medida span { display: grid; font-size: 10px; }
+  .hv__ada { grid-column: 1 / -1; order: 3; margin: 0; padding: 4px 8px; font-size: 11.5px; }
+  .hv__lanzar { margin: 0; padding: 10px 6px; font-size: 12.5px; }
+  .hv__dique { gap: 5px; }
+  .hv__pestanas { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
+  .hv-pestana { padding: 6px 7px; }
+  .hv-pestana i, .hv-pestana em { display: none; }
+  .hv-pestana b { font-size: 12.5px; }
+  .hv__fila { grid-template-columns: minmax(0, 1fr); gap: 5px; }
+  .hv__cartas { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+  .hv-carta { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 5px 6px; align-content: start; }
+  .hv-carta__foto { height: 54px; }
+  .hv-carta b { font-size: 12.5px; }
+  .hv-carta small { font-size: 9.5px; }
+  .hv-carta ul { font-size: 10px; }
+  .hv__accion { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 2px 10px; padding: 6px 9px; }
+  .hv__accion small { width: 100%; }
+  .hv__accion h3 { flex: 1; min-width: 0; font-size: 13px; }
+  .hv__accion p { display: none; }
+  .hv__accion button { margin: 0; padding: 8px 12px; font-size: 12.5px; }
+}
+@media (max-width: 560px) {
+  .hv__pestanas { grid-template-columns: repeat(6, 92px); overflow-x: auto; }
+  .hv__cartas { grid-template-columns: repeat(3, 62vw); overflow-x: auto; }
+}

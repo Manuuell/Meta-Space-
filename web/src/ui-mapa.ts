@@ -49,8 +49,9 @@ const NOMBRES: Record<TipoLugar, string> = {
   jaula: 'Jaula con un superviviente (F: libéralo)',
   iman: 'Imán de grúa (atrae toda la chatarra)',
   racion: 'Ración (cura al pasar)',
+  fragmento: 'Resto de la flota (quédate al lado)',
 };
-const ORDEN: TipoLugar[] = ['dragon', 'altar', 'duelo', 'guardian', 'fragua', 'jaula', 'pilon', 'caja', 'suelta', 'iman', 'ara', 'racion', 'torre', 'refugio', 'npc'];
+const ORDEN: TipoLugar[] = ['fragmento', 'dragon', 'altar', 'duelo', 'guardian', 'fragua', 'jaula', 'pilon', 'caja', 'suelta', 'iman', 'ara', 'racion', 'torre', 'refugio', 'npc'];
 /** Cómo se dice que ya está hecho, por tipo (si no, «hecho»). */
 const HECHO: Partial<Record<TipoLugar, [string, string]>> = {
   torre: ['derribada', 'derribadas'], jaula: ['liberado', 'liberados'], iman: ['usado', 'usados'], racion: ['comida', 'comidas'],
@@ -197,7 +198,7 @@ export function abrirMapa(datos: DatosMapa, cerrar: (puntos: { x: number; z: num
       if (sx < -20 || sy < -20 || sx > lado2 + 20 || sy > lado2 + 20) return;
       ctx.save(); ctx.translate(sx, sy); ctx.scale(escala, escala); fn(); ctx.restore();
     };
-    // El cohete y la nave.
+    // La plataforma y la nave de rescate.
     dibujar(datos.cohete.x, datos.cohete.z, () => {
       ctx.fillStyle = '#efe8de'; ctx.strokeStyle = '#16111f'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(6, 8); ctx.lineTo(-6, 8); ctx.closePath(); ctx.fill(); ctx.stroke();

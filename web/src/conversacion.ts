@@ -26,18 +26,20 @@ export type Emocion = (typeof EMOCIONES)[number];
 export const ACCIONES_ADA = ['marcar', 'explorar', 'seguir', 'quieto', 'luz'] as const;
 
 /** Lo que ADA puede señalar en el mapa. Son tipos de marca de contenido-juego.ts. */
-export const LUGARES = ['racion', 'caja', 'suelta', 'pilon', 'torre', 'refugio', 'jaula', 'iman', 'guardian', 'fragua', 'altar', 'ara', 'duelo'] as const;
+export const LUGARES = ['fragmento', 'racion', 'caja', 'suelta', 'pilon', 'torre', 'refugio', 'jaula', 'iman', 'guardian', 'fragua', 'altar', 'ara', 'duelo'] as const;
 export type Lugar = (typeof LUGARES)[number];
 
 const NOMBRE_LUGAR: Record<string, string> = {
+  fragmento: 'resto de la flota',
   racion: 'ración', caja: 'cofre', suelta: 'caja suelta', pilon: 'pilón de carga', torre: 'torre del velo',
   refugio: 'refugio', jaula: 'jaula con superviviente', iman: 'imán de grúa', guardian: 'Guardián dormido',
   fragua: 'Fragua del Deshielo', altar: 'altar de jefe', ara: 'ara de desafío', duelo: 'altar de duelo',
-  dragon: 'Dragón del Velo', cohete: 'cohete', nave: 'nave',
+  dragon: 'Dragón del Velo', cohete: 'plataforma con tu nave', nave: 'nave posada',
 };
 
 /** Palabras con las que se pide cada lugar cuando no hay IA. */
 const CLAVES_LUGAR: Record<Lugar, string[]> = {
+  fragmento: ['resto', 'restos', 'fragmento', 'fragmentos', 'pieza', 'piezas'],
   racion: ['racion', 'raciones', 'comida', 'comer', 'curarme', 'curar'],
   caja: ['cofre', 'cofres'],
   suelta: ['caja', 'cajas'],
@@ -135,6 +137,8 @@ export interface DatosPartida {
   /** Ordenado de más cerca a más lejos. */
   mapa: LugarCercano[];
   acciones: AccionDisponible[];
+  /** Qué sector de Meta es y qué tiene de especial (ver planetas.ts). */
+  sector?: string;
 }
 
 /** Rumbo en palabras desde un vector (norte = -z, hacia el cohete). */
@@ -201,6 +205,7 @@ export function textoPartida(d: DatosPartida, quien: Interlocutor): string {
     `Quedan ${reloj(d.segundos)} de ventana de lanzamiento. Integridad del traje ${d.integridad} %. Nivel ${d.nivel}. Chatarra ${d.chatarra}. Exposición a HELIOS ${d.exposicion} %.`,
     `Herramientas: ${d.herramientas.join(', ') || 'ninguna'}.`,
   ];
+  if (d.sector) lineas.push(`Sector: ${d.sector}`);
   if (quien === 'ada' && d.forma) lineas.push(`Forma actual de ADA: ${d.forma}.`);
 
   const reliquias = `Reliquias: ${d.reliquias.length} de ${d.totalReliquias}`;

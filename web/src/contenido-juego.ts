@@ -10,14 +10,17 @@ import { crearTorreVelo } from './modelos/torre-velo.ts';
 import { crearNpcMecanica } from './modelos/npc-mecanica.ts';
 import { crearNpcVigia } from './modelos/npc-vigia.ts';
 import { crearNpcBotanica } from './modelos/npc-botanica.ts';
+import { crearNpcChatarrero } from './modelos/npc-chatarrero.ts';
+import { PLANETA_INICIAL, type Planeta } from './planetas.ts';
 import { crearSegadorJefe, TIEMPOS_JEFE_COSECHA } from './modelos/segador-jefe.ts';
 import { JefeGolem } from './jefe-golem.ts';
 import { JefeVolador } from './jefe-volador.ts';
 import type { ObjetivoPiloto } from './demo.ts';
 import { Hallazgos, type OpcionHallazgo, type TipoHallazgo } from './hallazgos.ts';
+import type { Ranura } from './nave/piezas.ts';
 import { crearHeraldo, TIEMPOS_HERALDO } from './modelos/heraldo.ts';
 import { crearOjoHelios, TIEMPOS_OJO } from './modelos/ojo-helios.ts';
-import {
+import { DESPIERTA_ALTAR,
   ALTARES_JEFE,
   CAJAS,
   CAJAS_SUELTAS,
@@ -252,6 +255,8 @@ export interface EventosContenido {
   bengala?: (desde: { x: number; y: number; z: number }, hacia: { x: number; z: number }, dano: number) => void;
   elegir?: (titulo: string, frase: string, opciones: OpcionHallazgo[], listo: () => void) => void;
   forjar?: (coste: number, hecho: () => void) => boolean;
+  /** Se ha recuperado un resto de la flota (ver hallazgos.ts). */
+  fragmento?: (ranura: Ranura) => void;
 }
 
 
@@ -358,6 +363,9 @@ export class ContenidoJuego {
   private dragon: JefeVolador | null = null;
   private ocupados: { x: number; z: number; r: number }[] = [];
   private refugio: Actor | null = null;
+  /** El mercader de paso, si en este sector hay uno. */
+  private mercader: { actor: Actor; nombre: string; cerca: boolean; ventas: number } | null = null;
+  private ritmoMinijefes = 1;
   private siguienteSuministro = 120;
   private exposicionValor = 0;
   private marcaActiva: MarcaContenido | null = null;
@@ -387,8 +395,40 @@ export class ContenidoJuego {
       bengala: (a, b, dano) => this.eventos.bengala?.(a, b, dano),
       elegir: (titulo, frase, opciones, listo) => this.eventos.elegir ? this.eventos.elegir(titulo, frase, opciones, listo) : listo(),
       forjar: (coste, hecho) => this.eventos.forjar?.(coste, hecho) ?? false,
+      fragmento: (ranura) => this.eventos.fragmento?.(ranura),
     });
-    this.colocarContenido();
+    this.colocarContenido(PLANETA_INICIAL);
+  }
+
+  /** El mercader, si lo hay y el jugador lo tiene a mano. */
+  mercaderCerca(px: number, pz: number) {
+    const m = this.mercader;
+    return m && Math.hypot(px - m.actor.x, pz - m.actor.z) < 5 ? m : null;
+  }
+
+  /** Levanta lo de otro sector: quita todo lo que había y lo reparte de nuevo. */
+  reconstruir(p: Planeta) {
+    this.reset();
+    for (const actor of [...this.actores]) this.eliminarActor(actor);
+    for (const d of this.duelos) {
+      this.scene.remove(d.arena);
+      d.arena.geometry.dispose();
+    }
+    this.altares = [];
+    this.cajas = [];
+    this.torres = [];
+    this.npcs = [];
+    this.aras = [];
+    this.pilones = [];
+    this.duelos = [];
+    this.ocupados = [];
+    this.refugio = null;
+    this.mercader = null;
+    this.hallazgos.vaciar();
+    this.rand = rng(p.semilla);
+    this.colocarContenido(p);
+    this.siguienteMinijefe = MINIJEFES.primero * p.regla.mods.minijefes;
+    this.ritmoMinijefes = p.regla.mods.minijefes;
   }
 
   get exposicion() {
@@ -397,6 +437,15 @@ export class ContenidoJuego {
 
   get marca() {
     return this.marcaActiva;
+  }
+
+  /** Restos de la flota en el sector: cuántos hay y cuántos se han recuperado. */
+  get restos() {
+    return this.hallazgos.cuentaRestos;
+  }
+
+  restoCercano(x: number, z: number) {
+    return this.hallazgos.restoCercano(x, z);
   }
 
   get marcas(): MarcaContenido[] {
@@ -415,6 +464,7 @@ export class ContenidoJuego {
       });
     }
     for (const t of this.torres) marcas.push({ id: t.actor.id, tipo: 'torre', x: t.actor.x, z: t.actor.z, hecho: t.destruida, visto: visto(t.actor.id) });
+    if (this.mercader) marcas.push({ id: 'mercader', tipo: 'npc', x: this.mercader.actor.x, z: this.mercader.actor.z, hecho: false, visto: this.vistos.has('mercader') });
     if (this.refugio) marcas.push({ id: 'refugio', tipo: 'refugio', x: this.refugio.x, z: this.refugio.z, visto: true });
     for (const n of this.npcs) marcas.push({ id: n.def.id, tipo: 'npc', x: n.actor.x, z: n.actor.z, visto: visto(n.def.id) });
     for (const d of this.duelos) marcas.push({ id: d.actor.id, tipo: 'duelo', x: d.actor.x, z: d.actor.z, hecho: d.estado === 'superado', visto: visto(d.actor.id) });
@@ -885,38 +935,46 @@ export class ContenidoJuego {
     this.actores = [];
   }
 
-  private colocarContenido() {
+  private colocarContenido(planeta: Planeta) {
     const haciaCentro = (x: number, z: number) => Math.atan2(-x, -z);
-    const refugio = this.world.lugarLibre(this.rand, COLOCACION.refugio.distancia, 9) ?? { x: 14, z: 12 };
+    const r = planeta.reparto;
+    const refugio = this.world.lugarLibre(this.rand, r.refugio, 9) ?? { x: 14, z: 12 };
     this.refugio = this.poner('refugio', crearRefugio, refugio.x, refugio.z, haciaCentro(refugio.x, refugio.z), 'Reposo');
     this.ocupados.push({ ...refugio, r: 14 });
 
     // El chatarrero se mantiene fuera hasta que el usuario elija un nombre que
     // no colisione con Bruno, el perro compañero.
-    const defsNpc = NPCS.filter((n) => n.id !== 'npc-chatarrero');
-    const creadores = [crearNpcMecanica, crearNpcVigia, crearNpcBotanica];
+    // Cada sector tiene a quien tenga: no siempre están los tres.
+    const defsNpc = NPCS.filter((n) => r.npcs.includes(n.id));
+    const creadores: Record<string, () => Modelo> = { 'npc-mecanica': crearNpcMecanica, 'npc-vigia': crearNpcVigia, 'npc-botanica': crearNpcBotanica };
     defsNpc.forEach((def, k) => {
       const ang = haciaCentro(refugio.x, refugio.z) + (k - 1) * 0.75;
       const x = refugio.x + Math.sin(ang) * 7;
       const z = refugio.z + Math.cos(ang) * 7;
-      const actor = this.poner(def.id, creadores[k], x, z, ang + Math.PI, CLIPS_NPC.trabajar);
+      const actor = this.poner(def.id, creadores[def.id], x, z, ang + Math.PI, CLIPS_NPC.trabajar);
       this.npcs.push({ actor, def, cerca: false, asustado: false, despedida: 0 });
     });
 
+    if (r.mercader) {
+      const p = this.buscar(r.mercader.distancia, 4, 30);
+      const actor = this.poner('mercader', crearNpcChatarrero, p.x, p.z, haciaCentro(p.x, p.z), CLIPS_NPC.trabajar);
+      this.mercader = { actor, nombre: r.mercader.nombre, cerca: false, ventas: 0 };
+    }
+
     const estiloAltar = { 'altar-cosecha': 'cosecha', 'altar-sabueso': 'ojo', 'altar-heraldo': 'heraldo', 'altar-ojo': 'ojo' } as const;
-    for (const def of ALTARES_JEFE) {
+    for (const def of ALTARES_JEFE.filter((_, k) => r.altares.includes(k))) {
       const p = this.buscar(COLOCACION.altaresJefe.distancia, 4, COLOCACION.altaresJefe.separacionMinima);
       const actor = this.poner(def.id, () => crearAltarJefe(estiloAltar[def.id]), p.x, p.z, haciaCentro(p.x, p.z), CLIPS_ALTAR_JEFE.dormido);
       this.altares.push({ def, actor, estado: 'dormido', t: 0, adelantado: false });
     }
 
-    for (let k = 0; k < COLOCACION.aras.cuantos; k++) {
+    for (let k = 0; k < r.aras; k++) {
       const p = this.buscar(COLOCACION.aras.distancia, 4, COLOCACION.aras.separacionMinima);
       const actor = this.poner('altar-desafio-' + k, crearAltarDesafio, p.x, p.z, haciaCentro(p.x, p.z), CLIPS_ARA.espera);
-      this.aras.push({ actor, desafio: DESAFIOS[k % 3], estado: 'espera', t: 0, fuera: 0, bajasInicio: 0, danoInicio: 0, recogidas: 0, chispas: [] });
+      this.aras.push({ actor, desafio: DESAFIOS[(k + (planeta.semilla % DESAFIOS.length)) % DESAFIOS.length], estado: 'espera', t: 0, fuera: 0, bajasInicio: 0, danoInicio: 0, recogidas: 0, chispas: [] });
     }
 
-    for (let k = 0; k < COLOCACION.pilones.cuantos; k++) {
+    for (let k = 0; k < r.pilones; k++) {
       const p = this.buscar(COLOCACION.pilones.distancia, 3, COLOCACION.pilones.separacionMinima);
       const actor = this.poner('pilon-' + k, crearPilonCarga, p.x, p.z, haciaCentro(p.x, p.z), CLIPS_PILON.espera);
       const anillo = anilloCarga(PILON.radio);
@@ -925,7 +983,7 @@ export class ContenidoJuego {
       this.pilones.push({ actor, carga: 0, estado: 'espera', t: 0, premiado: false, anillo });
     }
 
-    for (let k = 0; k < COLOCACION.duelos.cuantos; k++) {
+    for (let k = 0; k < r.duelos; k++) {
       const p = this.buscar(COLOCACION.duelos.distancia, 4, COLOCACION.duelos.separacionMinima);
       const actor = this.poner('altar-duelo-' + k, () => crearAltarJefe('heraldo'), p.x, p.z, haciaCentro(p.x, p.z), CLIPS_ALTAR_JEFE.dormido);
       // Anillo de la arena: solo se ve mientras dura el duelo.
@@ -940,7 +998,7 @@ export class ContenidoJuego {
     }
 
     const torreDef = ESTRUCTURAS.find((e) => e.id === 'torre-velo')!;
-    for (let k = 0; k < COLOCACION.torres.cuantos; k++) {
+    for (let k = 0; k < r.torres; k++) {
       const p = this.buscar(COLOCACION.torres.distancia, 4, COLOCACION.torres.separacionMinima);
       const actor = this.poner('torre-velo-' + k, crearTorreVelo, p.x, p.z, haciaCentro(p.x, p.z), torreDef.clips.activa);
       this.torres.push({
@@ -953,20 +1011,20 @@ export class ContenidoJuego {
     }
 
     const cajaHelios = CAJAS.find((c) => c.id === 'caja-helios')!;
-    for (let k = 0; k < COLOCACION.cofresHelios.cuantos; k++) {
+    for (let k = 0; k < r.cofres; k++) {
       const p = this.buscar(COLOCACION.cofresHelios.distancia, 2, COLOCACION.cofresHelios.separacionMinima);
       const actor = this.poner('caja-helios-' + k, () => crearCaja('helios'), p.x, p.z, haciaCentro(p.x, p.z), CLIPS_CAJA.espera);
       this.cajas.push({ actor, def: cajaHelios, progreso: 0, abierta: false, entregada: false, dinamica: false });
     }
     // Cajas sueltas gratis; una parte son cebos de HELIOS.
     const abandonada = CAJAS.find((c) => c.id === 'caja-abandonada')!, trampa = CAJAS.find((c) => c.id === 'caja-trampa')!;
-    for (let k = 0; k < CAJAS_SUELTAS.cuantas; k++) {
+    for (let k = 0; k < r.cajasSueltas; k++) {
       const p = this.buscar(CAJAS_SUELTAS.distancia, 2, CAJAS_SUELTAS.separacion);
       const esTrampa = this.rand() < CAJAS_SUELTAS.trampas;
       const actor = this.poner('caja-suelta-' + k, () => crearCaja(esTrampa ? 'trampa' : 'abandonada'), p.x, p.z, this.rand() * Math.PI * 2, CLIPS_CAJA.espera);
       this.cajas.push({ actor, def: esTrampa ? trampa : abandonada, progreso: 0, abierta: false, entregada: false, dinamica: false });
     }
-    this.hallazgos.colocar();
+    this.hallazgos.colocar(r.raciones);
 
     const reliquia = this.buscar([30, 50], 2, 6);
     const actorReliquia = this.poner('caja-reliquia', () => crearCaja('reliquia'), reliquia.x, reliquia.z, haciaCentro(reliquia.x, reliquia.z), CLIPS_CAJA.espera);
@@ -1058,7 +1116,8 @@ export class ContenidoJuego {
   private actualizarAltares(c: ContextoContenido) {
     for (const altar of this.altares) {
       altar.t += c.dt;
-      if (altar.estado === 'dormido' && c.tiempo >= altar.def.minuto * 60 && (!this.golem || this.golem.derrotado)) {
+      const cerca = Math.hypot(c.px - altar.actor.x, c.pz - altar.actor.z) < DESPIERTA_ALTAR;
+      if (altar.estado === 'dormido' && cerca && c.tiempo >= altar.def.minuto * 60 && (!this.golem || this.golem.derrotado)) {
         altar.estado = 'invocando';
         altar.t = 0;
         this.reproducir(altar.actor, CLIPS_ALTAR_JEFE.invocar, true);
@@ -1358,7 +1417,7 @@ export class ContenidoJuego {
   private actualizarJefes(c: ContextoContenido) {
     // Calendario de minijefes: cada vez más seguidos, con un tope de vivos.
     if (c.tiempo >= this.siguienteMinijefe) {
-      const cada = Math.max(MINIJEFES.cadaMinimo, MINIJEFES.cada - MINIJEFES.bajaPorMinuto * c.tiempo / 60);
+      const cada = Math.max(MINIJEFES.cadaMinimo, MINIJEFES.cada - MINIJEFES.bajaPorMinuto * c.tiempo / 60) * this.ritmoMinijefes;
       this.siguienteMinijefe = c.tiempo + cada;
       if (this.jefes.filter((j) => !j.derrotado).length < MINIJEFES.maximoVivos) this.crearMinijefe(c);
     }

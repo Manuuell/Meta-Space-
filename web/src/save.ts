@@ -23,6 +23,8 @@ export interface Save {
   estiloBruno?: { pajarita: 'cuadros' | 'verde' | null; gorra: boolean; gafas: boolean };
   /** Operador jugable elegido en el título. */
   personaje?: PersonajeId;
+  /** La nave: fragmentos, piezas fabricadas y montadas (ver nave/piezas.ts). */
+  hangar?: unknown;
 }
 
 const KEY = 'meta-space.save.v1';

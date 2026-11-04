@@ -1,6 +1,6 @@
 # META SPACE — Documento de diseño
 
-> Juego de diseño, gestión y simulación de una misión espacial.
+> Juego de exploración y supervivencia en el que armas tu propia nave.
 > El planeta Meta se congela bajo un velo que nadie puede apagar.
 > Tú llevas a la única que puede hacerlo, y algo la quiere de vuelta.
 
@@ -44,7 +44,7 @@ en trece planos. Meta ardía y creó una IA, HELIOS, que tapó el cielo con un v
 rojo; pasan dos siglos y nadie sabe pararla; Meta se congela y pide ayuda; Ares
 manda su flota a apagar el velo; HELIOS la destruye y rompe Ares; de Ares solo
 queda tu nave; ADA es la única que puede firmar el apagado y Noa Herrera la
-escondió en Meta; y cómo se juega: diez minutos por zona hasta que el cohete sube
+escondió en Meta; y cómo se juega: diez minutos por zona hasta que la nave sube
 su firma y vuelve el sol, y siete pruebas para apagarlo del todo. El guion vive
 en `web/src/cinematica-guion.ts` y la música, compuesta para ella y sintetizada,
 en `web/src/musica.ts`.
@@ -147,11 +147,47 @@ Explorando, además de altares y cofres, se encuentra:
 
 Todo sale en el mapa (**M**) en cuanto lo has tenido cerca.
 
+### Tu nave
+
+La flota de Ares cayó sobre Meta. Sus restos siguen ahí, con las balizas de rescate
+encendidas: los haces de luz del mapa. Cada resto sirve para una parte de la nave
+(motores, tanques, alas, casco, escudo o morro) y en el astillero se convierte,
+junto con la chatarra, en una pieza nueva que cambia la silueta de la nave: de la
+chatarra remendada con tres toberas a un interceptor con veintiún motores. Se
+vigilan cinco cosas: empuje entre peso, velocidad total (9.400 m/s), control,
+blindaje y señal. Más tanque da más velocidad, pero pesa más: hay diseños caros que
+no se levantan del suelo. Al lanzar, la nave que has armado vuela de verdad: se
+eleva con los chorros de la panza, recoge el tren, se pone de morro, enciende los
+motores y suelta los tanques al vaciarlos, con su telemetría, y falla justo donde
+el diseño no llega. Lo recuperado nunca se pierde.
+
+### Los sectores de Meta
+
+El velo no cayó igual en todas partes, y por eso cada partida baja a un sector
+distinto, elegido entre tres en el escáner orbital. Donde cerró primero hay un
+glaciar que antes fue mar; donde las bombas de sulfato abrieron la corteza corre la
+lava; donde nadie volvió ganaron los hongos; en un mar seco solo queda sal rosa; el
+sulfato cristalizó en bosques de cuarzo; media flota de Ares cayó en un cementerio
+oxidado, y en muy pocos sitios hay un agujero en el velo con agua limpia y palmeras.
+
+Cada sector tiene su clima, una regla propia (gravedad baja, marea de HELIOS, tierra
+de colosos…), su fauna con un rasgo común (volátiles que revientan, gélidos que
+hielan, tóxicos que dejan charcos), sus jefes y la gente que aguanta allí.
+
+### Objetos y módulos
+
+Los restos de la flota esconden piezas que cambian las herramientas: filos que
+rebotan, bobinas que arrastran a la horda, bombas de racimo, drones artilleros. Cada
+sector tiende a dar dos familias (fuego, hielo, veneno, electricidad, cristal, metal,
+vida o gravedad), así que dos partidas acaban pareciéndose poco. Los módulos son
+habilidades activas que se encuentran igual y se llevan en las teclas G y C. Salen de
+altares, cofres, jefes, niveles y de los mercaderes de paso.
+
 ### Cómo se salva Meta
 
-- **Cada partida es un sector.** Diez minutos hasta la ventana de lanzamiento.
-  Si aguantas, el cohete sube la orden de apagado y **el sol vuelve a ese
-  sector**.
+- **Cada partida es un sector.** Hay diez minutos antes de que se cierre la ventana
+  de lanzamiento. Si la nave cruza el velo, sube la firma de ADA y **el sol vuelve
+  a ese sector**.
 - **Las reliquias son pruebas.** HELIOS solo acepta la orden de apagado global
   con una auditoría completa: siete pruebas de lo que hizo el velo. Las llevan
   los Segadores.

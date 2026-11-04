@@ -6,7 +6,9 @@ import { crearJaula } from './modelos/jaula.ts';
 import { crearSuperviviente } from './modelos/superviviente.ts';
 import { crearGuardian } from './modelos/guardian.ts';
 import { crearFragua } from './modelos/fragua.ts';
-import { EMBOSCADA, FRAGUA, GUARDIAN, IMANES, JAULAS, RACIONES, SUPERVIVIENTES, type Efecto, type Superviviente } from './contenido/mapa.ts';
+import { crearFragmento } from './modelos/fragmento.ts';
+import { DEF_RANURA, RANURAS, type Ranura } from './nave/piezas.ts';
+import { EMBOSCADA, FRAGUA, GUARDIAN, IMANES, JAULAS, RACIONES, RESTOS, SUPERVIVIENTES, type Efecto, type Superviviente } from './contenido/mapa.ts';
 import type { World } from './world.ts';
 
 // Hallazgos del sector: lo que se encuentra explorando además de altares y
@@ -46,6 +48,8 @@ export interface OpcionHallazgo {
 
 /** Lo que los hallazgos le piden al juego. */
 export interface EventosHallazgos {
+  /** Se ha recuperado un resto de la flota. */
+  fragmento?: (ranura: Ranura) => void;
   toast: (quien: string, texto: string, segundos?: number) => void;
   aplicar: (efectos: Efecto[]) => void;
   curar: (cantidad: number) => void;
@@ -74,7 +78,15 @@ export interface ContextoHallazgos {
   enemigoCercano: (x: number, z: number, radio: number) => { x: number; z: number } | null;
 }
 
-export type TipoHallazgo = 'racion' | 'iman' | 'jaula' | 'guardian' | 'fragua';
+export type TipoHallazgo = 'racion' | 'iman' | 'jaula' | 'guardian' | 'fragua' | 'fragmento';
+
+/** Un resto de la flota de Ares: se recupera quedándose a su lado. */
+interface Resto {
+  actor: ActorHallazgo;
+  ranura: Ranura;
+  estado: 'intacto' | 'recuperando' | 'hecho';
+  progreso: number;
+}
 
 export interface MarcaHallazgo {
   id: string;
@@ -120,6 +132,7 @@ export class Hallazgos {
   private guardian: Guardian | null = null;
   private fragua: Fragua | null = null;
   private emboscadas: Emboscada[] = [];
+  private restos: Resto[] = [];
 
   constructor(taller: Taller, world: World, eventos: EventosHallazgos) {
     this.taller = taller;
@@ -127,10 +140,21 @@ export class Hallazgos {
     this.eventos = eventos;
   }
 
-  /** Reparte los hallazgos por el sector (una vez, al crear el contenido). */
-  colocar() {
+  /** Olvida lo de otro sector (los actores los quita quien los puso). */
+  vaciar() {
+    this.raciones = [];
+    this.imanes = [];
+    this.jaulas = [];
+    this.guardian = null;
+    this.fragua = null;
+    this.emboscadas = [];
+    this.restos = [];
+  }
+
+  /** Reparte los hallazgos por el sector. */
+  colocar(raciones: number = RACIONES.cuantas) {
     const t = this.taller;
-    for (let k = 0; k < RACIONES.cuantas; k++) {
+    for (let k = 0; k < raciones; k++) {
       const p = t.buscar(RACIONES.distancia, 1, RACIONES.separacion);
       this.raciones.push({ actor: t.poner('racion-' + k, crearRacion, p.x, p.z, t.rand() * 6.28, 'Reposo'), tomada: false });
     }
@@ -149,6 +173,13 @@ export class Hallazgos {
     this.guardian = { actor: t.poner('guardian', crearGuardian, g.x, g.z, haciaCentro(g.x, g.z), 'Dormido'), estado: 'dormido', progreso: 0, t: 0, oleada: 0 };
     const f = t.buscar(FRAGUA.distancia, 4, 24);
     this.fragua = { actor: t.poner('fragua', crearFragua, f.x, f.z, haciaCentro(f.x, f.z), 'Reposo'), usos: FRAGUA.usos };
+    RANURAS.forEach((ranura) => {
+      for (let k = 0; k < RESTOS.porRanura; k++) {
+        const p = this.sitioSeco();
+        const actor = t.poner(`resto-${ranura}-${k}`, () => crearFragmento(ranura), p.x, p.z, t.rand() * 6.28, 'Reposo');
+        this.restos.push({ actor, ranura, estado: 'intacto', progreso: 0 });
+      }
+    });
   }
 
   /** Vuelve a dejarlo todo como al empezar el sector. */
@@ -170,6 +201,14 @@ export class Hallazgos {
     }
     if (this.fragua) { this.fragua.usos = FRAGUA.usos; t.reproducir(this.fragua.actor, 'Reposo'); }
     this.emboscadas = [];
+    // Cada partida los restos caen en otro sitio: hay que volver a explorar.
+    for (const r of this.restos) {
+      const p = this.sitioSeco();
+      this.mover(r.actor, p.x, p.z);
+      r.estado = 'intacto';
+      r.progreso = 0;
+      t.reproducir(r.actor, 'Reposo');
+    }
   }
 
   private mover(actor: ActorHallazgo, x: number, z: number) {
@@ -233,6 +272,52 @@ export class Hallazgos {
 
     for (const j of this.jaulas) this.actualizarAliado(j, c);
     this.actualizarGuardian(c);
+    for (const r of this.restos) this.actualizarResto(r, c);
+  }
+
+  /** Un sitio para un resto, fuera del ácido: hay que poder quedarse a su lado. */
+  private sitioSeco() {
+    const mojado = (x: number, z: number) => (this.world.acidoEn?.(x, z) ?? 0) > 0;
+    let p = this.taller.buscar(RESTOS.distancia, 3, RESTOS.separacion);
+    const r = RESTOS.radio + 2;
+    for (let k = 0; k < 16 && [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]].some(([dx, dz]) => mojado(p.x + dx, p.z + dz)); k++) {
+      p = this.taller.buscar(RESTOS.distancia, 3, RESTOS.separacion);
+    }
+    return p;
+  }
+
+  /** Quedarse al lado lo recupera; si te vas, se pierde lo avanzado poco a poco. */
+  private actualizarResto(r: Resto, c: ContextoHallazgos) {
+    if (r.estado === 'hecho') return;
+    const dentro = Math.hypot(c.px - r.actor.x, c.pz - r.actor.z) < RESTOS.radio;
+    if (dentro && r.estado === 'intacto') {
+      r.estado = 'recuperando';
+      // La respuesta de HELIOS crece con cada resto que le quitas.
+      this.eventos.emboscada?.(r.actor.x, r.actor.z, RESTOS.oleada + this.cuentaRestos.recogidos, 15);
+      this.eventos.toast('ADA', `${DEF_RANURA[r.ranura].fragmento} localizada. Quédate cerca: HELIOS ya viene.`, 3);
+    }
+    if (dentro) r.progreso += c.dt;
+    else if (r.progreso > 0) r.progreso = Math.max(0, r.progreso - c.dt * 0.5);
+    if (r.progreso < RESTOS.segundos) return;
+    r.estado = 'hecho';
+    this.taller.reproducir(r.actor, 'Recoger', true);
+    this.eventos.fragmento?.(r.ranura);
+  }
+
+  /** Cuántos restos hay en este sector y cuántos se han recuperado. */
+  get cuentaRestos() {
+    return { total: this.restos.length, recogidos: this.restos.filter((r) => r.estado === 'hecho').length };
+  }
+
+  /** El resto pendiente más cercano: es lo que señala la brújula del HUD. */
+  restoCercano(x: number, z: number): { x: number; z: number; ranura: Ranura } | null {
+    let mejor: Resto | null = null, d = Infinity;
+    for (const r of this.restos) {
+      if (r.estado === 'hecho') continue;
+      const e = Math.hypot(x - r.actor.x, z - r.actor.z);
+      if (e < d) { d = e; mejor = r; }
+    }
+    return mejor ? { x: mejor.actor.x, z: mejor.actor.z, ranura: mejor.ranura } : null;
   }
 
   /** Superviviente libre: sigue al jugador, dispara bengalas y al final se despide. */
@@ -387,6 +472,8 @@ export class Hallazgos {
       const resta = Math.max(0, EMBOSCADA.segundos - e.t);
       return { nombre: `Emboscada · aguanta ${Math.ceil(resta)} s`, vida: resta, vidaMax: EMBOSCADA.segundos };
     }
+    const r = this.restos.find((x) => x.estado === 'recuperando' && x.progreso > 0);
+    if (r) return { nombre: `Recuperando: ${DEF_RANURA[r.ranura].fragmento} · quédate cerca`, vida: r.progreso, vidaMax: RESTOS.segundos };
     const g = this.guardian;
     if (g?.estado === 'despertando') return { nombre: 'Despertando al Guardián · quédate a su lado', vida: g.progreso, vidaMax: GUARDIAN.segundos };
     return undefined;
@@ -402,6 +489,7 @@ export class Hallazgos {
     if (g) m.push({ id: g.actor.id, tipo: 'guardian', x: g.actor.x, z: g.actor.z, hecho: g.estado === 'agotado', visto: v(g.actor.id) });
     const f = this.fragua;
     if (f) m.push({ id: f.actor.id, tipo: 'fragua', x: f.actor.x, z: f.actor.z, hecho: f.usos <= 0, visto: v(f.actor.id) });
+    for (const r of this.restos) m.push({ id: r.actor.id, tipo: 'fragmento', x: r.actor.x, z: r.actor.z, hecho: r.estado === 'hecho', visto: v(r.actor.id) });
     return m;
   }
 }

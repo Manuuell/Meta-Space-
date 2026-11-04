@@ -20,7 +20,7 @@ import type { EnemyDef } from './data.ts';
 // Todo el texto visible va en español.
 // ============================================================================
 
-export type NuevoEnemyId = 'saltador' | 'avispa' | 'caparazon' | 'sembrador';
+export type NuevoEnemyId = 'saltador' | 'avispa' | 'caparazon' | 'sembrador' | 'acechador' | 'bombardero' | 'coloso' | 'espectro';
 
 /** Compatible con `EnemyDef`, pero con el id nuevo (ver paso 1 del parche). */
 export interface NuevoEnemyDef extends Omit<EnemyDef, 'id'> {
@@ -28,7 +28,7 @@ export interface NuevoEnemyDef extends Omit<EnemyDef, 'id'> {
 }
 
 export function esNuevo(id: string): id is NuevoEnemyId {
-  return id === 'saltador' || id === 'avispa' || id === 'caparazon' || id === 'sembrador';
+  return id in NUEVOS;
 }
 
 // ---------------------------------------------------------------- Definiciones
@@ -43,6 +43,14 @@ export function esNuevo(id: string): id is NuevoEnemyId {
  *                Recolectores al morir (no lo mates rodeado).
  * - sembrador  = francotirador de esporas: mantiene la distancia y dispara
  *                salvas lentas y esquivables (acércate para anularlo).
+ * - acechador  = depredador: te rodea a media distancia, se para un instante y
+ *                embiste en línea recta (apártate cuando se quede quieto).
+ * - bombardero = vuela alto y suelta salvas en abanico desde arriba.
+ * - coloso     = muro andante: lento, inmune al empuje; cada pocos segundos da
+ *                un pisotón que barre lo que tenga cerca.
+ * - espectro   = se desvanece y reaparece a tu lado: no vale quedarse quieto.
+ *
+ * Cada sector trae solo algunos (ver `Fauna` en planetas.ts).
  */
 export const NUEVOS: Record<NuevoEnemyId, NuevoEnemyDef> = {
   saltador: {
@@ -65,6 +73,26 @@ export const NUEVOS: Record<NuevoEnemyId, NuevoEnemyDef> = {
     scrap: 5, height: 1.4,
     blurb: 'Jardinero de HELIOS: planta donde más duele.',
   },
+  acechador: {
+    id: 'acechador', name: 'Acechador', hp: 26, speed: 4.4, damage: 16, radius: 0.55,
+    scrap: 3, height: 0.55,
+    blurb: 'Perro de presa de las minas. Sigue cazando lo que ya no existe.',
+  },
+  bombardero: {
+    id: 'bombardero', name: 'Bombardero', hp: 34, speed: 2.8, damage: 0, radius: 0.7,
+    scrap: 4, height: 5.2,
+    blurb: 'Fumigador agrícola. Ahora fumiga lo que se mueve.',
+  },
+  coloso: {
+    id: 'coloso', name: 'Coloso', hp: 300, speed: 1.35, damage: 26, radius: 1.5,
+    scrap: 14, height: 1.1,
+    blurb: 'Excavadora de túneles. Abre camino por encima de lo que haya.',
+  },
+  espectro: {
+    id: 'espectro', name: 'Espectro', hp: 40, speed: 2.6, damage: 12, radius: 0.5,
+    scrap: 4, height: 1.0,
+    blurb: 'Eco de una señal vieja. Nadie lo programó para estar en dos sitios.',
+  },
 };
 
 /** Minuto de partida a partir del cual aparece cada tipo. */
@@ -73,11 +101,15 @@ export const DESBLOQUEO: Record<NuevoEnemyId, number> = {
   avispa: 2,
   caparazon: 3,
   sembrador: 3,
+  acechador: 1.5,
+  bombardero: 3,
+  coloso: 4,
+  espectro: 2.5,
 };
 
 /** Inmunes al empuje (`knockback`), como el Segador. */
 export function inmuneAlEmpuje(id: string): boolean {
-  return id === 'segador' || id === 'caparazon';
+  return id === 'segador' || id === 'caparazon' || id === 'coloso';
 }
 
 /** Qué suelta cada tipo al morir (además de la chatarra). Solo el tanque. */
@@ -158,6 +190,49 @@ export function nuevoBodyGeometry(type: NuevoEnemyId): THREE.BufferGeometry {
       vxel(p, 0, 0.78, 0, 0.14, 0.16, 0.14);         // espora centro
       break;
     }
+    case 'acechador': {
+      vxel(p, 0, 0, 0, 0.5, 0.38, 1.05);             // lomo
+      vxel(p, 0, 0.1, 0.62, 0.36, 0.3, 0.34);        // cabeza
+      vxel(p, 0, 0.02, 0.86, 0.2, 0.12, 0.2);        // hocico
+      vxel(p, 0, 0.3, -0.1, 0.12, 0.26, 0.7);        // cresta
+      for (const s of [-1, 1]) {
+        vxel(p, s * 0.32, -0.28, 0.36, 0.14, 0.42, 0.14); // pata delantera
+        vxel(p, s * 0.32, -0.28, -0.36, 0.14, 0.42, 0.14); // pata trasera
+        vxel(p, s * 0.42, 0.05, 0.1, 0.1, 0.12, 0.7);  // cuchilla
+      }
+      break;
+    }
+    case 'bombardero': {
+      vxel(p, 0, 0, 0, 0.7, 0.42, 1.3);              // fuselaje
+      vxel(p, 0, 0.26, -0.15, 0.4, 0.2, 0.6);        // lomo
+      vxel(p, 0, -0.34, 0, 0.5, 0.3, 0.6);           // depósito
+      for (const s of [-1, 1]) {
+        vxel(p, s * 0.9, 0.05, 0, 1.1, 0.1, 0.5);    // ala
+        vxel(p, s * 1.4, 0.14, 0, 0.28, 0.2, 0.28);  // rotor
+      }
+      vxel(p, 0, 0.1, -0.85, 0.16, 0.32, 0.5);       // cola
+      break;
+    }
+    case 'coloso': {
+      vxel(p, 0, 0.1, 0, 1.2, 1.15, 1.0);            // torso
+      vxel(p, 0, 0.82, 0.08, 0.68, 0.46, 0.68);      // cabeza
+      vxel(p, 0, 0.78, 0.45, 0.46, 0.16, 0.12);      // visor
+      for (const s of [-1, 1]) {
+        vxel(p, s * 0.86, 0.3, 0.1, 0.52, 0.5, 0.62); // hombro
+        vxel(p, s * 0.92, -0.32, 0.18, 0.46, 0.9, 0.5); // brazo
+        vxel(p, s * 0.42, -0.72, 0, 0.42, 0.62, 0.56); // pierna
+      }
+      break;
+    }
+    case 'espectro': {
+      vxel(p, 0, 0.2, 0, 0.46, 0.74, 0.38);          // cuerpo
+      vxel(p, 0, 0.72, 0, 0.36, 0.32, 0.36);         // capucha
+      vxel(p, 0, -0.32, 0, 0.56, 0.3, 0.46);         // jirones
+      vxel(p, 0.16, -0.6, 0.06, 0.16, 0.28, 0.16);
+      vxel(p, -0.18, -0.56, -0.08, 0.14, 0.2, 0.14);
+      for (const s of [-1, 1]) vxel(p, s * 0.36, 0.28, 0.08, 0.14, 0.56, 0.14); // brazos
+      break;
+    }
   }
   return fusionar(p);
 }
@@ -168,6 +243,10 @@ export const NUEVA_BASE_COLOR: Record<NuevoEnemyId, THREE.Color> = {
   avispa: new THREE.Color('#b07bff'),
   caparazon: new THREE.Color('#d8c8a8'),
   sembrador: new THREE.Color('#7fe08a'),
+  acechador: new THREE.Color('#ff9a4a'),
+  bombardero: new THREE.Color('#8fb4c8'),
+  coloso: new THREE.Color('#c8a070'),
+  espectro: new THREE.Color('#b8c8ff'),
 };
 
 export const NUEVO_EYE_COLOR: Record<NuevoEnemyId, string> = {
@@ -175,6 +254,10 @@ export const NUEVO_EYE_COLOR: Record<NuevoEnemyId, string> = {
   avispa: '#ff9a3c',
   caparazon: '#ff3b1f',
   sembrador: '#ffd23a',
+  acechador: '#fff27a',
+  bombardero: '#ff3b1f',
+  coloso: '#ff3b1f',
+  espectro: '#7ffff0',
 };
 
 export const NUEVO_EYE_OFFSET: Record<NuevoEnemyId, THREE.Vector3> = {
@@ -182,6 +265,10 @@ export const NUEVO_EYE_OFFSET: Record<NuevoEnemyId, THREE.Vector3> = {
   avispa: new THREE.Vector3(0, -0.1, 0.42),
   caparazon: new THREE.Vector3(0, -0.05, 0.95),
   sembrador: new THREE.Vector3(0, 0.28, 0.34),
+  acechador: new THREE.Vector3(0, 0.16, 0.8),
+  bombardero: new THREE.Vector3(0, 0, 0.66),
+  coloso: new THREE.Vector3(0, 0.78, 0.52),
+  espectro: new THREE.Vector3(0, 0.74, 0.2),
 };
 
 export const NUEVA_ESCALA: Record<NuevoEnemyId, number> = {
@@ -189,6 +276,10 @@ export const NUEVA_ESCALA: Record<NuevoEnemyId, number> = {
   avispa: 1.2,
   caparazon: 1.35,
   sembrador: 1.25,
+  acechador: 1.25,
+  bombardero: 1.3,
+  coloso: 1.7,
+  espectro: 1.35,
 };
 
 /** Puntos del minimapa (amplía la paleta de `drawMinimap` en ui.ts). */
@@ -197,6 +288,10 @@ export const NUEVO_MINIMAPA: Record<NuevoEnemyId, string> = {
   avispa: '#b07bff',
   caparazon: '#e0c8a8',
   sembrador: '#7fe08a',
+  acechador: '#ff9a4a',
+  bombardero: '#8fb4c8',
+  coloso: '#c8a070',
+  espectro: '#b8c8ff',
 };
 
 /** Iconos del HUD y del Códice (mismo formato que `ENEMY_ICON` en ui.ts). */
@@ -205,6 +300,10 @@ export const NUEVO_ENEMY_ICON: Record<NuevoEnemyId, string> = {
   avispa: `<svg viewBox="0 0 40 40"><ellipse cx="12" cy="14" rx="7" ry="3" fill="#8a7ab8" stroke="#1b1214"/><ellipse cx="28" cy="14" rx="7" ry="3" fill="#8a7ab8" stroke="#1b1214"/><rect x="16" y="12" width="8" height="16" rx="3" fill="#5a4a8a" stroke="#1b1214" stroke-width="1.5"/><circle cx="20" cy="18" r="2.6" fill="#ff9a3c"/></svg>`,
   caparazon: `<svg viewBox="0 0 40 40"><rect x="8" y="20" width="24" height="9" rx="2" fill="#8a765a" stroke="#1b1214" stroke-width="1.5"/><rect x="12" y="13" width="16" height="8" rx="2" fill="#a8906c" stroke="#1b1214" stroke-width="1.5"/><rect x="16" y="7" width="8" height="7" rx="1" fill="#d8c8a8" stroke="#1b1214" stroke-width="1.5"/><circle cx="20" cy="24" r="2.4" fill="#ff3b1f"/></svg>`,
   sembrador: `<svg viewBox="0 0 40 40"><line x1="20" y1="36" x2="20" y2="18" stroke="#3a6a3a" stroke-width="3"/><circle cx="20" cy="14" r="7" fill="#3a6a3a" stroke="#1b1214" stroke-width="1.5"/><circle cx="16" cy="12" r="2" fill="#7fe08a"/><circle cx="24" cy="12" r="2" fill="#7fe08a"/><circle cx="20" cy="17" r="2" fill="#7fe08a"/><circle cx="20" cy="7" r="2.4" fill="#ffd23a"/></svg>`,
+  acechador: `<svg viewBox="0 0 40 40"><rect x="8" y="16" width="20" height="10" fill="#c87a3a" stroke="#1b1214" stroke-width="1.5"/><rect x="26" y="12" width="9" height="9" fill="#ff9a4a" stroke="#1b1214" stroke-width="1.5"/><rect x="10" y="26" width="4" height="7" fill="#8a4a2a"/><rect x="22" y="26" width="4" height="7" fill="#8a4a2a"/><circle cx="31" cy="16" r="1.6" fill="#fff27a"/></svg>`,
+  bombardero: `<svg viewBox="0 0 40 40"><rect x="14" y="14" width="12" height="14" fill="#8fb4c8" stroke="#1b1214" stroke-width="1.5"/><rect x="3" y="17" width="34" height="3" fill="#5a7a8e" stroke="#1b1214"/><circle cx="20" cy="33" r="3" fill="#ff3b1f" stroke="#1b1214"/></svg>`,
+  coloso: `<svg viewBox="0 0 40 40"><rect x="11" y="12" width="18" height="19" fill="#c8a070" stroke="#1b1214" stroke-width="1.5"/><rect x="14" y="4" width="12" height="9" fill="#a88050" stroke="#1b1214" stroke-width="1.5"/><rect x="4" y="13" width="7" height="16" fill="#a88050" stroke="#1b1214" stroke-width="1.5"/><rect x="29" y="13" width="7" height="16" fill="#a88050" stroke="#1b1214" stroke-width="1.5"/><rect x="16" y="7" width="8" height="2.5" fill="#ff3b1f"/></svg>`,
+  espectro: `<svg viewBox="0 0 40 40"><path d="M10 34 V16 a10 10 0 0 1 20 0 V34 l-5 -4 -5 4 -5 -4 z" fill="#b8c8ff" stroke="#1b1214" stroke-width="1.5"/><circle cx="16" cy="17" r="2" fill="#123"/><circle cx="24" cy="17" r="2" fill="#123"/></svg>`,
 };
 
 // ------------------------------------------------------------ Comportamiento
@@ -297,6 +396,52 @@ function moverSembrador(i: number, e: CuerpoEnemigo, ctx: ContextoMovimiento): S
   return { vx: -nz * 2.0 * lado + nx * 0.4, vz: nx * 2.0 * lado + nz * 0.4, lift: 0 };
 }
 
+/** Acechador: rodea a 9 m, se queda clavado medio segundo y embiste. */
+function moverAcechador(i: number, e: CuerpoEnemigo, ctx: ContextoMovimiento): SalidaMovimiento {
+  const [nx, nz, dist] = dirHacia(e.x[i], e.z[i], ctx.px, ctx.pz);
+  const f = fase(ctx.time, e.seed[i], 4.2);
+  if (f < 2.9) {
+    const radial = (dist - 9) * 0.5, lado = e.seed[i] % 2 < 1 ? 1 : -1;
+    let vx = nx * radial - nz * 2.4 * lado, vz = nz * radial + nx * 2.4 * lado;
+    const len = Math.hypot(vx, vz) || 1;
+    vx = (vx / len) * 4.4;
+    vz = (vz / len) * 4.4;
+    return { vx, vz, lift: 0 };
+  }
+  if (f < 3.4) return { vx: 0, vz: 0, lift: -0.12 };
+  return { vx: nx * 13, vz: nz * 13, lift: 0.1 };
+}
+
+/** Bombardero: se coloca encima a 6 m y da vueltas despacio. */
+function moverBombardero(i: number, e: CuerpoEnemigo, ctx: ContextoMovimiento): SalidaMovimiento {
+  const [nx, nz, dist] = dirHacia(e.x[i], e.z[i], ctx.px, ctx.pz);
+  const radial = (dist - 6) * 0.5;
+  let vx = nx * radial - nz * 1.5, vz = nz * radial + nx * 1.5;
+  const len = Math.hypot(vx, vz) || 1;
+  vx = (vx / len) * Math.min(2.8, len);
+  vz = (vz / len) * Math.min(2.8, len);
+  return { vx, vz, lift: 0 };
+}
+
+/** Coloso: avanza despacio y se para a dar el pisotón (`quierePisar`). */
+function moverColoso(i: number, e: CuerpoEnemigo, ctx: ContextoMovimiento): SalidaMovimiento {
+  const [nx, nz] = dirHacia(e.x[i], e.z[i], ctx.px, ctx.pz);
+  const f = fase(ctx.time, e.seed[i], 6);
+  return f > 5 ? { vx: 0, vz: 0, lift: 0 } : { vx: nx * 1.35, vz: nz * 1.35, lift: 0 };
+}
+
+/** Espectro: va hacia ti y, cada cinco segundos, reaparece a tu espalda. */
+function moverEspectro(i: number, e: CuerpoEnemigo, ctx: ContextoMovimiento): SalidaMovimiento {
+  const f = fase(ctx.time, e.seed[i], 5);
+  if (f < ctx.dt) {
+    const a = e.seed[i] * 37 + ctx.time, d = 5.5;
+    e.x[i] = ctx.px + Math.cos(a) * d;
+    e.z[i] = ctx.pz + Math.sin(a) * d;
+  }
+  const [nx, nz] = dirHacia(e.x[i], e.z[i], ctx.px, ctx.pz);
+  return { vx: nx * 2.6, vz: nz * 2.6, lift: 0 };
+}
+
 /**
  * Movimiento de un enemigo nuevo. `enemies.ts` lo llama desde `update`
  * (paso 3 del parche); lo devuelto pasa por `slow`, separación y empuje
@@ -310,6 +455,10 @@ export function moverNuevo(
     case 'avispa': return moverAvispa(i, e, ctx);
     case 'caparazon': return moverCaparazon(i, e, ctx);
     case 'sembrador': return moverSembrador(i, e, ctx);
+    case 'acechador': return moverAcechador(i, e, ctx);
+    case 'bombardero': return moverBombardero(i, e, ctx);
+    case 'coloso': return moverColoso(i, e, ctx);
+    case 'espectro': return moverEspectro(i, e, ctx);
   }
 }
 
@@ -328,7 +477,31 @@ export function liftDe(id: NuevoEnemyId, i: number, e: CuerpoEnemigo, time: numb
     const f = fase(time, s, 3.0);
     if (f > 2.2) return -2.6 * Math.sin(((f - 2.2) / 0.8) * Math.PI);
   }
+  if (id === 'acechador') return fase(time, s, 4.2) >= 2.9 && fase(time, s, 4.2) < 3.4 ? -0.14 : 0;
+  if (id === 'bombardero') return Math.sin(time * 1.3 + s) * 0.4;
+  // El coloso levanta el cuerpo antes de dejarse caer.
+  if (id === 'coloso') {
+    const f = fase(time, s, 6);
+    if (f > 5) return f < 5.7 ? (f - 5) * 1.2 : (6 - f) * 2.8;
+  }
   return 0;
+}
+
+/** ¿Debe el bombardero `i` soltar su salva este fotograma? Una cada 5 s. */
+export function quiereBombardear(i: number, e: CuerpoEnemigo, time: number, dt: number): boolean {
+  return fase(time, e.seed[i], 5.0) < dt;
+}
+
+/** ¿Cae ahora el pie del coloso `i`? */
+export function quierePisar(i: number, e: CuerpoEnemigo, time: number, dt: number): boolean {
+  const f = fase(time, e.seed[i], 6);
+  return f >= 5.7 && f - dt < 5.7;
+}
+
+/** Medio segundo antes de pisar, para enseñar en el suelo a dónde llega. */
+export function vaAPisar(i: number, e: CuerpoEnemigo, time: number, dt: number): boolean {
+  const f = fase(time, e.seed[i], 6);
+  return f >= 5.1 && f - dt < 5.1;
 }
 
 /** ¿Debe el sembrador `i` abrir fuego este fotograma? (una salva por ciclo).
@@ -457,6 +630,10 @@ export function tasaEspecial(id: NuevoEnemyId, minuto: number): number {
     case 'avispa': return 0.09;
     case 'caparazon': return 0.025;
     case 'sembrador': return 0.035;
+    case 'acechador': return 0.07;
+    case 'bombardero': return 0.04;
+    case 'coloso': return 0.012;
+    case 'espectro': return 0.05;
   }
 }
 
@@ -472,6 +649,10 @@ export function pesoAparicion(id: NuevoEnemyId, minuto: number): number {
     case 'avispa': return 0.08;
     case 'caparazon': return 0.03;
     case 'sembrador': return 0.03;
+    case 'acechador': return 0.08;
+    case 'bombardero': return 0.04;
+    case 'coloso': return 0.01;
+    case 'espectro': return 0.05;
   }
 }
 
@@ -485,6 +666,10 @@ export const CUPO: Record<NuevoEnemyId, number> = {
   avispa: 8,
   caparazon: 2,
   sembrador: 3,
+  acechador: 8,
+  bombardero: 3,
+  coloso: 2,
+  espectro: 6,
 };
 
 /**

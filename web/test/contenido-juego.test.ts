@@ -25,12 +25,12 @@ function mundoPlano(): World {
   } as unknown as World;
 }
 
-function contexto(tiempo: number, dt = 0.1) {
+function contexto(tiempo: number, dt = 0.1, px = 0, pz = 0) {
   return {
     tiempo,
     dt,
-    px: 0,
-    pz: 0,
+    px,
+    pz,
     bajas: 0,
     danoRecibido: 0,
     balizas: 0,
@@ -43,7 +43,9 @@ function avanzar(contenido: ContenidoJuego, desde: number, segundos: number) {
   let t = desde;
   for (let i = 0; i < Math.ceil(segundos * 10); i++) {
     t += 0.1;
-    contenido.update(contexto(t));
+    // El jugador se queda junto al siguiente altar: solo despiertan si te acercas.
+    const altar = contenido.marcas.find((m) => m.tipo === 'altar' && !m.hecho);
+    contenido.update(contexto(t, 0.1, altar?.x ?? 0, altar?.z ?? 0));
   }
   return t;
 }
@@ -87,7 +89,9 @@ test('contenido jugable: el gólem avisa antes de golpear, y el golpe empuja', (
     aviso: () => { avisos.push(t); },
     empujar: (fx, fz) => { if (Math.hypot(fx, fz) > 3) empujes.push(t); },
   });
-  // Espera a que salga y quédate quieto pegado a él.
+  // Acércate al altar para que salga y quédate quieto pegado a él.
+  const altar = contenido.marcas.find((m) => m.tipo === 'altar')!;
+  for (let i = 0; i < 20; i++) contenido.update({ ...contexto(t, 0.05), px: altar.x, pz: altar.z });
   let primerGolpe = -1;
   for (let i = 0; i < 400 && primerGolpe < 0; i++) {
     t += 0.05;
@@ -109,7 +113,7 @@ test('contenido jugable: los jefes de antes salen solos como minijefes y sueltan
     aplicar: (e) => { efectos.push(...e); },
     curar: () => {},
   });
-  avanzar(contenido, 99, 5);
+  avanzar(contenido, 169, 5);
   const mini = contenido.objetivoJefe.find((o) => o.id.startsWith('segador-jefe'));
   assert.ok(mini, 'no salió el primer minijefe');
   mini.golpear(1e9);
@@ -235,4 +239,29 @@ test('contenido jugable: los duelos dan el Cañón y el segundo despierta al dra
     posado = contenido.objetivoJefe.some((x) => x.id === 'dragon');
   }
   assert.ok(posado, 'el dragón no se posó');
+});
+
+test('restos de cohete: se recuperan quedándose al lado y cambian de sitio en cada sector', () => {
+  const recogidos: string[] = [];
+  const oleadas: number[] = [];
+  const contenido = new ContenidoJuego(new THREE.Scene(), mundoPlano(), {
+    toast: () => {},
+    aplicar: () => {},
+    curar: () => {},
+    fragmento: (r) => recogidos.push(r),
+    emboscada: (_x, _z, n) => oleadas.push(n),
+  });
+  assert.equal(contenido.restos.total, 12, 'dos por cada ranura de la nave');
+  const r = contenido.restoCercano(0, 0)!;
+  // Si te vas antes de tiempo, no cuenta.
+  for (let i = 0; i < 20; i++) contenido.update({ ...contexto(i * 0.1), px: r.x, pz: r.z });
+  for (let i = 0; i < 40; i++) contenido.update({ ...contexto(2 + i * 0.1), px: 500, pz: 500 });
+  assert.equal(recogidos.length, 0);
+  for (let i = 0; i < 32; i++) contenido.update({ ...contexto(6 + i * 0.1), px: r.x, pz: r.z });
+  assert.deepEqual(recogidos, [r.ranura]);
+  assert.equal(contenido.restos.recogidos, 1);
+  assert.equal(oleadas.length, 1, 'HELIOS responde una vez por resto, aunque te vayas y vuelvas');
+  assert.ok(contenido.marcas.some((m) => m.tipo === 'fragmento' && m.hecho), 'sale hecho en el mapa');
+  contenido.reset();
+  assert.equal(contenido.restos.recogidos, 0, 'el sector siguiente vuelve a tenerlos todos');
 });

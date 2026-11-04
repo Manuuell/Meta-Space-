@@ -26,6 +26,15 @@ import type { HeroTuning } from './creator/player-contract';
 import { SPECIALS } from './creator/stats';
 import { openProfileMenu } from './profile/profile-menu';
 import { showCinematica } from './cinematica';
+import { abrirAstillero } from './ui-astillero';
+import { crearEntorno } from './modelos/nave-modular';
+import { abrirEscaner } from './ui-escaner';
+import { ObjetosEnJuego } from './arsenal';
+import { Modulos } from './modulos';
+import { precioObjeto, tirarObjetos, type ObjetoDef } from './objetos';
+import { PLANETA_INICIAL, generarPlaneta, resumenPlaneta, type BiomaId, type ClimaId, type Planeta, type ReglaId } from './planetas';
+import { mostrarLanzamiento } from './lanzamiento';
+import { DEF_RANURA, calcular, hangarVacio, normalizarHangar, resolverVuelo, type Hangar, type Ranura, type Vuelo } from './nave/piezas';
 import { showIntro } from './intro';
 import { Dron } from './dron';
 import { Companero } from './companero';
@@ -51,7 +60,7 @@ import { crearAmara } from './modelos/amara';
 import type { Modelo } from './modelos/kit';
 import { crearAerotabla, crearBotasImpulso, crearMochilaCohete } from './modelos/equipo';
 import {
-  CUPO, NubeEsporas, angulosDePatron, criasAlMorir, oleadaEspecial, quiereDisparar, tasaEspecial,
+  CUPO, DESBLOQUEO, NubeEsporas, angulosDePatron, criasAlMorir, esNuevo, oleadaEspecial, quiereBombardear, quiereDisparar, quierePisar, tasaEspecial, vaAPisar,
 } from './enemies-nuevos';
 import { multChatarraElite, type EliteMod } from './enemies';
 import { ContenidoJuego, VISTA_MAPA } from './contenido-juego';
@@ -64,7 +73,7 @@ import {
 import { mostrarMejoras } from './mejoras';
 import { abrirMapa } from './ui-mapa';
 import { alerta, escucha, marcarAcierto } from './hud';
-import { CANON, DESMONTAR, NPCS, aQuienHabla, frase } from './contenido/mapa';
+import { RESTOS, CANON, DESMONTAR, NPCS, aQuienHabla, frase } from './contenido/mapa';
 import type { OpcionHallazgo } from './hallazgos';
 import { pilotar } from './demo';
 import { zonasActivas } from './avisos';
@@ -81,7 +90,9 @@ const MODELOS_PERSONAJE: Record<PersonajeId, () => Modelo> = {
   'amara-keita': crearAmara,
 };
 
-type State = 'title' | 'playing' | 'levelup' | 'paused' | 'results' | 'mapa' | 'chat';
+type State = 'title' | 'playing' | 'levelup' | 'paused' | 'results' | 'mapa' | 'chat' | 'astillero' | 'lanzamiento';
+/** Cómo acaba una partida sin victoria. */
+type Causa = 'caido' | 'ventana' | 'vuelo';
 
 // Cámara en tercera persona, detrás y algo por encima, como en PokéBonk.
 const PITCH_MIN = 0.12;
@@ -89,6 +100,12 @@ const PITCH_MAX = 1.05;
 const LOOK_SPEED = 0.0024;
 const PLAYER_RADIUS = 0.4;
 const PLAYER_HEIGHT = 2.6;
+
+/** Bajas por tipo, a cero, y las especies que el director mete con cuentagotas. */
+const BAJAS_A_CERO: Record<EnemyId, number> = {
+  recolector: 0, baliza: 0, segador: 0, saltador: 0, avispa: 0, caparazon: 0, sembrador: 0, acechador: 0, bombardero: 0, coloso: 0, espectro: 0,
+};
+const ESPECIES = ['saltador', 'avispa', 'caparazon', 'sembrador', 'acechador', 'bombardero', 'coloso', 'espectro'] as const;
 
 export class Game {
   private renderer: THREE.WebGLRenderer;
@@ -114,7 +131,7 @@ export class Game {
   private habilidadHasta = 0;
   private frames = astronautFrames();
   private hurtFlash = 0;
-  // Hacia dónde mira la cámara: yaw 0 es el norte (−z), donde está el cohete.
+  // Hacia dónde mira la cámara: yaw 0 es el norte (−z), donde está la plataforma.
   private yaw = 0;
   private pitch = 0.36;
   // Soltar el puntero a propósito (subida de nivel, final) no debe pausar.
@@ -123,6 +140,10 @@ export class Game {
   private state: State = 'title';
   private clock = new THREE.Clock();
   private save = loadSave();
+  /** La nave: lo recuperado y lo montado sobrevive a la partida. */
+  private hangar: Hangar = hangarVacio();
+  private restosPartida = 0;
+  private ultimoMinutoAvisado = false;
   private tmp = { x: 0, z: 0 };
   private personajeActual: PersonajeDef = personaje(this.save.personaje);
   private habilidad: Habilidad | null = null;
@@ -137,10 +158,10 @@ export class Game {
   private xp = 0;
   private scrap = 0;
   private kills = 0;
-  private killsByType: Record<EnemyId, number> = { recolector: 0, baliza: 0, segador: 0, saltador: 0, avispa: 0, caparazon: 0, sembrador: 0 };
+  private killsByType: Record<EnemyId, number> = { ...BAJAS_A_CERO };
   // Enemigos nuevos (FOCO 4): esporas, goteo especial y oleadas con intención.
   private esporas!: NubeEsporas;
-  private deudaEsp: Record<string, number> = { saltador: 0, avispa: 0, caparazon: 0, sembrador: 0 };
+  private deudaEsp: Record<string, number> = {};
   private criasPendientes: { cuando: number; tipo: EnemyId; n: number; x: number; z: number }[] = [];
   private oleadaEspecialHecha = new Set<number>();
   private lastHpScale = 1;
@@ -168,6 +189,12 @@ export class Game {
   private usosNpc = new Map<string, number>();
   private temporales = new Map<string, { hasta: number; factor: number }>();
   private spawnDebt = 0;
+  /** El sector de esta partida. */
+  private planeta: Planeta = PLANETA_INICIAL;
+  private etiquetaSector = { nombre: '', detalle: '', regla: '' };
+  private proximoRayo = 6;
+  private rayos: { x: number; z: number; cae: number }[] = [];
+  private charcosToxicos: { x: number; z: number; hasta: number }[] = [];
   private nextSegador = 120;
   private nextSwarm = 60;
   private pendingLevels = 0;
@@ -238,6 +265,13 @@ export class Game {
   // Números de daño, bendiciones de pilones y cofres, y marcas del mapa (M).
   private numeros: NumerosDano;
   private bendiciones: Bendicion[] = [];
+  /** Objetos que cambian las herramientas y los módulos activos de esta partida. */
+  private objetos!: ObjetosEnJuego;
+  private modulos = new Modulos();
+  private modulosTomados = new Set<string>();
+  private objetosPendientes: { elegir: number; suerte: number; solo?: 'modulos' | 'objetos' }[] = [];
+  private bajasDesdeObjeto = 0;
+  private mercaderSaludado = false;
   private totales: Totales = totalesVacios();
   private bendicionesPendientes: { elegir: number; suerte: number }[] = [];
   private puntosMapa: { x: number; z: number }[] = [];
@@ -297,7 +331,13 @@ export class Game {
     });
     this.enemies = new Enemies(this.scene, this.world);
     this.enemies.onDeath = (i) => this.onEnemyDeath(i);
+    this.enemies.onDot = (i, dano) => this.numeros.sumar(this.enemies.x[i], this.world.heightAt(this.enemies.x[i], this.enemies.z[i]) + 1.7, this.enemies.z[i], dano, false);
+    // La nave es lo único con cromo y pintura de verdad: necesita algo que reflejar.
+    this.scene.environment = crearEntorno(this.renderer, true);
+    this.hangar = normalizarHangar(this.save.hangar);
+    this.world.montarNave(this.hangar.montadas);
     this.contenido = new ContenidoJuego(this.scene, this.world, {
+      fragmento: (ranura) => this.recogerFragmento(ranura),
       toast: (quien, texto, segundos) => ui.toast(quien, texto, 'info', segundos ?? 4),
       aplicar: (efectos) => this.aplicarEfectos(efectos),
       curar: (cantidad) => { this.hp = Math.min(this.maxHp, this.hp + cantidad); },
@@ -625,11 +665,12 @@ export class Game {
       if (started) return;
       started = true;
       this.destroyTitle = null;
-      this.startRun();
+      this.elegirDestino();
     }, {
       onCreator: () => void this.openProfile(),
       onCompanion: () => abrirSelectorCompanero(this.dron.forma, (id) => this.elegirCompanero(id), () => this.toTitle(), (e) => this.estiloDeBruno(e)),
       onCharacter: () => abrirSelectorPersonaje(this.personajeActual.id, (id) => this.elegirPersonaje(id), () => this.toTitle()),
+      onAstillero: () => this.abrirAstilleroEn({ volver: () => this.toTitle() }),
       character: this.personajeActual,
       companionName: perfilDe(this.dron.forma).nombre,
       customHeroName: this.heroName || undefined,
@@ -815,6 +856,7 @@ export class Game {
         { tipo: 'nave', x: nave.x, z: nave.z },
       ], p.x, p.z),
       acciones: this.accionesDisponibles(quien),
+      sector: resumenPlaneta(this.planeta),
     };
   }
 
@@ -898,7 +940,14 @@ export class Game {
   private receiveDamage(amount: number) {
     amount *= this.factorTemporal('escudo');
     if (this.personajeActual.id === 'idris-okafor' && !this.customSprite) amount *= .85;
+    amount = this.objetos.alRecibir(amount, this.player.position.x, this.player.position.z);
     if (amount <= 0) return;
+    if (this.hp - amount <= 0 && this.objetos.salvarse()) {
+      this.hp = Math.ceil(this.maxHp / 3);
+      this.habilidadIntocableHasta = Math.max(this.habilidadIntocableHasta, this.time + 2);
+      this.camara.sacudidaDano();
+      return;
+    }
     if (this.heroSpecial === 'caparazon' && this.shieldReady) {
       this.shieldReady = false;
       this.shieldCooldown = Math.max(18, 30 - (this.heroSpecialLevel - 1) * 6);
@@ -1075,6 +1124,20 @@ export class Game {
       this.heroDamageMul = s.damageMul;
       this.heroCooldownMul = s.cooldownMul;
     }
+    this.objetos = new ObjetosEnJuego(this.weapons, this.enemies, this.world, {
+      curar: (n) => { this.hp = Math.min(this.maxHp, this.hp + n); },
+      nivel: () => this.level,
+      chatarra: () => this.scrap,
+      sonido: (nombre) => sfx(nombre),
+      aviso: (quien, texto) => ui.toast(quien, texto, 'relic', 5),
+    });
+    this.weapons.objetos = this.objetos;
+    this.enemies.multHielo = this.enemies.freno = 1;
+    this.modulos = new Modulos();
+    this.modulosTomados.clear();
+    this.objetosPendientes = [];
+    this.bajasDesdeObjeto = 0;
+    this.mercaderSaludado = false;
     this.habilidad = this.customSprite ? null : crearHabilidad(this.personajeActual, this.scene);
     this.habilidadIntocableHasta = 0;
     this.habilidadHasta = 0;
@@ -1105,7 +1168,7 @@ export class Game {
     this.pickups.clear();
     this.esporas?.dispose();
     this.esporas = new NubeEsporas(this.scene, this.world);
-    this.deudaEsp = { saltador: 0, avispa: 0, caparazon: 0, sembrador: 0 };
+    this.deudaEsp = {};
     this.criasPendientes = [];
     this.oleadaEspecialHecha.clear();
     this.elitesVivas = 0;
@@ -1113,13 +1176,13 @@ export class Game {
     this.relicDrops = [];
 
     this.time = 0;
-    this.hp = this.maxHp = this.heroMaxHp;
+    this.hp = this.maxHp = Math.round(this.heroMaxHp * this.planeta.regla.mods.vidaJugador);
     this.hpLost = 0;
     this.level = 1;
     this.xp = 0;
     this.scrap = 0;
     this.kills = 0;
-    this.killsByType = { recolector: 0, baliza: 0, segador: 0, saltador: 0, avispa: 0, caparazon: 0, sembrador: 0 };
+    this.killsByType = { ...BAJAS_A_CERO };
     this.passives.clear();
     this.relicsFound = [];
     this.ultimaOferta = [];
@@ -1133,6 +1196,8 @@ export class Game {
     this.heridoAvisado = false;
     this.eliteAvisada = false;
     this.mitadAvisada = false;
+    this.ultimoMinutoAvisado = false;
+    this.restosPartida = 0;
     this.balizasAvisadas = false;
     this.heroSpecialLevel = this.heroSpecial ? 1 : 0;
     this.novaCooldown = 0;
@@ -1147,6 +1212,9 @@ export class Game {
     this.efectosAlCerrar = [];
     this.temporales.clear();
     this.spawnDebt = 0;
+    this.proximoRayo = 6;
+    this.rayos = [];
+    this.charcosToxicos = [];
     this.nextSegador = 120;
     this.nextSwarm = 60;
     this.pendingLevels = 0;
@@ -1179,6 +1247,56 @@ export class Game {
     this.lastPulsoDmg = this.weapons.damageDealt.pulso;
   }
 
+  /** El escáner orbital: tres sectores para elegir antes de bajar. */
+  private elegirDestino() {
+    const url = new URLSearchParams(location.search);
+    const semilla = Number(url.get('semilla')) || 0, bioma = url.get('bioma') as BiomaId | null;
+    if (this.demo || semilla || bioma) {
+      // Para probar: ?semilla=123 y ?bioma=ceniza&clima=ventisca&regla=marea bajan directos.
+      this.aterrizar(generarPlaneta(semilla || Date.now() % 1e9, {
+        bioma: bioma ?? undefined, clima: (url.get('clima') as ClimaId) ?? undefined, regla: (url.get('regla') as ReglaId) ?? undefined,
+      }));
+      return;
+    }
+    abrirEscaner({
+      semilla: (Date.now() ^ (Math.random() * 1e9)) >>> 0,
+      elegir: (p) => this.aterrizar(p),
+      volver: () => this.toTitle(),
+    });
+  }
+
+  /** Baja al sector: el mundo y el contenido se levantan de nuevo. */
+  private aterrizar(p: Planeta) {
+    const velo = document.createElement('div');
+    velo.textContent = `Aterrizando en ${p.nombre}…`;
+    velo.style.cssText = 'position:fixed;inset:0;z-index:95;display:grid;place-items:center;background:#05060f;color:#5ee0ff;font:800 22px/1 Rubik,system-ui,sans-serif;letter-spacing:.06em';
+    document.body.appendChild(velo);
+    // Un respiro para que se pinte el aviso antes de ponerse a construir.
+    setTimeout(() => {
+      this.prepararSector(p);
+      this.startRun();
+      velo.remove();
+    }, 40);
+  }
+
+  private prepararSector(p: Planeta) {
+    this.planeta = p;
+    this.etiquetaSector = { nombre: p.nombre, detalle: `${p.bioma.nombre} · ${p.clima.nombre}`, regla: `${p.regla.nombre}: ${p.regla.texto}` };
+    this.world.generar(p);
+    this.contenido.reconstruir(p);
+    const r = p.fauna.rasgo, m = p.regla.mods;
+    this.enemies.sector = {
+      vida: r.vida * m.vidaEnemigos,
+      velocidad: r.velocidad * m.velocidadEnemigos * p.clima.velocidadEnemigos,
+      dano: m.danoEnemigos,
+      escala: r.escala,
+      tinte: r.tinte ? new THREE.Color(r.tinte) : null,
+      fuerza: r.fuerzaTinte,
+      regenera: r.id === 'regenerativo',
+    };
+    this.world.follow(this.player.position);
+  }
+
   private startRun() {
     this.resetRun();
     this.weapons.upgrade(this.customSprite ? 'cortador' : this.personajeActual.armaInicial);
@@ -1197,8 +1315,14 @@ export class Game {
     // En la demo no hay radio ni brief: que se vea la pelea.
     if (this.demo) return;
     lockPointer(this.canvas);
-    ui.toast('ADA', 'HELIOS ha detectado mi señal. Aguanta 10 minutos: el cohete subirá la orden de apagado del velo.', 'info', 6);
-    ui.decir('ada', 'ADA', 'HELIOS ha detectado mi señal. Aguanta diez minutos hasta la ventana de lanzamiento.', 6);
+    const { bioma, regla, clima, fauna, nombre } = this.planeta;
+    alerta(`${nombre} · ${bioma.nombre}`);
+    ui.toast('ADA', bioma.aterrizaje, 'info', 8);
+    if (regla.id !== 'estable') ui.toast(regla.nombre, regla.texto, 'info', 8);
+    if (clima.id !== 'calma') ui.toast(clima.nombre, clima.texto, 'info', 7);
+    if (fauna.rasgo.id !== 'ninguno') ui.toast(`Fauna: ${fauna.rasgo.nombre}`, fauna.rasgo.texto, 'info', 7);
+    ui.toast('ADA', 'Sigue los haces de luz: son restos de la flota. Arma tu nave en la plataforma antes de 10 minutos.', 'info', 7);
+    ui.decir('ada', 'ADA', 'HELIOS ha detectado mi señal. Busca los restos de la flota y arma tu nave en la plataforma.', 7);
     if (this.heroSpecial) {
       const sp = SPECIALS[this.heroSpecial];
       ui.toast('ADA', `Especial listo: ${sp.name}. ${sp.blurb}`, 'info', 6);
@@ -1266,7 +1390,7 @@ export class Game {
 
   private get mods(): Modifiers {
     return {
-      cooldown: Math.pow(0.92, this.passive('enfriamiento')) * this.heroCooldownMul / this.factorTemporal('recarga')
+      cooldown: this.planeta.regla.mods.recarga * Math.pow(0.92, this.passive('enfriamiento')) * this.heroCooldownMul / this.factorTemporal('recarga')
         * Math.max(0.4, 1 - this.totales.recarga),
       area: (1 + 0.1 * this.passive('area')) * (1 + this.totales.area),
     };
@@ -1293,6 +1417,8 @@ export class Game {
       alerta: (texto) => alerta(texto),
       sacudida: () => this.camara.sacudidaPulso(),
       sfx: (nombre) => sfx(nombre),
+      temporal: (cual, segundos, factor) => this.temporales.set(cual, { hasta: this.time + segundos, factor }),
+      atraerChatarra: () => this.pickups.atraer(this.player.position.x, this.player.position.z, 9999),
     };
   }
 
@@ -1362,6 +1488,8 @@ export class Game {
         if (primero) alerta('¡Tienes el Cañón solar! Clic derecho para apuntar');
       } else if (efecto.tipo === 'bendicion') {
         this.bendicionesPendientes.push({ elegir: efecto.elegir, suerte: efecto.suerte });
+      } else if (efecto.tipo === 'objeto') {
+        this.objetosPendientes.push({ elegir: efecto.elegir, suerte: efecto.suerte, solo: efecto.solo });
       } else if (efecto.tipo === 'temporal') {
         this.temporales.set(efecto.cual, { hasta: this.time + efecto.segundos, factor: efecto.factor });
       } else if (efecto.tipo === 'marcar') {
@@ -1455,6 +1583,8 @@ export class Game {
     }
     if (wasPressed('KeyF')) this.usarCofre();
     // El piloto de la demo mantiene la R: la habilidad ya sabe si recargó.
+    if (wasPressed('KeyG')) this.modulos.usar(0, this.contextoHabilidad());
+    if (wasPressed('KeyC')) this.modulos.usar(1, this.contextoHabilidad());
     if (wasPressed('KeyR') || this.touchAbility || piloto.activo && piloto.teclas.has('KeyR')) this.usarHabilidad();
     this.touchAbility = false;
     if (wasPressed('KeyV') && !this.vozConV) {
@@ -1499,7 +1629,8 @@ export class Game {
 
     const px = this.player.position.x, pz = this.player.position.z;
     this.noDamageTime += dt;
-    const profundidadAcido = this.world.acidoEn(px, pz);
+    const fluido = this.world.fluido;
+    const profundidadAcido = fluido.dano > 0 ? this.world.acidoEn(px, pz) : 0;
     if (profundidadAcido > 0) {
       // Pulsos de medio segundo: conserva los 6 DPS (12 en lo hondo) sin
       // repetir el sonido y la sacudida de daño treinta veces por segundo.
@@ -1507,16 +1638,22 @@ export class Game {
       const pulsos = Math.floor(this.acidoAcumulado / 0.5);
       if (pulsos > 0) {
         this.acidoAcumulado -= pulsos * 0.5;
-        this.receiveDamage((profundidadAcido > 1 ? 12 : 6) * pulsos * 0.5);
+        this.receiveDamage((profundidadAcido > 1 ? 12 : 6) * fluido.dano * pulsos * 0.5);
       }
     } else {
       this.acidoAcumulado = 0;
     }
     this.updateHeroSpecial(dt, px, pz);
     this.habilidad?.update(dt, this.contextoHabilidad());
+    this.modulos.update(dt, this.contextoHabilidad());
+    this.objetos.update(dt, px, pz, Math.hypot(this.velX, this.velZ) > 1, this.hp / this.maxHp);
     this.actualizarCrias();
     const contact = this.enemies.update(dt, px, pz, PLAYER_RADIUS);
     this.receiveDamage(contact * this.factorContacto());
+    // La fauna gélida te hiela las piernas al tocarte.
+    if (contact > 0 && this.planeta.fauna.rasgo.id === 'gelido' && !this.temporales.has('velocidad')) {
+      this.temporales.set('velocidad', { hasta: this.time + 1.2, factor: 0.72 });
+    }
     const danoContenido = this.contenido.update({
       tiempo: this.time,
       dt,
@@ -1544,7 +1681,7 @@ export class Game {
     });
     this.receiveDamage(danoContenido * (this.intocable() ? 0 : 1));
     const botanica = this.personajeActual.id === 'amara-keita' && !this.customSprite ? .5 : 0;
-    this.hp = Math.min(this.maxHp, this.hp + (this.passive('reparacion') * 0.7 + this.totales.regen + botanica) * dt);
+    this.hp = Math.min(this.maxHp, this.hp + (this.passive('reparacion') * 0.7 + this.totales.regen + this.objetos.fx.regen + botanica) * dt);
     if (!this.heridoAvisado && this.hp < this.maxHp * 0.7) {
       this.heridoAvisado = true;
       this.decir('ada', 'herido', `el traje ha perdido un tercio de su integridad${this.marcarRacion()}`);
@@ -1568,6 +1705,8 @@ export class Game {
         sfx('hit');
       }
     }
+    this.golpesDeFauna(dt, px, pz);
+    this.actualizarSector(dt, px, pz);
     const danoEsporas = this.esporas.update(dt, px, pz, PLAYER_RADIUS);
     this.receiveDamage(danoEsporas * (this.intocable() ? 0 : 1));
 
@@ -1577,11 +1716,11 @@ export class Game {
     this.enemies.render();
 
     const radius = RUN.pickupRadius * (1 + 0.35 * this.passive('iman')) * (this.dron.luz ? 1.25 : 1)
-      * this.factorTemporal('iman') * (1 + this.totales.iman);
+      * this.factorTemporal('iman') * (1 + this.totales.iman + this.objetos.fx.iman);
     const got = this.pickups.update(dt, px, pz, radius);
     if (got > 0) {
-      this.scrap += got * (1 + this.totales.chatarra);
-      this.xp += got;
+      this.scrap += got * (1 + this.totales.chatarra) * this.planeta.regla.mods.chatarra;
+      this.xp += got * this.planeta.regla.mods.xp;
       sfx('pickup');
       while (this.xp >= RUN.xpFor(this.level + this.pendingLevels)) {
         this.xp -= RUN.xpFor(this.level + this.pendingLevels);
@@ -1605,6 +1744,7 @@ export class Game {
       recargas: [...this.weapons.levels.keys()].map((id) => this.weapons.recarga(id, this.mods)),
       carga: this.contenido.cargaPilon,
       bendiciones: this.resumenBendiciones(),
+      modulos: this.modulos.estado,
       potencia: this.weapons.damageMul,
       aguante: this.aguante,
       anchor: { x: (feet.x + 1) / 2 * window.innerWidth, y: (1 - feet.y) / 2 * window.innerHeight },
@@ -1612,11 +1752,15 @@ export class Game {
       duracion: RUN.length,
       reliquias: this.save.relics.length + this.relicsFound.length,
       exposicion: this.contenido.exposicion,
-      acido: this.world.acidoEn(px, pz),
+      acido: this.world.fluido.dano > 0 ? this.world.acidoEn(px, pz) : 0,
       jefes: this.contenido.jefesHud,
       jefeActivo: this.contenido.barraJefe,
       interaccion: this.contenido.interaccionCofre(px, pz, this.scrap) ?? this.contenido.interaccionDuelo(px, pz)
-        ?? this.contenido.interaccionHallazgo(px, pz, this.scrap) ?? this.contenido.interaccionNpc(px, pz),
+        ?? this.contenido.interaccionHallazgo(px, pz, this.scrap) ?? this.contenido.interaccionNpc(px, pz)
+        ?? this.interaccionMercader(px, pz)
+        ?? (this.enPlataforma(px, pz) ? { tecla: 'F', texto: 'Astillero: arma y lanza tu nave' } : undefined),
+      objetivo: this.objetivoHud(px, pz),
+      sector: this.etiquetaSector,
       canon: {
         nivel: this.canonNivel,
         recarga: this.canonNivel ? this.canonCd / CANON.recarga[this.canonNivel - 1] : 0,
@@ -1646,10 +1790,16 @@ export class Game {
     this.numeros.dibujar(dt, this.camera);
 
     if (this.hp <= 0) return this.endRun(false);
-    if (this.time >= RUN.length) return this.endRun(true);
+    if (!this.ultimoMinutoAvisado && this.time >= RUN.length - 60) {
+      this.ultimoMinutoAvisado = true;
+      alerta('Queda un minuto: ve a la plataforma', 4);
+      ui.toast('ADA', 'La ventana se cierra en un minuto. Lo que no esté en la nave ya no sube.', 'info', 5);
+    }
+    if (this.time >= RUN.length) return this.endRun(false, 'ventana');
     // Primero las bendiciones (pilón o cofre), luego las subidas de nivel:
     // nunca dos pantallas de elegir a la vez.
     if (this.bendicionesPendientes.length) this.abrirBendicion();
+    else if (this.objetosPendientes.length) this.abrirObjeto();
     else if (this.pendingLevels > 0) this.levelUp();
   }
 
@@ -1812,8 +1962,17 @@ export class Game {
       return;
     }
     if (coste === -1 && this.contenido.usarHallazgo(p.x, p.z)) return;
+    if (coste === -1 && this.enPlataforma(p.x, p.z)) {
+      this.abrirAstilleroPartida();
+      return;
+    }
     if (coste === -1 && this.contenido.irisCerca(p.x, p.z)) {
       this.abrirDesmontar();
+      return;
+    }
+    const mercader = coste === -1 ? this.contenido.mercaderCerca(p.x, p.z) : null;
+    if (mercader) {
+      this.abrirMercader(mercader.nombre, mercader.ventas, () => { mercader.ventas++; });
       return;
     }
     if (coste === -2) {
@@ -2055,10 +2214,100 @@ export class Game {
 
   /** Lo que las bendiciones cambian en las herramientas (el resto se lee al usarlo). */
   private aplicarBendiciones() {
-    this.weapons.damageMul = this.heroDamageMul * (1 + this.totales.dano) * this.potencia;
+    const fx = this.objetos.fx;
+    this.weapons.damageMul = this.heroDamageMul * (1 + this.totales.dano + fx.dano) * this.potencia * this.planeta.regla.mods.danoJugador;
     const auditora = this.personajeActual.id === 'noa-herrera' && !this.customSprite;
-    this.weapons.critico = 0.05 + this.totales.critico + (auditora ? .05 : 0);
-    this.weapons.multCritico = auditora ? 2.5 : 2;
+    this.weapons.critico = 0.05 + this.totales.critico + (auditora ? .05 : 0) + fx.critico;
+    this.weapons.multCritico = (auditora ? 2.5 : 2) + fx.multCritico;
+  }
+
+  /** Abre el siguiente objeto pendiente: tres para elegir, o uno que te llevas. */
+  private abrirObjeto() {
+    const p = this.objetosPendientes.shift()!;
+    const opciones = this.sacarObjetos(p.elegir, p.suerte, p.solo);
+    if (!opciones.length) return;
+    if (this.demo) {
+      this.recibirObjeto(opciones[0]);
+      return;
+    }
+    const cofre = p.elegir <= 1;
+    sfx(cofre ? 'cofre' : 'carga');
+    this.tarjetas(opciones.map((o) => this.tarjetaObjeto(o)), (i) => this.recibirObjeto(opciones[i]),
+      cofre ? 'OBJETO NUEVO' : 'ELIGE UN OBJETO',
+      cofre ? 'Tócalo para quedártelo: dura hasta que acabe el sector.' : `Lo más común en ${this.planeta.nombre} es ${this.planeta.afinidad.join(' y ')}. Cambia cómo funcionan tus herramientas.`);
+  }
+
+  private sacarObjetos(n: number, suerte: number, solo?: 'modulos' | 'objetos') {
+    return tirarObjetos(Math.random, {
+      n, solo,
+      suerte: suerte + this.planeta.regla.mods.suerte + this.time / RUN.length * 0.6,
+      afinidad: this.planeta.afinidad,
+      armas: [...this.weapons.levels.keys()],
+      tenidos: new Set([...this.objetos.lista.map((o) => o.id), ...this.modulosTomados]),
+    });
+  }
+
+  private tarjetaObjeto(o: ObjetoDef, etiqueta?: string) {
+    const rareza = RAREZAS[o.rareza];
+    return {
+      id: o.arma ?? `o-${o.familia}`, tipo: 'bendicion' as const, titulo: o.nombre, texto: o.texto, color: rareza.color,
+      etiqueta: etiqueta ?? (o.modulo ? 'Módulo activo' : o.arma ? WEAPONS[o.arma].name : 'Objeto'),
+      rareza: { id: o.rareza, nombre: rareza.nombre, color: rareza.color },
+    };
+  }
+
+  private recibirObjeto(o: ObjetoDef) {
+    sfx('relic');
+    if (o.modulo) {
+      const k = this.modulos.montar(o.modulo);
+      this.modulosTomados.add(o.id);
+      ui.toast(o.nombre, `Montado en la tecla ${'GC'[k]}. ${o.texto}`, 'relic', 6);
+      alerta(`Módulo nuevo: pulsa ${'GC'[k]}`, 3);
+      return;
+    }
+    this.objetos.agregar(o);
+    const vida = o.efectos.vida ?? 0;
+    if (vida) {
+      this.maxHp = Math.max(20, this.maxHp + vida);
+      this.hp = Math.max(1, Math.min(this.maxHp, this.hp + Math.max(0, vida)));
+    }
+    this.aplicarBendiciones();
+    ui.toast(o.nombre, o.texto, 'relic', 5);
+  }
+
+  private interaccionMercader(px: number, pz: number) {
+    const m = this.contenido.mercaderCerca(px, pz);
+    if (!m) return undefined;
+    if (!this.mercaderSaludado) {
+      this.mercaderSaludado = true;
+      ui.toast(m.nombre, `¿Vienes a por la nave? Aquí todo vale chatarra. Pulsa F y mira lo que tengo.`, 'info', 5);
+    }
+    return { tecla: 'F', texto: `Comerciar con ${m.nombre}` };
+  }
+
+  /** El mercader: tres cosas a la venta, y cada compra encarece la siguiente. */
+  private abrirMercader(nombre: string, ventas: number, vendido: () => void) {
+    const opciones = this.sacarObjetos(3, 0.3);
+    if (!opciones.length) {
+      ui.toast(nombre, 'Me lo has comprado todo. Vuelve cuando caiga otra nave.', 'info', 4);
+      return;
+    }
+    const precios = opciones.map((o) => precioObjeto(o, ventas));
+    const tarjetas = [
+      ...opciones.map((o, k) => this.tarjetaObjeto(o, `${precios[k]} de chatarra`)),
+      this.tarjetaVolver('Ahora no.'),
+    ];
+    this.tarjetas(tarjetas, (i) => {
+      if (i >= opciones.length) return;
+      if (this.chatarraDisponible() < precios[i]) {
+        sfx('sinChatarra');
+        ui.toast(nombre, `Eso son ${precios[i]} de chatarra, y no los llevas. Yo no fío.`, 'info', 4);
+        return;
+      }
+      this.gastarChatarra(precios[i]);
+      vendido();
+      this.recibirObjeto(opciones[i]);
+    }, `${nombre.toUpperCase()}, MERCADER`, `Llevas ${Math.floor(this.chatarraDisponible())} de chatarra. Lo que no vendo hoy, se lo queda el velo.`);
   }
 
   /** Multiplicador de daño que dan las mejoras elegidas al subir de nivel. */
@@ -2070,14 +2319,17 @@ export class Game {
   private resumenBendiciones() {
     const porTipo = new Map<BendicionId, Bendicion[]>();
     for (const b of this.bendiciones) porTipo.set(b.id, [...(porTipo.get(b.id) ?? []), b]);
-    return [...porTipo.entries()].map(([id, lista]) => {
+    const propias = [...porTipo.entries()].map(([id, lista]) => {
       const mejor = lista.reduce((a, b) => RAREZAS[b.rareza].indice > RAREZAS[a.rareza].indice ? b : a);
       const total = lista.reduce((s, b) => ({ ...s, valor: s.valor + b.valor }), { ...mejor, valor: 0 });
       return {
-        id, icono: BENDICIONES[id].icono, color: RAREZAS[mejor.rareza].color, n: lista.length,
+        id: id as string, icono: BENDICIONES[id].icono, color: RAREZAS[mejor.rareza].color, n: lista.length,
         titulo: `${BENDICIONES[id].nombre}: ${describir(total)}`,
       };
     });
+    return [...propias, ...this.objetos.lista.map((o) => ({
+      id: o.id, icono: o.arma ?? `o-${o.familia}`, color: RAREZAS[o.rareza].color, n: 1, titulo: `${o.nombre}: ${o.texto}`,
+    }))];
   }
 
   /** M: el mapa del sector. La partida espera mientras está abierto. */
@@ -2130,7 +2382,7 @@ export class Game {
     }
     if (this.propulsando && mochilaNv >= 3) equipo *= 1.25;
 
-    const vadeo = this.world.acidoEn(p.x, p.z) > 0 ? 0.6 : 1;
+    const vadeo = (this.world.acidoEn(p.x, p.z) > 0 ? this.world.fluido.avance : 1) * this.planeta.clima.velocidadJugador * (1 + this.objetos.fx.velocidad);
     // Sprint: mantener Shift corre más mientras dure el aguante. Agotado, no
     // vuelve a correr hasta recuperar un tercio (sin parpadeos de sprint).
     const quiereCorrer = isHeld('ShiftLeft', 'ShiftRight') && pidiendo && !this.montado && !this.apuntando;
@@ -2203,7 +2455,7 @@ export class Game {
     if (this.grounded) this.coyote = MOVE.coyote;
     else this.coyote = Math.max(0, this.coyote - dt);
     if (this.jumpBuffer > 0 && (this.grounded || this.coyote > 0)) {
-      this.velY = MOVE.jumpSpeed;
+      this.velY = MOVE.jumpSpeed * this.planeta.regla.mods.salto;
       this.grounded = false;
       this.coyote = 0;
       this.jumpBuffer = 0;
@@ -2230,7 +2482,7 @@ export class Game {
     if (botasNv > 0) this.barraEquipo('botas', 1 - this.dashCd / GEAR.botas.levels[botasNv - 1].valor);
     if (tablaNv > 0) this.barraEquipo('tabla', this.montado ? 1 : 0.25);
 
-    this.velY = Math.max(-MOVE.maxFall, this.velY - MOVE.gravity * dt);
+    this.velY = Math.max(-MOVE.maxFall, this.velY - MOVE.gravity * this.planeta.regla.mods.gravedad * dt);
     p.y += this.velY * dt;
     if (p.y <= ground) {
       if (!this.grounded && this.velY < -8) this.squash = 0.18;
@@ -2353,6 +2605,75 @@ export class Game {
 
   // ------------------------------------------------------- Director
 
+  /** El bombardero suelta su abanico y el coloso avisa y pisa. */
+  private golpesDeFauna(dt: number, px: number, pz: number) {
+    const e = this.enemies;
+    for (let i = 0; i < e.count; i++) {
+      const tipo = e.tipoDe(i);
+      if (tipo === 'bombardero' && quiereBombardear(i, e, this.time, dt) && Math.hypot(e.x[i] - px, e.z[i] - pz) < 22) {
+        for (const d of [-3, 0, 3]) this.esporas.disparar(e.x[i], e.z[i], px + d, pz - d);
+        sfx('hit');
+      } else if (tipo === 'coloso' && e.aturdido[i] <= 0) {
+        const y = this.world.heightAt(e.x[i], e.z[i]) + 0.1;
+        if (vaAPisar(i, e, this.time, dt)) this.weapons.efectos.anillo(e.x[i], y, e.z[i], { color: '#ff6a3d', duracion: 0.6, desde: 5, hasta: 5, opacidad: 0.8 });
+        if (quierePisar(i, e, this.time, dt)) {
+          this.weapons.efectos.anillo(e.x[i], y, e.z[i], { color: '#ffd9a0', duracion: 0.4, desde: 0.6, hasta: 5.4, grueso: true });
+          if (Math.hypot(e.x[i] - px, e.z[i] - pz) < 5.4) {
+            this.receiveDamage(20 * this.planeta.regla.mods.danoEnemigos);
+            this.camara.sacudidaPulso();
+          }
+        }
+      }
+    }
+  }
+
+  /** La horda de relleno: en cada sector se cuela la especie que manda ahí. */
+  private tipoDeRelleno(minutos: number): EnemyId {
+    for (const { tipo, parte } of this.planeta.fauna.relleno) {
+      if (Math.random() >= parte || !esNuevo(tipo) || minutos < DESBLOQUEO[tipo]) continue;
+      if (this.enemies.countOf(tipo) < CUPO[tipo]) return tipo;
+    }
+    return 'recolector';
+  }
+
+  /** Una oleada pide un tipo que aquí no vive: sale el que mande en el sector. */
+  private tipoDelSector(tipo: EnemyId): EnemyId {
+    const { pesos, dominantes } = this.planeta.fauna;
+    if (!esNuevo(tipo) || pesos[tipo] > 0) return tipo;
+    return dominantes.find((d) => d !== 'coloso') ?? 'recolector';
+  }
+
+  /** Lo que hace el clima y lo que deja la fauna en el suelo. */
+  private actualizarSector(dt: number, px: number, pz: number) {
+    const { clima } = this.planeta;
+    if (clima.corrosion > 0 && this.hp > 1 && !this.intocable()) this.hp = Math.max(1, this.hp - clima.corrosion * dt);
+    if (clima.rayos > 0) {
+      this.proximoRayo -= dt;
+      if (this.proximoRayo <= 0) {
+        this.proximoRayo = clima.rayos * (0.7 + Math.random() * 0.6);
+        const a = Math.random() * Math.PI * 2, d = 5 + Math.random() * 14;
+        const x = px + Math.cos(a) * d, z = pz + Math.sin(a) * d;
+        this.rayos.push({ x, z, cae: this.time + 0.9 });
+        this.weapons.efectos.anillo(x, this.world.heightAt(x, z) + 0.1, z, { color: '#fff27a', duracion: 0.9, desde: 3.4, hasta: 3.4, opacidad: 0.7 });
+      }
+    }
+    for (let k = this.rayos.length - 1; k >= 0; k--) {
+      const r = this.rayos[k];
+      if (this.time < r.cae) continue;
+      this.rayos.splice(k, 1);
+      const y = this.world.heightAt(r.x, r.z);
+      this.weapons.efectos.columna(r.x, y, r.z, 70, { color: '#fff27a', duracion: 0.3, desde: 0.5, hasta: 1.3 });
+      this.weapons.danoHabilidad(r.x, r.z, 3.6, 60, 0.8);
+      this.camara.sacudidaPulso();
+      if (Math.hypot(r.x - px, r.z - pz) < 2.8) this.receiveDamage(18);
+    }
+    for (let k = this.charcosToxicos.length - 1; k >= 0; k--) {
+      const c = this.charcosToxicos[k];
+      if (this.time >= c.hasta) this.charcosToxicos.splice(k, 1);
+      else if (Math.hypot(c.x - px, c.z - pz) < 2 && !this.intocable()) this.hp = Math.max(1, this.hp - 7 * dt);
+    }
+  }
+
   /** Decide qué aparece y cuándo. La presión crece con el tiempo y con las balizas. */
   private direct(dt: number) {
     const minutes = this.time / 60;
@@ -2360,20 +2681,21 @@ export class Game {
     // Director elástico (FOCO 2): alivia si vas por detrás, aprieta si vas
     // por delante, siempre dentro de la banda [0,8–1,2].
     const dp = directorParams(this.time, this.level, this.dpsActual(), balizas);
-    const rate = dp.ritmo * (1 + this.contenido.exposicion * 0.35);
+    const { fauna, regla } = this.planeta;
+    const rate = dp.ritmo * (1 + this.contenido.exposicion * 0.35) * regla.mods.ritmoEnemigos * fauna.rasgo.ritmo;
     const hpScale = dp.escalaVida;
     this.lastHpScale = hpScale;
 
     this.spawnDebt += rate * dt;
     while (this.spawnDebt >= 1) {
       this.spawnDebt--;
-      const type: EnemyId = this.time > 40 && balizas < 4 && Math.random() < 0.04 ? 'baliza' : 'recolector';
+      const type: EnemyId = this.time > 40 && balizas < 4 && Math.random() < 0.04 ? 'baliza' : this.tipoDeRelleno(minutes);
       this.spawnAround(type, 28 + Math.random() * 4, hpScale);
     }
 
     // Goteo especial con presupuesto fijo: cada tipo nuevo tiene cadencia.
-    for (const id of ['saltador', 'avispa', 'caparazon', 'sembrador'] as const) {
-      this.deudaEsp[id] += tasaEspecial(id, minutes) * dt;
+    for (const id of ESPECIES) {
+      this.deudaEsp[id] = (this.deudaEsp[id] ?? 0) + tasaEspecial(id, minutes) * fauna.pesos[id] * dt;
       if (this.deudaEsp[id] >= 1) {
         this.deudaEsp[id] -= 1;
         if (this.enemies.countOf(id) < CUPO[id]) this.spawnAround(id, 28 + Math.random() * 4, hpScale);
@@ -2397,8 +2719,10 @@ export class Game {
       this.oleadaEspecialHecha.add(minuto);
       const base = Math.random() * Math.PI * 2;
       for (const compo of especial) {
-        for (const a of angulosDePatron(compo.patron, compo.n, base)) {
-          this.spawnAround(compo.tipo as EnemyId, compo.patron === 'anillo' ? 22 : 24, hpScale, a);
+        const tipo = this.tipoDelSector(compo.tipo as EnemyId);
+        const n = tipo === 'coloso' || tipo === 'caparazon' ? Math.min(2, compo.n) : compo.n;
+        for (const a of angulosDePatron(compo.patron, n, base)) {
+          this.spawnAround(tipo, compo.patron === 'anillo' ? 22 : 24, hpScale, a);
         }
       }
       ui.toast('ADA', 'HELIOS cambia de táctica. Mira los flancos.', 'info', 4);
@@ -2475,6 +2799,15 @@ export class Game {
       this.pickups.drop(x, z, value);
     }
 
+    this.rasgoAlMorir(x, z);
+    this.objetos.alMatar(i);
+    // De vez en cuando, algo de valor entre los restos.
+    this.bajasDesdeObjeto += this.planeta.regla.mods.objetos;
+    if (this.bajasDesdeObjeto >= 110) {
+      this.bajasDesdeObjeto = 0;
+      this.objetosPendientes.push({ elegir: 1, suerte: 0 });
+    }
+
     // La concha muestra primero las cúpulas; las crías salen a los 0,6 s.
     for (const cria of criasAlMorir(def.id)) {
       this.criasPendientes.push({ cuando: this.time + 0.6, tipo: cria.tipo as EnemyId, n: cria.n, x, z });
@@ -2486,6 +2819,18 @@ export class Game {
         !this.save.relics.includes(r.id) && !this.relicsFound.includes(r.id) &&
         !this.relicDrops.some((d) => d.relicId === r.id));
       if (pending.length) this.relicDrops.push(new RelicDrop(this.scene, pending[0].id, x, this.world.heightAt(x, z), z));
+    }
+  }
+
+  /** Lo que deja cada fauna al caer: nunca se apaga el reto de rematarlos. */
+  private rasgoAlMorir(x: number, z: number) {
+    const rasgo = this.planeta.fauna.rasgo.id, y = this.world.heightAt(x, z) + 0.1;
+    if (rasgo === 'volatil' && Math.random() < 0.3) {
+      this.weapons.efectos.anillo(x, y, z, { color: '#ff7a2a', duracion: 0.35, desde: 0.4, hasta: 2.6, grueso: true });
+      if (Math.hypot(x - this.player.position.x, z - this.player.position.z) < 2.6) this.receiveDamage(8);
+    } else if (rasgo === 'toxico' && Math.random() < 0.18 && this.charcosToxicos.length < 14) {
+      this.charcosToxicos.push({ x, z, hasta: this.time + 5 });
+      this.weapons.efectos.disco(x, y, z, { color: '#7dff5a', duracion: 5, desde: 2, hasta: 2, opacidad: 0.34 });
     }
   }
 
@@ -2558,6 +2903,8 @@ export class Game {
       } else {
         this.hp = Math.min(this.maxHp, this.hp + 40);
       }
+      // Cada cuatro niveles, además, un objeto a elegir.
+      if (this.level % 4 === 0) this.objetosPendientes.push({ elegir: 3, suerte: 0.1 });
       this.state = 'playing';
       this.clock.getDelta();
       lockPointer(this.canvas);
@@ -2660,7 +3007,105 @@ export class Game {
 
   // --------------------------------------------------- Final
 
-  private endRun(victory: boolean) {
+  // ---------------------------------------------------------------- La nave
+
+  /** Un resto recuperado: va al almacén y no se pierde aunque caigas. */
+  private recogerFragmento(ranura: Ranura) {
+    this.hangar.fragmentos[ranura]++;
+    this.restosPartida++;
+    this.scrap += RESTOS.chatarra;
+    this.guardarHangar();
+    sfx('carga');
+    const d = DEF_RANURA[ranura];
+    alerta(`+1 ${d.fragmento}`, 3);
+    ui.toast('ADA', `${d.fragmento} a bordo: sirve para ${d.nombre.toLowerCase()}. Tienes ${this.hangar.fragmentos[ranura]} en el almacén.`, 'info', 4);
+  }
+
+  private guardarHangar() {
+    this.save.hangar = this.hangar;
+    writeSave(this.save);
+  }
+
+  /** Se paga con lo que llevas encima y, si no llega, con el banco. */
+  private chatarraDisponible() {
+    return Math.floor(this.scrap) + this.save.scrapBank;
+  }
+
+  private gastarChatarra(n: number) {
+    const encima = Math.min(this.scrap, n);
+    this.scrap -= encima;
+    this.save.scrapBank = Math.max(0, this.save.scrapBank - Math.ceil(n - encima));
+  }
+
+  private enPlataforma(x: number, z: number) {
+    const p = this.world.padPosition;
+    return Math.hypot(x - p.x, z - p.z) < 24;
+  }
+
+  private abrirAstilleroEn(o: { lanzar?: () => void; volver: () => void; subtitulo?: string }) {
+    abrirAstillero({
+      hangar: this.hangar,
+      chatarra: () => this.chatarraDisponible(),
+      gastar: (n) => this.gastarChatarra(n),
+      guardar: () => this.guardarHangar(),
+      lanzar: o.lanzar,
+      subtitulo: o.subtitulo,
+      volver: () => {
+        this.world.montarNave(this.hangar.montadas);
+        o.volver();
+      },
+    });
+  }
+
+  /** En la plataforma: la partida espera mientras se arma la nave. */
+  private abrirAstilleroPartida() {
+    this.state = 'astillero';
+    this.expectUnlock = isLocked();
+    unlockPointer();
+    if (this.jumpBtn) this.jumpBtn.style.display = 'none';
+    if (this.micBtn) this.micBtn.style.display = 'none';
+    const quedan = Math.max(0, RUN.length - this.time);
+    this.abrirAstilleroEn({
+      subtitulo: `PLATAFORMA · QUEDAN ${Math.floor(quedan / 60)}:${String(Math.floor(quedan % 60)).padStart(2, '0')} DE VENTANA`,
+      lanzar: () => this.lanzar(),
+      volver: () => {
+        endFrame();
+        this.state = 'playing';
+        this.clock.getDelta();
+        if (this.jumpBtn) this.jumpBtn.style.display = 'block';
+        if (this.micBtn) this.micBtn.style.display = 'block';
+        lockPointer(this.canvas);
+      },
+    });
+  }
+
+  /** La nave vuela: su diseño decide cómo acaba el sector. */
+  private lanzar() {
+    this.state = 'lanzamiento';
+    this.world.montarNave(this.hangar.montadas);
+    this.charlas.interrumpir();
+    const diseno = { ...this.hangar.montadas };
+    const stats = calcular(diseno), vuelo = resolverVuelo(stats);
+    mostrarLanzamiento({ diseno, stats, vuelo, alAcabar: () => this.endRun(vuelo.exito, 'vuelo', vuelo) });
+  }
+
+  /** Lo que enseña el HUD: restos y brújulas respecto a donde mira la cámara. */
+  private objetivoHud(px: number, pz: number) {
+    const rumbo = (dx: number, dz: number) => {
+      const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw), rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
+      return { giro: Math.atan2(dx * rx + dz * rz, dx * fx + dz * fz), metros: Math.hypot(dx, dz) };
+    };
+    const { recogidos, total } = this.contenido.restos;
+    const r = this.contenido.restoCercano(px, pz), pad = this.world.padPosition;
+    return {
+      recogidos, total,
+      resto: r ? rumbo(r.x - px, r.z - pz) : undefined,
+      plataforma: rumbo(pad.x - px, pad.z - pz),
+      listo: resolverVuelo(calcular(this.hangar.montadas)).exito,
+    };
+  }
+
+  private endRun(victory: boolean, causa: Causa = 'caido', vuelo?: Vuelo) {
     this.state = 'results';
     this.charlas.interrumpir();
     escucha(null);
@@ -2679,7 +3124,7 @@ export class Game {
     this.animarAstronauta(victory ? 'Victoria' : 'Derrota', 0.2);
     // Cierre de la misión con la voz que corresponda (llega tras el informe).
     if (victory) {
-      void this.radio.linea('ada', 'victoria', `ventana alcanzada: el cohete sube la orden de apagado. Estado: ${this.estadoPartida()}`).then((r) => {
+      void this.radio.linea('ada', 'victoria', `la nave ha cruzado el velo y sube la orden de apagado. Estado: ${this.estadoPartida()}`).then((r) => {
         if (r) ui.toast(r.quien, r.texto, 'info', 6);
       });
     } else {
@@ -2691,7 +3136,9 @@ export class Game {
     // Lo que quede en el suelo se recoge: la chatarra ganada no se pierde.
     this.scrap += this.pickups.update(0, this.player.position.x, this.player.position.z, 0, true);
 
-    const score = Math.round(this.kills * 10 + this.time * 5 + this.relicsFound.length * 500 + (victory ? 5000 : 0));
+    // Puntúa salvar el sector: restos, reliquias, las estrellas del vuelo y el tiempo que sobra.
+    const score = Math.round(this.kills * 2 + this.restosPartida * 400 + this.relicsFound.length * 500
+      + (victory ? 5000 + (vuelo?.estrellas ?? 0) * 1500 + Math.max(0, RUN.length - this.time) * 10 : 0));
     const s = this.save;
     const newRecord = score > s.bestScore;
     const newTypes = (Object.keys(this.killsByType) as EnemyId[])
@@ -2722,8 +3169,12 @@ export class Game {
       bank: s.scrapBank,
       codexSize: s.relics.length,
       hpLost: this.hpLost,
+      causa,
+      vuelo,
+      sector: `${this.planeta.nombre} · ${this.planeta.bioma.nombre}`,
+      restos: this.restosPartida,
       weapons: [...this.weapons.levels.entries()],
-    }, () => this.startRun(), () => this.toTitle());
+    }, () => this.elegirDestino(), () => this.toTitle());
   }
 }
 

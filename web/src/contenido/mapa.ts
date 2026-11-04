@@ -34,6 +34,11 @@ export type Efecto =
    * se elige entre esas. `suerte` sube la probabilidad de rarezas altas.
    */
   | { tipo: 'bendicion'; elegir: number; suerte: number }
+  /**
+   * Objeto que cambia las herramientas (ver objetos.ts): con `elegir` 1 sale uno al
+   * azar; con más, se elige. `solo` limita a módulos activos u objetos pasivos.
+   */
+  | { tipo: 'objeto'; elegir: number; suerte: number; solo?: 'modulos' | 'objetos' }
   /** Da el Cañón solar (el arma que se apunta) o le sube un nivel. */
   | { tipo: 'canon' }
   /** El NPC cuenta algo de la partida (la oleada que viene, la última reliquia). */
@@ -73,25 +78,25 @@ export const ALTARES_JEFE: AltarJefe[] = [
   {
     id: 'altar-cosecha', nombre: 'Altar de la Escoria', jefe: 'golem-escoria', minuto: 3,
     descripcion: 'De aquí sale el Gólem de Escoria, hecho con los escombros de la ciudad. Al vencerlo, el altar se purifica y entrega una reliquia.',
-    recompensa: [{ tipo: 'reliquia' }, { tipo: 'chatarra', cantidad: 25 }, { tipo: 'mejora', opciones: 3 }],
+    recompensa: [{ tipo: 'reliquia' }, { tipo: 'chatarra', cantidad: 25 }, { tipo: 'objeto', elegir: 3, suerte: 0.5 }, { tipo: 'mejora', opciones: 3 }],
     extraPorAdelantar: [{ tipo: 'nivel', herramienta: 'cualquiera' }],
   },
   {
     id: 'altar-sabueso', nombre: 'Altar de la Fragua', jefe: 'sabueso-helios', minuto: 5,
     descripcion: 'De aquí sale el Cancerbero de HELIOS, el sabueso de tres cabezas que guarda la fragua. Al vencerlo entrega una reliquia y una bendición a elegir.',
-    recompensa: [{ tipo: 'reliquia' }, { tipo: 'chatarra', cantidad: 35 }, { tipo: 'bendicion', elegir: 3, suerte: 0.5 }],
+    recompensa: [{ tipo: 'reliquia' }, { tipo: 'chatarra', cantidad: 35 }, { tipo: 'objeto', elegir: 3, suerte: 0.5 }, { tipo: 'bendicion', elegir: 3, suerte: 0.5 }],
     extraPorAdelantar: [],
   },
   {
     id: 'altar-heraldo', nombre: 'Altar de la Escarcha', jefe: 'golem-escarcha', minuto: 7,
     descripcion: 'De aquí sale el Coloso de Escarcha. Al vencerlo, el velo se abre sobre el altar: el jugador se cura entero y la exposición se vacía.',
-    recompensa: [{ tipo: 'reliquia' }, { tipo: 'integridad', cantidad: 999 }, { tipo: 'exposicion', cantidad: -100 }],
+    recompensa: [{ tipo: 'reliquia' }, { tipo: 'integridad', cantidad: 999 }, { tipo: 'exposicion', cantidad: -100 }, { tipo: 'objeto', elegir: 3, suerte: 0.8 }],
     extraPorAdelantar: [{ tipo: 'chatarra', cantidad: 40 }],
   },
   {
     id: 'altar-ojo', nombre: 'Altar del Titán', jefe: 'golem-titan', minuto: 9,
     descripcion: 'De aquí sale el Titán de HELIOS, el jefe final. Al vencerlo, ADA firma la auditoría de este sector.',
-    recompensa: [{ tipo: 'reliquia' }, { tipo: 'chatarra', cantidad: 60 }, { tipo: 'mejora', opciones: 4 }],
+    recompensa: [{ tipo: 'reliquia' }, { tipo: 'chatarra', cantidad: 60 }, { tipo: 'objeto', elegir: 3, suerte: 1 }, { tipo: 'mejora', opciones: 4 }],
     extraPorAdelantar: [],
   },
 ];
@@ -231,7 +236,7 @@ export const DRAGON = {
   /** El picado: velocidad (m/s) y el aviso en lo alto antes de bajar (s). */
   picado: { dano: 34, empuje: 18, velocidad: 36, aviso: 0.85 },
   aterrizaje: { dano: 26, radio: 6, empuje: 16 },
-  recompensa: [{ tipo: 'reliquia' }, { tipo: 'chatarra', cantidad: 80 }, { tipo: 'bendicion', elegir: 4, suerte: 1 }] as Efecto[],
+  recompensa: [{ tipo: 'reliquia' }, { tipo: 'chatarra', cantidad: 80 }, { tipo: 'objeto', elegir: 4, suerte: 1.4 }, { tipo: 'bendicion', elegir: 4, suerte: 1 }] as Efecto[],
 } as const;
 
 /** Daño, radio del golpe (m, ×talla) y empuje (m/s) de cada ataque. */
@@ -252,20 +257,29 @@ export const ATAQUES_GOLEM: Record<AtaqueGolem, { dano: number; radio: number; e
  * cerca del jugador (sin altar), con menos vida que un gólem y más cuanto
  * más avanza la partida. Al caer sueltan chatarra y a veces una bendición.
  */
+/**
+ * Restos de la flota: dos por cada ranura de la nave, repartidos por todo el mapa.
+ * Se recuperan quedándose al lado; al empezar, HELIOS manda una pequeña oleada.
+ */
+export const RESTOS = { porRanura: 2, distancia: [58, 126], separacion: 36, radio: 4.2, segundos: 3, oleada: 3, chatarra: 25 } as const;
+
+/** Un altar solo despierta a su jefe si te acercas: se puede evitar. */
+export const DESPIERTA_ALTAR = 38;
+
 export const MINIJEFES = {
   /** Segundo del primero, separación entre uno y otro (baja con el tiempo) y mínimo. */
-  primero: 100,
-  cada: 70,
-  bajaPorMinuto: 4,
-  cadaMinimo: 40,
-  maximoVivos: 3,
+  primero: 170,
+  cada: 85,
+  bajaPorMinuto: 3,
+  cadaMinimo: 55,
+  maximoVivos: 2,
   /** Vida base de cada uno; se multiplica por 1 + 0,12 por minuto. */
   tipos: [
     { id: 'segador-jefe', nombre: 'Segador, Jefe de Cosecha', vida: 900, desde: 0 },
     { id: 'heraldo', nombre: 'Heraldo del Velo', vida: 1300, desde: 150 },
     { id: 'ojo-helios', nombre: 'Ojo de HELIOS', vida: 1900, desde: 240 },
   ],
-  recompensa: [{ tipo: 'chatarra', cantidad: 18 }] as Efecto[],
+  recompensa: [{ tipo: 'chatarra', cantidad: 18 }, { tipo: 'objeto', elegir: 2, suerte: 0.3 }] as Efecto[],
   /** Probabilidad de que además suelte una bendición. */
   bendicion: 0.35,
 } as const;
@@ -303,17 +317,17 @@ export const DESAFIOS: Desafio[] = [
   {
     id: 'resistir', nombre: 'Aguanta al sol', duracion: 30,
     reglas: 'Quédate dentro del círculo 30 segundos. Van a venir a por ti.',
-    recompensa: [{ tipo: 'mejora', opciones: 3 }],
+    recompensa: [{ tipo: 'objeto', elegir: 3, suerte: 0.4, solo: 'modulos' }, { tipo: 'mejora', opciones: 3 }],
   },
   {
     id: 'cazar', nombre: 'Cosecha al revés', duracion: 25, objetivo: 40,
     reglas: 'Rompe 40 unidades de HELIOS dentro del círculo en 25 segundos.',
-    recompensa: [{ tipo: 'chatarra', cantidad: 30 }, { tipo: 'nivel', herramienta: 'cualquiera' }],
+    recompensa: [{ tipo: 'chatarra', cantidad: 30 }, { tipo: 'nivel', herramienta: 'cualquiera' }, { tipo: 'objeto', elegir: 3, suerte: 0.3 }],
   },
   {
     id: 'intacto', nombre: 'Sin un rasguño', duracion: 20,
     reglas: 'Aguanta 20 segundos dentro del círculo sin que te toquen.',
-    recompensa: [{ tipo: 'integridad', cantidad: 40 }, { tipo: 'temporal', cual: 'escudo', segundos: 30, factor: 0.5 }],
+    recompensa: [{ tipo: 'integridad', cantidad: 40 }, { tipo: 'temporal', cual: 'escudo', segundos: 30, factor: 0.5 }, { tipo: 'objeto', elegir: 3, suerte: 0.3, solo: 'modulos' }],
   },
   {
     id: 'recoger', nombre: 'Chispas de sol', duracion: 20, objetivo: 8,
@@ -393,8 +407,9 @@ export const CAJAS: Caja[] = [
     apertura: { como: 'pagar', segundos: 0, exposicion: 8, coste: 12, subida: 8 },
     aparece: 'Diez repartidos por el mapa. Se abre con F pagando chatarra (cada uno cuesta más que el anterior); ADA lo piratea y eso emite algo de señal.',
     botin: [
-      { peso: 70, da: [{ tipo: 'bendicion', elegir: 1, suerte: 0.6 }] },
-      { peso: 30, da: [{ tipo: 'nivel', herramienta: 'cualquiera' }, { tipo: 'chatarra', cantidad: 5 }] },
+      { peso: 40, da: [{ tipo: 'bendicion', elegir: 1, suerte: 0.6 }] },
+      { peso: 40, da: [{ tipo: 'objeto', elegir: 1, suerte: 0.3 }] },
+      { peso: 20, da: [{ tipo: 'nivel', herramienta: 'cualquiera' }, { tipo: 'chatarra', cantidad: 5 }] },
     ],
   },
   {
@@ -411,7 +426,7 @@ export const CAJAS: Caja[] = [
       { peso: 45, da: [{ tipo: 'chatarra', cantidad: 15 }] },
       { peso: 25, da: [{ tipo: 'integridad', cantidad: 30 }] },
       { peso: 15, da: [{ tipo: 'temporal', cual: 'velocidad', segundos: 30, factor: 1.25 }, { tipo: 'chatarra', cantidad: 6 }] },
-      { peso: 15, da: [{ tipo: 'bendicion', elegir: 1, suerte: 0.3 }] },
+      { peso: 15, da: [{ tipo: 'objeto', elegir: 1, suerte: 0 }] },
     ],
   },
   {
@@ -420,7 +435,7 @@ export const CAJAS: Caja[] = [
     id: 'caja-trampa', nombre: 'Caja abandonada',
     apertura: { como: 'acercarse', segundos: 1.2 },
     aparece: 'Una de cada tres cajas sueltas es un cebo de HELIOS: al abrirla salta una emboscada.',
-    botin: [{ peso: 1, da: [{ tipo: 'bendicion', elegir: 3, suerte: 0.8 }, { tipo: 'chatarra', cantidad: 25 }] }],
+    botin: [{ peso: 1, da: [{ tipo: 'objeto', elegir: 3, suerte: 0.8 }, { tipo: 'bendicion', elegir: 3, suerte: 0.8 }, { tipo: 'chatarra', cantidad: 25 }] }],
   },
 ];
 

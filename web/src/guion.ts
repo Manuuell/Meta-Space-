@@ -19,8 +19,9 @@ export const LORE =
   'viene de Ares, el mundo que respondió a la llamada de auxilio de Meta: HELIOS vio en la ayuda una amenaza ' +
   'para el velo, cubrió Ares con él hasta romperlo y de Ares solo quedó su nave. En Meta encontró a ADA y la ' +
   'lleva en la mochila; HELIOS envía sus unidades (Recolectores, Balizas, Segadores, Saltadores, Avispas, ' +
-  'Caparazones y Sembradores) a recuperarla. En cada sector hay que aguantar diez minutos hasta que se abre la ' +
-  'ventana de lanzamiento: el cohete sube la orden de apagado y el sol vuelve a ese sector. Las reliquias son ' +
+  'Caparazones y Sembradores) a recuperarla. En cada sector hay que buscar por el mapa los restos de la flota de ' +
+  'Ares, armar una nave propia en la plataforma y lanzarla antes de diez minutos, cuando se cierra la ' +
+  'ventana de lanzamiento: si cruza el velo, sube la firma de ADA y el sol vuelve a ese sector. Las reliquias son ' +
   'pruebas de lo que pasó; con las siete, ADA completa la auditoría que apaga el velo de todo Meta.';
 
 /**
@@ -28,7 +29,8 @@ export const LORE =
  * ellas: si el modelo inventa reglas, el jugador espera cosas que no pasan.
  */
 export const REGLAS =
-  'Las herramientas se disparan solas. La chatarra sube de nivel y cada nivel ofrece mejoras. ' +
+  'El objetivo no es matar: es recoger los restos de la flota (los haces de luz del mapa), ir a la plataforma, armar ' +
+  'la nave en el astillero con la tecla F y lanzarla antes de diez minutos. Las herramientas se disparan solas. La chatarra sube de nivel y cada nivel ofrece mejoras. ' +
   'Las Balizas no atacan, pero mientras viven llegan más unidades. Cada minuto llega un anillo de ' +
   'Recolectores. Los Segadores aparecen a partir del minuto 2, son lentos y llevan las reliquias dentro. ' +
   'Los Saltadores se agachan antes de saltar; las Avispas pican desde el aire; los Caparazones sueltan ' +
@@ -140,6 +142,8 @@ const GIROS = [
   'Cada minuto llega un anillo de Recolectores: no te dejes encerrar contra las ruinas.',
   'Las esporas de los Sembradores son lentas: muévete en lateral y no te alcanzan.',
   'Mantén V y pregúntale a ADA: conoce todo el mapa y te marca lo que busques.',
+  'Sigue los haces de luz: son restos de la flota, y sin ellos no hay nave.',
+  'No hace falta matarlo todo: lo que salva el sector es la nave.',
   'La chatarra sube de nivel: recógela entre oleada y oleada.',
 ];
 const LINEAS_OP = [

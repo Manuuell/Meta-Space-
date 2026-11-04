@@ -11,7 +11,7 @@ import type { WeaponId } from './data.ts';
 // - Arriba a la izquierda, la ficha: retrato con el anillo de ADA, nivel,
 //   vida grande, experiencia y las siete reliquias.
 // - Arriba en el centro, la ventana de lanzamiento: cuenta atrás, barra de
-//   diez minutos con los jefes marcados y el cohete al final; bajas,
+//   diez minutos con los jefes marcados y el lanzamiento al final; bajas,
 //   chatarra y la misión.
 // - Arriba a la derecha, el minimapa con brújula, lagos, montañas, ruinas y
 //   el contenido del mapa; debajo, la zona.
@@ -104,13 +104,26 @@ export interface HudState {
   bendiciones?: { id: string; icono: string; color: string; n: number; titulo: string }[];
   /** Nombre de la zona en la que está el jugador. */
   zona?: string;
+  /** Lo que hay que hacer: restos recuperados y brújulas (giro respecto a la cámara, en radianes). */
+  /** El sector de esta partida, bajo el minimapa. */
+  sector?: { nombre: string; detalle: string; regla: string };
+  objetivo?: {
+    recogidos: number;
+    total: number;
+    resto?: { giro: number; metros: number };
+    plataforma: { giro: number; metros: number };
+    /** Si la nave montada ya cruzaría el velo. */
+    listo: boolean;
+  };
   personaje?: { nombre: string; rol: string; retrato: string; color: string };
+  /** Módulos activos, teclas G y C. */
+  modulos?: ({ id: string; nombre: string; lista: number } | null)[];
   habilidad?: { id: string; nombre: string; color: string; lista: number } | null;
 }
 
 /** Lo que tiene icono en el minimapa y en el mapa del sector (M). */
 export type TipoIcono = 'altar' | 'ara' | 'caja' | 'suelta' | 'torre' | 'refugio' | 'npc' | 'pilon' | 'duelo' | 'dragon'
-  | 'racion' | 'iman' | 'jaula' | 'guardian' | 'fragua';
+  | 'racion' | 'iman' | 'jaula' | 'guardian' | 'fragua' | 'fragmento';
 
 export interface MinimapState {
   px: number;
@@ -158,7 +171,8 @@ export function showHud() {
           <div class="h2-reliquias"></div>
         </div>
       </div>
-      <div class="h2-bendiciones" aria-label="Bendiciones"></div>
+      <div class="h2-bendiciones" aria-label="Bendiciones y objetos"></div>
+      <div class="h2-modulos" aria-label="Módulos activos"></div>
       <div class="h2-habilidad"><i><em class="h2-habilidad-icono"></em><b>R</b></i><span><strong></strong><small>Habilidad · R</small></span></div>
 
       <div class="h2-ventana">
@@ -183,6 +197,14 @@ export function showHud() {
         <canvas class="h2-minimapa" width="440" height="440"></canvas>
         <div class="h2-zona h2-panel"></div>
         <div class="h2-tecla-mapa"><kbd>M</kbd> Mapa</div>
+      </div>
+
+      <div class="h2-sector"><b></b><small></small></div>
+      <div class="h2-objetivo h2-panel">
+        <small>Restos de la flota</small>
+        <b class="h2-obj-cuenta"></b>
+        <div class="h2-obj-fila h2-obj-resto"><i>▲</i><span></span></div>
+        <div class="h2-obj-fila h2-obj-pad"><i>▲</i><span></span></div>
       </div>
 
       <div class="h2-exposicion h2-panel">
@@ -343,6 +365,30 @@ export function updateHud(s: HudState) {
   zona.textContent = s.zona ?? '';
   zona.classList.toggle('on', !!s.zona);
 
+  // Objetivo: cuántos restos llevas y hacia dónde queda lo siguiente.
+  const sector = q('.h2-sector');
+  if (s.sector?.nombre && sector.dataset.n !== s.sector.nombre) {
+    sector.dataset.n = s.sector.nombre;
+    sector.querySelector('b')!.textContent = s.sector.nombre;
+    sector.querySelector('small')!.textContent = s.sector.detalle;
+    sector.title = s.sector.regla;
+  }
+  const obj = q('.h2-objetivo');
+  obj.classList.toggle('on', !!s.objetivo);
+  if (s.objetivo) {
+    q('.h2-obj-cuenta').textContent = `${s.objetivo.recogidos} / ${s.objetivo.total}`;
+    const fila = (sel: string, r: { giro: number; metros: number } | undefined, texto: string) => {
+      const el = q(sel);
+      el.style.display = r ? '' : 'none';
+      if (!r) return;
+      (el.firstElementChild as HTMLElement).style.transform = `rotate(${r.giro.toFixed(2)}rad)`;
+      el.lastElementChild!.textContent = `${texto} · ${Math.round(r.metros)} m`;
+    };
+    fila('.h2-obj-resto', s.objetivo.resto, 'Resto');
+    fila('.h2-obj-pad', s.objetivo.plataforma, s.objetivo.listo ? 'Lanzar' : 'Astillero');
+    q('.h2-obj-pad').classList.toggle('listo', s.objetivo.listo);
+  }
+
   // Exposición y balizas.
   const e = Math.max(0, Math.min(1, s.exposicion ?? 0));
   const exp = q('.h2-exposicion');
@@ -407,6 +453,19 @@ export function updateHud(s: HudState) {
   }
   q('.h2-pista').classList.toggle('on', !s.locked && s.time < 30);
 
+  // Módulos: se repintan si cambian; la recarga solo mueve una variable.
+  const modulos = q('.h2-modulos'), mods = s.modulos ?? [];
+  const firma = mods.map((m) => m?.id ?? '').join();
+  if (modulos.dataset.f !== firma) {
+    modulos.dataset.f = firma;
+    modulos.innerHTML = mods.map((m, k) => (m
+      ? `<div class="h2-modulo"><i><b>${'GC'[k]}</b></i><span>${m.nombre}</span></div>` : '')).join('');
+  }
+  modulos.querySelectorAll<HTMLElement>('.h2-modulo').forEach((el, k) => {
+    const lista = mods.filter(Boolean)[k]?.lista ?? 0;
+    el.style.setProperty('--lista', String(Math.max(0, Math.min(1, lista))));
+    el.classList.toggle('lista', lista >= 0.999);
+  });
   const hab = q('.h2-habilidad');
   hab.classList.toggle('on', !!s.habilidad);
   if (s.habilidad) {
@@ -459,7 +518,7 @@ const RADIOS = [2.4, 3.4, 5.6, 2.8, 2.6, 4.4, 3];
 /**
  * Minimapa circular que gira con la cámara (arriba es hacia donde se mira),
  * con brújula, el terreno (lagos, montañas, barrios), el contenido del mapa,
- * los enemigos y el cohete.
+ * los enemigos y la plataforma.
  */
 export function drawMinimap(s: MinimapState) {
   const ctx = minimap;
@@ -561,7 +620,7 @@ export function drawMinimap(s: MinimapState) {
     ctx.beginPath(); ctx.ellipse(0, 9, 3.4, 2.6, 0, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
-  // El cohete, pegado al borde si queda fuera.
+  // La plataforma, pegada al borde si queda fuera.
   {
     const [rx, rz] = alBorde(...enMapa(s.pad.x, s.pad.z));
     ctx.save(); ctx.translate(rx, rz); ctx.rotate(-s.yaw);
@@ -640,6 +699,13 @@ export function icono(ctx: CanvasRenderingContext2D, tipo: string, hecho: boolea
     ctx.fillStyle = hecho ? '#6a6070' : '#8a9a52';
     ctx.fillRect(-6, -5, 12, 10); ctx.strokeRect(-6, -5, 12, 10);
     ctx.fillStyle = hecho ? '#4a4450' : '#4a4f34'; ctx.fillRect(-1.5, -5, 3, 10);
+  } else if (tipo === 'fragmento') {
+    // Resto de la flota: hexágono cian, lo que más se tiene que ver.
+    ctx.fillStyle = hecho ? '#6a6070' : '#5ee0ff';
+    ctx.beginPath();
+    for (let k = 0; k < 6; k++) ctx[k ? 'lineTo' : 'moveTo'](Math.cos((k / 6) * Math.PI * 2) * 8, Math.sin((k / 6) * Math.PI * 2) * 8);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    if (!hecho) { ctx.fillStyle = '#04121c'; ctx.fillRect(-1.5, -4.5, 3, 9); }
   } else if (tipo === 'racion') {
     // Ración: círculo verde con la cruz de curar.
     ctx.fillStyle = hecho ? '#6a6070' : '#4fd38a';

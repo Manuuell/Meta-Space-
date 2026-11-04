@@ -54,6 +54,7 @@ export interface TitleOptions {
   customHeroSpecial?: string;
   /** Abre el selector de personaje jugable (botón o tecla J). */
   onCharacter?: () => void;
+  onAstillero?: () => void;
   /** Personaje elegido, para su botón: nombre, rol, retrato y color. */
   character?: { nombre: string; rol: string; retrato: string; color: string };
 }
@@ -148,6 +149,7 @@ export type TitleAction =
   | 'help'
   | 'companion'
   | 'character'
+  | 'astillero'
   | 'close-dialog'
   | 'none';
 
@@ -172,6 +174,8 @@ export function resolveTitleAction(code: string, dialogOpen: boolean): TitleActi
       return 'companion';
     case 'KeyJ':
       return 'character';
+    case 'KeyB':
+      return 'astillero';
     case 'KeyH':
     case 'F1':
       return 'help';
@@ -265,7 +269,7 @@ export function renderTitleHtml(save: TitleSave, opts?: TitleOptions): string {
       <section class="ms-title__layout">
         <div class="ms-title__main">
           <div class="ms-wordmark">
-            <p>META SPACE · SECTOR DELTA</p>
+            <p>META SPACE · PLANETA META</p>
             <div class="ms-wordmark__line">
               <h1 id="ms-title-heading"><span>META</span>SPACE</h1>
               <strong>BETA</strong>
@@ -278,7 +282,7 @@ export function renderTitleHtml(save: TitleSave, opts?: TitleOptions): string {
             <button type="button" class="ms-tile ms-tile--play ms-play" data-action="play"
               aria-keyshortcuts="Enter" aria-describedby="ms-play-hint">
               <span class="ms-tile__icon" aria-hidden="true">${iconoMenu('jugar')}</span>
-              <span><b>Jugar</b><em id="ms-play-hint">Sector Delta · ${vm.minutes} min</em></span>
+              <span><b>Jugar</b><em id="ms-play-hint">Elige sector · ${vm.minutes} min</em></span>
             </button>
             <button type="button" class="ms-tile ms-tile--creator ms-creator" data-action="creator"
               aria-keyshortcuts="c">
@@ -290,6 +294,10 @@ export function renderTitleHtml(save: TitleSave, opts?: TitleOptions): string {
               <span class="ms-tile__icon" aria-hidden="true">${opts?.character
                 ? `<img src="${esc(opts.character.retrato)}" alt="">` : iconoMenu('operador')}</span>
               <span><b>${esc(opts?.character?.nombre ?? 'Especialista de ARES-IX')}</b><em>${esc(opts?.character?.rol ?? 'Especialista')} · J para cambiar de personaje</em></span>
+            </button>
+            <button type="button" class="ms-tile ms-tile--astillero ms-astillero" data-action="astillero" aria-keyshortcuts="b">
+              <span class="ms-tile__icon" aria-hidden="true">🚀</span>
+              <span><b>Astillero</b><em>Arma tu nave · B</em></span>
             </button>
             <button type="button" class="ms-tile ms-tile--help ms-howto" data-action="help"
               aria-keyshortcuts="h">
@@ -367,8 +375,10 @@ export function renderTitleHtml(save: TitleSave, opts?: TitleOptions): string {
 const HOW_TO_HTML = `
   <p class="ms-dialog-kicker">PROTOCOLO DE CAMPO 07</p>
   <h2 id="ms-dialog-heading" tabindex="-1">Sobrevive hasta la ventana de lanzamiento</h2>
-  <p class="ms-dialog-lead">Meta se congela bajo el velo de HELIOS y ADA es la única que puede firmar su apagado. Muévete, recupera chatarra y mantén a raya sus unidades durante <b>10 minutos</b>: al abrirse la ventana, el cohete sube la orden y el sol vuelve al sector.</p>
+  <p class="ms-dialog-lead">Meta se congela bajo el velo de HELIOS y ADA es la única que puede firmar su apagado. Sigue los haces de luz, recupera los restos de la flota y arma tu nave en la plataforma. Tienes <b>10 minutos</b>: si cruza el velo, sube la firma de ADA y el sol vuelve al sector.</p>
   <ul class="ms-howto-list">
+    <li><b>Restos de la flota</b><span>Los haces de luz. Quédate al lado 3 s: la brújula bajo el reloj te lleva al más cercano</span></li>
+    <li><b>Plataforma · F</b><span>Abre el astillero: fabrica piezas con restos y chatarra, monta tu nave y lánzala</span></li>
     <li><b>WASD / flechas</b><span>Mover al astronauta</span></li>
     <li><b>Espacio</b><span>Saltar (vale anticipado y justo al borde)</span></li>
     <li><b>Mantener Espacio</b><span>En el aire, vuela con la mochila cohete (si la tienes)</span></li>
@@ -377,6 +387,7 @@ const HOW_TO_HTML = `
     <li><b>A (en el menú)</b><span>Elegir compañero: dron, zorro, holograma de Noa, medusa, orbe o el perro</span></li>
     <li><b>K</b><span>En partida, pasar al siguiente compañero</span></li>
     <li><b>R</b><span>Activar la habilidad característica del personaje</span></li>
+    <li><b>G · C</b><span>Usar los módulos activos que encuentres por el sector</span></li>
     <li><b>J (en el menú)</b><span>Elegir personaje, arma inicial y pasiva</span></li>
     <li><b>Ratón · Q / E</b><span>Girar la cámara</span></li>
     <li><b>Herramientas</b><span>Se activan automáticamente</span></li>
@@ -388,7 +399,7 @@ const HOW_TO_HTML = `
     <li><b>Clic derecho · Z</b><span>Apuntar el Cañón solar (por encima del hombro, también al cielo)</span></li>
     <li><b>Clic izquierdo · X</b><span>Disparar el Cañón. Al dragón en el aire solo le llega esto; su cabeza es el punto débil</span></li>
     <li><b>Balizas</b><span>Destrúyelas antes de que atraigan más unidades</span></li>
-    <li><b>Jefes</b><span>Salen de los altares a los minutos 3, 5, 7 y 9 (tres gólems y el Cancerbero). Cuando pinten un círculo, una franja o un cono rojo, sal antes del golpe: te tiran lejos</span></li>
+    <li><b>Jefes</b><span>Duermen en los altares: desde los minutos 3, 5, 7 y 9 despiertan si te acercas (tres gólems y el Cancerbero). Cuando pinten un círculo, una franja o un cono rojo, sal antes del golpe: te tiran lejos</span></li>
     <li><b>Reliquias</b><span>Las llevan los Segadores: reúne las 7 pruebas para apagar el velo de todo Meta</span></li>
     <li><b>Esc</b><span>Pausar la misión</span></li>
   </ul>
@@ -605,6 +616,9 @@ export function showTitle(save: TitleSave, start: () => void, opts?: TitleOption
       case 'character':
         opts?.onCharacter?.();
         break;
+      case 'astillero':
+        opts?.onAstillero?.();
+        break;
       default:
         break;
     }
@@ -618,6 +632,7 @@ export function showTitle(save: TitleSave, start: () => void, opts?: TitleOption
   node.querySelector('.ms-howto')!.addEventListener('click', openHelp);
   node.querySelector('.ms-companion')!.addEventListener('click', () => opts?.onCompanion?.());
   node.querySelector('.ms-character')!.addEventListener('click', () => opts?.onCharacter?.());
+  node.querySelector('.ms-astillero')!.addEventListener('click', () => opts?.onAstillero?.());
   window.addEventListener('keydown', onKey);
   root.appendChild(node);
   (node.querySelector('.ms-play') as HTMLButtonElement).focus();

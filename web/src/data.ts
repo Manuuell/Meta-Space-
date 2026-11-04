@@ -3,7 +3,7 @@
 
 export type WeaponId = 'cortador' | 'pulso' | 'dron' | 'interferencia' | 'lanza' | 'arco' | 'mortero' | 'torreta' | 'martillo' | 'sello' | 'bumeran' | 'semillas';
 import type { PersonajeId } from './personajes.ts';
-export type EnemyId = 'recolector' | 'baliza' | 'segador' | 'saltador' | 'avispa' | 'caparazon' | 'sembrador';
+export type EnemyId = 'recolector' | 'baliza' | 'segador' | 'saltador' | 'avispa' | 'caparazon' | 'sembrador' | 'acechador' | 'bombardero' | 'coloso' | 'espectro';
 export type PassiveId = 'velocidad' | 'iman' | 'blindaje' | 'enfriamiento' | 'area' | 'reparacion';
 export type GearId = 'mochila' | 'tabla' | 'botas';
 

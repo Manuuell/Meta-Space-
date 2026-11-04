@@ -4,6 +4,67 @@ Estado a 03/11/2026. Pega este archivo al abrir el chat nuevo.
 
 ---
 
+## Cada partida, un sector distinto (04/11/2026)
+
+Antes el mapa salía siempre con la semilla 2026 y los objetos solo subían números.
+Ahora una semilla genera un sector entero, y los objetos cambian lo que hacen las
+armas.
+
+| Archivo | Qué contiene |
+|---|---|
+| `web/src/planetas.ts` | Biomas, climas, reglas, fauna y reparto. `generarPlaneta(semilla)` es puro y determinista. Para añadir un bioma, se añade aquí. |
+| `web/test/planetas.test.ts` | Variedad en 400 semillas, que nada pise la salida ni la plataforma, colores válidos. |
+| `web/src/ui-escaner.ts` | El escáner orbital: tres destinos para elegir, con el globo pintado píxel a píxel. |
+| `web/src/objetos.ts` | 80 objetos y 12 módulos, el botín por rareza y afinidad y lo que cobra el mercader. |
+| `web/test/objetos.test.ts` | Que no se repitan, que cada arma tenga los suyos, que el sector se note en el botín. |
+| `web/src/arsenal.ts` | Lo que hacen los objetos en juego: estados, reacciones al matar y al recibir daño, rastros. |
+| `web/src/modulos.ts` | Las habilidades activas de las teclas G y C. |
+
+`World.generar(planeta)` y `ContenidoJuego.reconstruir(planeta)` lo levantan todo de
+nuevo al aterrizar (unos 360 ms). Los lagos llevan el fluido del bioma: `acidoEn`
+sigue dando la profundidad, y lo que hace daño o frena sale de `world.fluido`.
+
+Para probar un sector concreto: `?semilla=123`, `?bioma=ceniza&clima=ventisca&regla=marea`
+(baja directo, sin escáner). Hay cuatro especies nuevas en `enemies-nuevos.ts`:
+acechador, bombardero, coloso y espectro. Cada sector trae solo algunas.
+
+El mercader usa el modelo del chatarrero con un nombre distinto en cada sector
+(ver `VIAJEROS`), para no chocar con Bruno. Las reacciones de los objetos no provocan
+otras: `enReaccion` lo corta. El equilibrio de todo esto está sin medir con jugadores.
+
+---
+
+## Armar tu nave (04/11/2026)
+
+El objetivo ya no es aguantar matando: es explorar, recuperar restos, armar una
+nave y lanzarla antes de diez minutos. Hubo un primer intento con un cohete vertical
+de acero; se descartó por una nave retrofuturista de carreras, de diseño propio.
+
+| Archivo | Qué contiene |
+|---|---|
+| `web/src/nave/piezas.ts` | Piezas, física, qué decide cada fallo y el hangar. Para equilibrar, se toca aquí. |
+| `web/test/nave.test.ts` | Comprueba que hace falta explorar y que hay varias naves que vuelan. Con cuatro fragmentos justos se vuela. |
+| `web/src/modelos/nave-modular.ts` | La nave 3D por ranuras, con pintura y cromo (`MeshStandard`), y `fusionarNave` para hornearla. |
+| `web/test/nave-modelo.test.ts` | Que cada pieza monta, cuántas toberas hay, el presupuesto de triángulos y que hornear no da la vuelta a las caras. |
+| `web/src/modelos/plataforma.ts` | El disco de lanzamiento y la torre de servicio. |
+| `web/src/modelos/fragmento.ts` | Los restos del mapa, con su haz de luz. |
+| `web/src/ui-astillero.ts` | El astillero, desde el menú (B) o en la plataforma (F). La nave ocupa la pantalla; cada pieza se prueba antes de pagarla. |
+| `web/astillero.html` | Solo en desarrollo: abre el astillero sin jugar. `?nave=media` o `?nave=tope` para ver piezas ya fabricadas. |
+| `web/src/lanzamiento.ts` | El vuelo con telemetría: chorros, tren, de morro, motores, suelta los tanques. Cada fallo tiene su momento. |
+
+Los restos son 12 (dos por ranura), cambian de sitio cada partida y nunca caen en
+ácido. Fabricar gasta fragmentos y chatarra (primero la de la partida, luego la del
+banco). Los jefes de altar ya no salen solos: despiertan si te acercas.
+
+La nave es lo único del juego con materiales físicos: por eso la escena lleva un
+mapa de entorno (`crearEntorno`), que no afecta a los materiales toon. En el mapa va
+horneada, 11 mallas y unos 18.000 triángulos, y cuesta un 3 % de lo que se dibuja.
+La plataforma se pisa (`heightAt`) y `lugarLibre` no coloca nada encima. Los `id` de
+las piezas siguen siendo los del cohete (`tanque-largo`, `aleta-rejilla`…) porque
+están en las partidas guardadas: se pueden renombrar los textos, no los `id`.
+
+---
+
 ## Conversaciones con IA (03/11/2026)
 
 Manteniendo V se habla en voz alta, sin parar la partida, con Iris, Tali o Lis si
@@ -68,7 +129,7 @@ Cómo hacer más cinemáticas, con la receta y las trampas conocidas:
 **Trama nueva: salvar el planeta Meta.** Meta se congela bajo el velo de
 sulfatos de HELIOS, la IA climática que nadie sabe apagar. ADA (el módulo de
 auditoría 7) es la única que puede firmar el apagado. Cada partida es un
-sector: si aguantas los 10 minutos, el cohete sube la orden y vuelve el sol a
+sector: si armas tu nave y la lanzas antes de 10 minutos, sube la orden y vuelve el sol a
 ese sector. Las 7 reliquias son las pruebas de la auditoría que apaga el velo
 de todo el planeta. Detalle en [lore-y-mecanicas.md](lore-y-mecanicas.md); la
 trama que recibe la IA vive en `web/src/guion.ts`.

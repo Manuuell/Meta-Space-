@@ -7,6 +7,8 @@ import { sfx } from './audio';
 import type { ObjetivoCombate } from './contenido-juego';
 import { crearInspector } from './modelos/inspector';
 import { ArmasPersonaje } from './armas-personaje';
+import { arsenalVacio, type Totales } from './objetos';
+import type { ObjetosEnJuego } from './arsenal';
 
 const MAX_SHOTS = 200;
 const SHOT_SPEED = 24;
@@ -118,6 +120,15 @@ export class Weapons {
   private extras: ObjetivoCombate[] = [];
   /** Rumbo del personaje: lo usan la llave y el disco. */
   rumbo = Math.PI;
+  /** Los objetos que llevas: cambian lo que hace cada herramienta (ver objetos.ts). */
+  fx: Totales = arsenalVacio().fx;
+  objetos: ObjetosEnJuego | null = null;
+  /** Dónde está el jugador: los cortes con retorno vuelven aquí. */
+  private jugadorX = 0;
+  private jugadorZ = 0;
+  /** Herramientas que van a repetir el disparo (Eco de HELIOS). */
+  private ecos: { id: WeaponId; t: number }[] = [];
+  private omitir = new Set<number>();
   /** Forjadas en la Fragua del Deshielo: su nivel máximo con la mejora de la forja. */
   private forjadas = new Map<WeaponId, WeaponLevel>();
   /** Segundos que le quedan a la Sobrecarga de red de Mara. */
@@ -138,6 +149,11 @@ export class Weapons {
   /** Último jefe o torre que atravesó: son grandes y el disparo pasa varios fotogramas dentro. */
   private shotLastExtra: (string | null)[] = new Array(MAX_SHOTS).fill(null);
   private shotSize = new Float32Array(MAX_SHOTS);
+  private shotRebotes = new Int8Array(MAX_SHOTS);
+  /** 1 si el disparo nace de otro: no se divide ni vuelve. */
+  private shotHija = new Uint8Array(MAX_SHOTS);
+  private shotVuelta = new Uint8Array(MAX_SHOTS);
+  private shotEstela = new Float32Array(MAX_SHOTS);
   private shotGlow: THREE.InstancedMesh;
   private shotCore: THREE.InstancedMesh;
 
@@ -269,11 +285,48 @@ export class Weapons {
     const before = Math.max(this.enemies.hp[i], 0);
     if (before <= 0) return;
     const crit = this.tirarCritico();
-    const scaled = amount * this.damageMul * crit;
+    const scaled = amount * this.damageMul * crit * (this.objetos?.multDano() ?? 1);
     this.enemies.hit(i, scaled, fromX, fromZ, knockback * (crit > 1 ? 1.6 : 1));
     this.damageDealt[id] += Math.min(scaled, before);
     this.eventos.dano?.(this.enemies.x[i], this.enemies.z[i], scaled, crit > 1);
     if (crit > 1) sfx('critico');
+    this.objetos?.alGolpear(id, i, scaled, crit > 1);
+  }
+
+  // ------------------------------------------- lo que usan objetos y módulos
+
+  /** Golpe de una reacción: cuenta para el arma, pero no dispara más reacciones. */
+  golpeSuelto(id: WeaponId, i: number, dano: number) {
+    const antes = Math.max(this.enemies.hp[i], 0);
+    if (antes <= 0) return;
+    this.enemies.hit(i, dano, this.enemies.x[i], this.enemies.z[i], 0);
+    this.damageDealt[id] += Math.min(dano, antes);
+    this.eventos.dano?.(this.enemies.x[i], this.enemies.z[i], dano, false);
+  }
+
+  /** Explosión de un objeto o un módulo. */
+  estallido(x: number, z: number, radio: number, dano: number, color = '#ff9a4a') {
+    this.danoHabilidad(x, z, radio, dano, 0.6);
+    this.spawnExplosion(x, z, radio, color);
+    sfx('boom');
+  }
+
+  rayoEntre(x0: number, z0: number, x1: number, z1: number) {
+    this.spawnRayo([[x0, z0], [x1, z1]]);
+    sfx('zap');
+  }
+
+  /** Esquirla o disparo que no sale de ninguna herramienta. */
+  disparoLibre(x: number, z: number, angulo: number, dano: number, alcance = 9) {
+    this.spawnShot(x, z, x + Math.cos(angulo), z + Math.sin(angulo), dano * this.damageMul, alcance, 0, 0.7, 1);
+  }
+
+  acortarRecargas(segundos: number) {
+    for (const [id, t] of this.timers) this.timers.set(id, Math.max(0, t - segundos));
+  }
+
+  sincronizarDrones() {
+    if (this.level('dron')) this.syncDrones();
   }
 
   private dealExtra(id: WeaponId, objetivo: ObjetivoCombate, amount: number) {
@@ -292,6 +345,8 @@ export class Weapons {
   }
 
   update(dt: number, px: number, pz: number, mods: Modifiers) {
+    this.jugadorX = px;
+    this.jugadorZ = pz;
     this.extras = this.objetivosExtra();
     this.sobrecarga = Math.max(0, this.sobrecarga - dt);
     for (const [id] of this.levels) {
@@ -299,10 +354,18 @@ export class Weapons {
       let t = (this.timers.get(id) ?? 0) - dt * (this.sobrecarga > 0 ? 1.4 : 1);
       if (t <= 0) {
         this.fire(id, px, pz, mods);
+        if (this.fx.eco && Math.random() < this.fx.eco) this.ecos.push({ id, t: 0.22 });
         t += s.cooldown * mods.cooldown;
         if (t < 0) t = 0;
       }
       this.timers.set(id, t);
+    }
+    for (let k = this.ecos.length - 1; k >= 0; k--) {
+      const e = this.ecos[k];
+      e.t -= dt;
+      if (e.t > 0) continue;
+      this.ecos.splice(k, 1);
+      if (this.level(e.id)) this.fire(e.id, px, pz, mods);
     }
     this.updateShots(dt);
     this.updatePulses(dt);
@@ -352,11 +415,26 @@ export class Weapons {
         break;
       }
       case 'pulso': {
-        const radius = s.area * mods.area;
-        this.area('pulso', px, pz, radius, d, 0.9);
-        this.spawnPulse(px, pz, radius, 0, 0, WEAPONS.pulso.color);
+        const radius = s.area * mods.area, fx = this.fx;
+        let cx = px, cz = pz;
+        if (fx.pulsoRemoto) {
+          const grupo = this.gruposDensos(px, pz, 17 * mods.area, radius, 1)[0];
+          if (grupo) {
+            cx = grupo.x;
+            cz = grupo.z;
+          }
+        }
+        if (fx.implosion) this.enemies.forEachInRadius(cx, cz, radius * 1.6, (i) => this.enemies.tirarDe(i, cx, cz, 8));
+        if (fx.pulsoCura) {
+          let alcanzados = 0;
+          this.enemies.forEachInRadius(cx, cz, radius, () => { alcanzados++; });
+          this.objetos?.curarPorPulso(Math.min(6, alcanzados * 0.5));
+        }
+        this.area('pulso', cx, cz, radius, d, fx.implosion ? 0 : 0.9);
+        this.spawnPulse(cx, cz, radius, 0, 0, WEAPONS.pulso.color);
         // Desde el nivel 5, un eco remata con el 40 % lo que queda cerca.
-        if (this.level('pulso') >= 5) this.spawnPulse(px, pz, radius * 0.7, 0.15, d * 0.4, '#b8f4ff');
+        if (this.level('pulso') >= 5) this.spawnPulse(cx, cz, radius * 0.7, 0.15, d * 0.4, '#b8f4ff');
+        for (let k = 0; k < fx.pulsoEco; k++) this.spawnPulse(cx, cz, radius, 0.3 + k * 0.3, d * 0.65, '#8fe8ff');
         sfx('pulse');
         break;
       }
@@ -376,17 +454,26 @@ export class Weapons {
           if (golpes) {
             drone.volar.fadeOut(0.05);
             drone.golpe.reset().fadeIn(0.05).play();
+            if (this.fx.dronEstalla) this.estallido(dx, dz, 2.3, d * 0.7);
+          }
+          if (this.fx.dronDispara) {
+            const blanco = this.enemies.nearest(dx, dz, 11);
+            if (blanco >= 0) this.spawnShot(dx, dz, this.enemies.x[blanco], this.enemies.z[blanco], d * 0.7, 11, 0, 0.7, 1);
           }
         }
         break;
       }
       case 'interferencia': {
         const radius = s.area * mods.area;
+        let dentro = 0;
         this.enemies.forEachInRadius(px, pz, radius, (i) => {
           this.deal('interferencia', i, d, px, pz, 0);
           this.enemies.slow[i] = s.slowTime ?? 0.6;
           this.enemies.slowFactor[i] = s.slowFactor ?? 0.5;
+          if (this.fx.auraTira) this.enemies.tirarDe(i, px, pz, 2.6);
+          dentro++;
         });
+        if (this.fx.auraCura) this.objetos?.curarPorPulso(Math.min(2, dentro * 0.25));
         for (const extra of this.extras) {
           if (extra.activo && Math.hypot(extra.x - px, extra.z - pz) <= radius + extra.radio) {
             this.dealExtra('interferencia', extra, d);
@@ -397,7 +484,12 @@ export class Weapons {
       case 'lanza': {
         const radio = s.area * mods.area;
         const blancos = this.gruposDensos(px, pz, ALCANCE_LANZA * mods.area, radio, s.count);
-        for (const b of blancos) this.spawnLanza(b.x, b.z, radio, d);
+        for (const b of blancos) {
+          this.spawnLanza(b.x, b.z, radio, d);
+          if (!this.fx.lanzaTriple) continue;
+          const a = Math.random() * Math.PI * 2;
+          for (const giro of [0, 2.1, 4.2]) this.spawnLanza(b.x + Math.cos(a + giro) * radio * 1.6, b.z + Math.sin(a + giro) * radio * 1.6, radio * 0.7, d * 0.7);
+        }
         break;
       }
       case 'arco': {
@@ -416,7 +508,12 @@ export class Weapons {
             break;
           }
           inicios.add(inicio);
-          this.cadena(inicio, px, pz, d, s.saltos ?? 3, s.area * mods.area, s.slowFactor ?? 0.25, s.slowTime ?? 0.35);
+          const saltos = (s.saltos ?? 3) + this.fx.arcoSaltos;
+          this.cadena(inicio, px, pz, d, saltos, s.area * mods.area, s.slowFactor ?? 0.25, s.slowTime ?? 0.35);
+          if (this.fx.arcoTormenta && Math.random() < this.fx.arcoTormenta) {
+            const otro = this.enemies.nearest(this.enemies.x[inicio], this.enemies.z[inicio], ALCANCE_ARCO * mods.area, inicios);
+            if (otro >= 0) this.cadena(otro, px, pz, d, saltos, s.area * mods.area, s.slowFactor ?? 0.25, s.slowTime ?? 0.35);
+          }
           lanzados++;
         }
         if (lanzados) sfx('zap');
@@ -440,7 +537,7 @@ export class Weapons {
 
   // ------------------------------------------------------------- Cortador
 
-  private spawnShot(px: number, pz: number, tx: number, tz: number, damage: number, range: number, pierce: number, size: number) {
+  private spawnShot(px: number, pz: number, tx: number, tz: number, damage: number, range: number, pierce: number, size: number, hija = 0) {
     if (this.shotCount >= MAX_SHOTS) return;
     const i = this.shotCount++;
     const dx = tx - px, dz = tz - pz;
@@ -455,6 +552,10 @@ export class Weapons {
     this.shotLastHit[i] = -1;
     this.shotLastExtra[i] = null;
     this.shotSize[i] = size;
+    this.shotHija[i] = hija;
+    this.shotRebotes[i] = hija ? 0 : this.fx.rebotes;
+    this.shotVuelta[i] = 0;
+    this.shotEstela[i] = 0;
   }
 
   /** Quita el proyectil i intercambiándolo con el último. */
@@ -468,6 +569,10 @@ export class Weapons {
     this.shotDamage[i] = this.shotDamage[last];
     this.shotPierce[i] = this.shotPierce[last];
     this.shotLastHit[i] = this.shotLastHit[last];
+    this.shotRebotes[i] = this.shotRebotes[last];
+    this.shotHija[i] = this.shotHija[last];
+    this.shotVuelta[i] = this.shotVuelta[last];
+    this.shotEstela[i] = this.shotEstela[last];
     this.shotLastExtra[i] = this.shotLastExtra[last];
     this.shotSize[i] = this.shotSize[last];
   }
@@ -526,9 +631,27 @@ export class Weapons {
 
   private updateShots(dt: number) {
     for (let i = 0; i < this.shotCount;) {
+      const fx = this.fx;
+      if (this.shotVuelta[i]) {
+        // De vuelta a las manos: apunta al jugador esté donde esté.
+        const dx = this.jugadorX - this.shotX[i], dz = this.jugadorZ - this.shotZ[i], d = Math.hypot(dx, dz) || 1;
+        this.shotVX[i] = (dx / d) * SHOT_SPEED * 1.2;
+        this.shotVZ[i] = (dz / d) * SHOT_SPEED * 1.2;
+        if (d < 1) this.shotLife[i] = 0;
+      } else if (fx.guiado && !this.shotHija[i]) {
+        const j = this.enemies.nearest(this.shotX[i], this.shotZ[i], 10);
+        if (j >= 0) this.virar(i, this.enemies.x[j], this.enemies.z[j], 9 * dt);
+      }
       this.shotX[i] += this.shotVX[i] * dt;
       this.shotZ[i] += this.shotVZ[i] * dt;
       this.shotLife[i] -= dt;
+      if (fx.estelaCorte && !this.shotHija[i]) {
+        this.shotEstela[i] -= dt;
+        if (this.shotEstela[i] <= 0) {
+          this.shotEstela[i] = 0.1;
+          this.objetos?.rastro(this.shotX[i], this.shotZ[i], 0.9, this.shotDamage[i] * 0.3, 1.3);
+        }
+      }
 
       let hit = -1;
       let hitExtra: ObjetivoCombate | null = null;
@@ -553,6 +676,13 @@ export class Weapons {
       }
 
       if (hit >= 0 || hitExtra) {
+        if (fx.division && !this.shotHija[i]) {
+          const a = Math.atan2(this.shotVZ[i], this.shotVX[i]);
+          for (const giro of [-0.55, 0.55]) {
+            this.spawnShot(this.shotX[i], this.shotZ[i], this.shotX[i] + Math.cos(a + giro), this.shotZ[i] + Math.sin(a + giro), this.shotDamage[i] * 0.55, 8, 0, 0.6, 1);
+            this.shotLastHit[this.shotCount - 1] = hit;
+          }
+        }
         // Perfora: sigue volando y no vuelve a golpear a lo mismo.
         if (this.shotPierce[i] > 0) {
           this.shotPierce[i]--;
@@ -561,11 +691,27 @@ export class Weapons {
           i++;
           continue;
         }
-        this.killShot(i);
+        // Rebota hacia el siguiente enemigo más cercano.
+        if (this.shotRebotes[i] > 0 && hit >= 0) {
+          this.omitir.clear();
+          this.omitir.add(hit);
+          const sig = this.enemies.nearest(this.shotX[i], this.shotZ[i], 10, this.omitir);
+          if (sig >= 0) {
+            this.shotRebotes[i]--;
+            this.shotLastHit[i] = hit;
+            this.shotLife[i] = Math.max(this.shotLife[i], 0.55);
+            this.virar(i, this.enemies.x[sig], this.enemies.z[sig], Math.PI);
+            i++;
+            continue;
+          }
+        }
+        if (!this.volver(i)) this.killShot(i);
+        else i++;
         continue;
       }
       if (this.shotLife[i] <= 0) {
-        this.killShot(i);
+        if (!this.volver(i)) this.killShot(i);
+        else i++;
         continue;
       }
       i++;
@@ -584,6 +730,25 @@ export class Weapons {
     this.shotCore.count = this.shotCount;
     this.shotGlow.instanceMatrix.needsUpdate = true;
     this.shotCore.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Hilo de retorno: el corte da media vuelta una sola vez. */
+  private volver(i: number) {
+    if (!this.fx.retorno || this.shotVuelta[i] || this.shotHija[i]) return false;
+    this.shotVuelta[i] = 1;
+    this.shotLastHit[i] = -1;
+    this.shotLife[i] = 1.4;
+    return true;
+  }
+
+  /** Gira la velocidad del disparo i hacia (tx, tz), como mucho `giro` radianes. */
+  private virar(i: number, tx: number, tz: number, giro: number) {
+    const v = Math.hypot(this.shotVX[i], this.shotVZ[i]);
+    const a = Math.atan2(this.shotVZ[i], this.shotVX[i]), b = Math.atan2(tz - this.shotZ[i], tx - this.shotX[i]);
+    const delta = Math.atan2(Math.sin(b - a), Math.cos(b - a));
+    const nuevo = a + Math.max(-giro, Math.min(giro, delta));
+    this.shotVX[i] = Math.cos(nuevo) * v;
+    this.shotVZ[i] = Math.sin(nuevo) * v;
   }
 
   // ---------------------------------------------------------------- Pulso
@@ -706,6 +871,8 @@ export class Weapons {
         (l.aviso.material as THREE.MeshBasicMaterial).opacity = 0.55 + 0.4 * Math.abs(Math.sin(l.t * 18));
         if (l.t < AVISO_LANZA) continue;
         this.area('lanza', l.x, l.z, l.radio, l.dano, 0.7);
+        if (this.fx.lanzaAturde) this.enemies.forEachInRadius(l.x, l.z, l.radio, (j) => { this.enemies.aturdido[j] = Math.max(this.enemies.aturdido[j], 1); });
+        if (this.fx.lanzaCharco) this.objetos?.rastro(l.x, l.z, l.radio * 0.9, l.dano * 0.2, 3);
         const rayo = new THREE.Mesh(this.rayoGeometry, new THREE.MeshBasicMaterial({
           color: '#fff6c8', transparent: true, opacity: 0.95, depthWrite: false,
           blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
@@ -782,9 +949,22 @@ export class Weapons {
       this.scene.remove(b.mesh);
       b.mesh.traverse((o) => { if (o instanceof THREE.Mesh) (o.material as THREE.Material).dispose(); });
       this.bombas.splice(i, 1);
-      this.area('mortero', b.x1, b.z1, b.radio, b.dano, 0.9);
-      this.spawnExplosion(b.x1, b.z1, b.radio, WEAPONS.mortero.color);
-      this.spawnCharco(b.x1, b.z1, b.radio * 0.85, b.dano * DANO_CHARCO, b.charco);
+      const fx = this.fx, { x1, z1, radio } = b;
+      if (fx.morteroVacio) this.enemies.forEachInRadius(x1, z1, radio * 2.2, (j) => this.enemies.tirarDe(j, x1, z1, 11));
+      this.area('mortero', x1, z1, radio, b.dano, fx.morteroVacio ? 0 : 0.9);
+      this.spawnExplosion(x1, z1, radio, fx.morteroHielo ? '#a8ecff' : WEAPONS.mortero.color);
+      if (fx.morteroHielo) {
+        this.enemies.forEachInRadius(x1, z1, radio, (j) => this.enemies.congelar(j, 1.4));
+        this.objetos?.rastro(x1, z1, radio * 0.85, 0, b.charco || 1.5, true);
+      } else if (b.charco > 0) {
+        this.spawnCharco(x1, z1, radio * 0.85, b.dano * DANO_CHARCO, b.charco);
+      }
+      if (fx.morteroRacimo && b.charco > 0) {
+        const a = Math.random() * Math.PI * 2;
+        for (const giro of [0, 2.1, 4.2]) {
+          this.spawnBomba(x1, z1, x1 + Math.cos(a + giro) * radio * 1.7, z1 + Math.sin(a + giro) * radio * 1.7, b.dano * 0.5, radio * 0.65, 0);
+        }
+      }
       this.eventos.sacudida?.();
       sfx('boom');
     }
@@ -932,7 +1112,7 @@ export class Weapons {
   // ----------------------------------------------------------- Dron y aura
 
   private syncDrones() {
-    const want = this.stats('dron').count;
+    const want = this.stats('dron').count + this.fx.dronExtra;
     while (this.drones.length < want) {
       const modelo = crearInspector();
       const mixer = new THREE.AnimationMixer(modelo.raiz);

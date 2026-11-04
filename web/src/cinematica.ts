@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PALETA, barril, caja, conDetalle, cono, pieza, toon, toro } from './modelos/kit.ts';
+import { PALETA, barril, conDetalle, pieza, toon, toro } from './modelos/kit.ts';
 import type { Modelo } from './modelos/kit.ts';
 import { crearAdaNoa, crearAdaOrbe } from './modelos/ada.ts';
 import { crearAstronauta } from './modelos/astronauta.ts';
@@ -13,6 +13,7 @@ import { crearDragon } from './modelos/dragon.ts';
 import { crearGolem } from './modelos/golem.ts';
 import { crearHeraldo } from './modelos/heraldo.ts';
 import { crearNave } from './modelos/nave.ts';
+import { ALTO_CASCO, crearEntorno, crearNaveModular, fusionarNave } from './modelos/nave-modular.ts';
 import { crearSabueso } from './modelos/sabueso.ts';
 import { azar, cielo, monotona, planeta, punto, sonar, soplido, suave, tono, tramo, velo } from './intro.ts';
 import { tocarBanda } from './musica.ts';
@@ -32,7 +33,7 @@ import type { Plano, Rotulo } from './cinematica-guion.ts';
 // a apagar el velo; HELIOS destruyó la flota, bajó con sus colosos a las ciudades
 // y rompió Ares; de Ares queda tu nave; solo ADA puede firmar el apagado y Noa
 // Herrera la escondió en Meta; y así se juega: diez minutos hasta que despega el
-// cohete con su firma y vuelve el sol, y siete pruebas para apagarlo del todo.
+// nave con su firma y vuelve el sol, y siete pruebas para apagarlo del todo.
 // Como en la intro, cada fotograma sale solo del
 // tiempo `t`: disparos, explosiones, esquirlas y chispas se recalculan desde
 // el guion, así que saltar a cualquier segundo es exacto y las capturas se
@@ -229,7 +230,7 @@ function guionDeFuego() {
 
   // Y Ares.
   estallidos.push({ plano: 'caida', t: ESTALLA, pos: CENTRO_CAIDA.clone(), tam: 30 });
-  // En la misión: el despegue del cohete y el velo que se rompe cuando lo atraviesa.
+  // En la misión: el despegue de la nave y el velo que se rompe cuando lo atraviesa.
   estallidos.push({ plano: 'mision', t: VENTANA, pos: new THREE.Vector3(COHETE.x, 2, COHETE.z), tam: 6 });
   estallidos.push({ plano: 'mision', t: VUELVE_EL_SOL, pos: new THREE.Vector3(COHETE.x, 400, COHETE.z), tam: 30 });
   // Al volver el sol revientan las máquinas de la horda.
@@ -239,7 +240,7 @@ function guionDeFuego() {
   return { rayos, estallidos, misiles, impactos, restos };
 }
 
-/** Donde está el cohete de la misión, en el horizonte del sector. */
+/** Donde está la nave de la misión, en el horizonte del sector. */
 const COHETE = { x: 26, z: -110 };
 
 /** Donde está Ares cuando se rompe. */
@@ -532,20 +533,25 @@ function materialPlaneta(p: PaletaPlaneta): THREE.ShaderMaterial {
   });
 }
 
-/** El cohete del sector, que sube la orden de apagado. `nave` es lo que despega; la plataforma se queda. */
+/**
+ * La nave que el jugador podría armar, en su plataforma: es la que sube la orden de
+ * apagado. `nave` es lo que despega; `raiz`, con la plataforma, se queda.
+ */
 function crearCohete(): { raiz: THREE.Group; nave: THREE.Group } {
   const raiz = new THREE.Group(), nave = new THREE.Group();
   raiz.add(nave);
-  const casco = toon(PALETA.traje), naranja = toon(PALETA.naranja);
-  pieza(raiz, caja(7, 0.8, 7, 0.2), toon('#8a8f9c'), 0, 0.4, 0);
-  pieza(nave, barril(1.0, 1.15, 8, 0.3), casco, 0, 5.2, 0);
-  pieza(nave, toro(1.08, 0.12), naranja, 0, 7.2, 0);
-  pieza(nave, cono(1.0, 2.6), naranja, 0, 10.5, 0);
-  pieza(nave, barril(0.75, 0.95, 0.6, 0.1), toon(PALETA.oscuro), 0, 1.0, 0);
-  for (let k = 0; k < 3; k++) {
-    const a = (k / 3) * TAU;
-    pieza(nave, caja(0.2, 2.2, 1.5, 0.06), naranja, Math.sin(a) * 1.25, 2.2, Math.cos(a) * 1.25).rotation.y = a;
-  }
+  pieza(raiz, barril(7.4, 7.7, 0.8, 0.2), toon('#8a8f9c'), 0, 0.4, 0);
+  pieza(raiz, toro(7, 0.08), toon(PALETA.naranja), 0, 0.82, 0);
+  const modelo = crearNaveModular({
+    motores: 'motor-nueve', propulsor: 'tanque-largo', aletas: 'aleta-rejilla', casco: 'casco-acero', escudo: 'escudo-parches', proa: 'proa-antena',
+  });
+  const cuerpo = new THREE.Group();
+  fusionarNave(modelo.raiz, cuerpo);
+  cuerpo.position.y = -ALTO_CASCO;
+  nave.add(cuerpo);
+  nave.scale.setScalar(0.32);
+  nave.rotation.order = 'YXZ';
+  nave.rotation.y = 1.15;
   return { raiz, nave };
 }
 
@@ -901,6 +907,7 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   const post = crearPost(renderer);
   const escena = new THREE.Scene();
+  escena.environment = crearEntorno(renderer, true); // lo que refleja la nave de la misión
   const espacio = cielo(), incendio = cieloIncendio();
   const niebla = new THREE.Fog('#4a1726', 45, 230);
   const camara = new THREE.PerspectiveCamera(50, 1, 0.1, 3000);
@@ -1162,7 +1169,7 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
       void main() {
         vec3 dir = normalize(vDir);
         float h = clamp(dir.y, 0.0, 1.0);
-        // El sol entra por donde el cohete rompió el velo, y el borde arde al abrirse.
+        // El sol entra por donde la nave rompió el velo, y el borde arde al abrirse.
         float d = acos(clamp(dot(dir, centro), -1.0, 1.0));
         float abre = 1.0 - smoothstep(agujero - 0.28, agujero, d);
         vec3 alto = mix(vec3(0.17, 0.04, 0.08), vec3(0.3, 0.5, 0.82), abre);
@@ -1971,16 +1978,18 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
       const apaga = VUELVE_EL_SOL + 0.3;
       posar(balizaHelios, t < apaga ? ['Triangular', 1, t] : ['Derrota', 1, t - apaga, false]);
 
-      // El cohete despega al abrirse la ventana y atraviesa el velo.
+      // La nave despega al abrirse la ventana y atraviesa el velo.
       const vuelo = Math.max(0, t - VENTANA), subida = VUELVE_EL_SOL - VENTANA;
       const alto = (s: number) => 150 * (s / subida) ** 2;
       cohete.raiz.position.set(COHETE.x, 0, COHETE.z);
       cohete.raiz.scale.setScalar(2.6);
-      cohete.nave.position.y = alto(Math.min(vuelo, subida));
+      // Se eleva de la plataforma y se pone de morro, como en el lanzamiento de verdad.
+      cohete.nave.position.y = 2 + alto(Math.min(vuelo, subida));
+      cohete.nave.rotation.x = -1.42 * tramo(vuelo, 0, 1.1);
       cohete.nave.visible = vuelo < subida;
       if (vuelo > 0 && vuelo < subida) {
         ver(llamaCohete);
-        llamaCohete.position.set(COHETE.x, alto(vuelo) * 2.6 + 1.5, COHETE.z);
+        llamaCohete.position.set(COHETE.x, alto(vuelo) * 2.6 - 6, COHETE.z); // en la popa, no tapando la nave
         llamaCohete.scale.setScalar(26 * (0.8 + 0.2 * Math.sin(t * 40)));
       }
       if (vuelo > 0) pintarDespegue(vuelo, subida, alto);
@@ -2010,7 +2019,7 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
         }
       }
       nieve(1 - sol);
-      // La cámara mira a la horda, sigue al cohete hacia el velo y baja con el sol.
+      // La cámara mira a la horda, sigue a la nave hacia el velo y baja con el sol.
       const sigue = tramo(tl, 5.2, 6.0) * (1 - tramo(tl, 8.0, 9.2));
       vB.set(0, 1.6, -10).lerp(vC.set(COHETE.x, Math.max(25, alto(Math.min(vuelo, subida)) * 2.6), COHETE.z), sigue);
       encuadrar(0.6 * Math.sin(tl * 0.5), 2 + 0.6 * tramo(tl, 8, 9.6), 2.5 + 1.5 * tramo(tl, 8, 11), vB.x, vB.y, vB.z);
@@ -2234,7 +2243,7 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
     }
   }
 
-  /** El humo del despegue: nube en la plataforma y columna detrás del cohete. */
+  /** El humo del despegue: nube en la plataforma y columna detrás de la nave. */
   function pintarDespegue(vuelo: number, subida: number, alto: (s: number) => number) {
     for (let k = 0; k < 70; k++) {
       const a = azar(k * 3 + 1) * TAU, r = 3 + (1 - Math.exp(-vuelo * 1.2)) * (20 + azar(k * 3 + 2) * 18);

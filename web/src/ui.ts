@@ -204,6 +204,8 @@ export interface Results {
   time: number;
   level: number;
   kills: number;
+  /** Nombre del sector de esta partida. */
+  sector?: string;
   killsByType: Record<EnemyId, number>;
   newTypes: EnemyId[];
   damage: Record<WeaponId, number>;
@@ -215,6 +217,9 @@ export interface Results {
   bank: number;
   codexSize: number;
   hpLost: number;
+  causa?: 'caido' | 'ventana' | 'vuelo';
+  vuelo?: { titulo: string; motivo: string; estrellas: number; exito: boolean };
+  restos?: number;
   weapons: [WeaponId, number][];
 }
 
@@ -263,11 +268,13 @@ export function showResults(r: Results, again: () => void, menu: () => void) {
         <header class="banner ${r.victory ? 'win' : 'lose'}">
           <div class="avatar">${ASTRONAUT_ICON}<span>Nv. ${r.level}</span></div>
           <div class="banner-text">
-            <small>SECTOR DELTA · ZONA 1 · NORMAL</small>
-            <h1>${r.victory ? '¡Velo abierto!' : '¡Señal perdida!'}</h1>
+            <small>${r.sector ?? 'Sector de Meta'}</small>
+            <h1>${r.victory ? '¡Velo abierto!' : r.causa === 'vuelo' ? `¡${r.vuelo?.titulo ?? 'Fallo en vuelo'}!` : r.causa === 'ventana' ? '¡Ventana cerrada!' : '¡Señal perdida!'}</h1>
             <p>${r.victory
-              ? 'El cohete ha subido la orden de apagado: el sol vuelve al Sector Delta.'
-              : 'Los Recolectores han alcanzado a ADA. El velo sigue cerrado.'}</p>
+              ? `Tu nave subió la firma de ADA: el sol vuelve a ${r.sector ?? 'este sector'}. ${'★'.repeat(r.vuelo?.estrellas ?? 0)}`
+              : r.causa === 'vuelo' ? `${r.vuelo?.motivo ?? ''} Lo recuperado sigue en el almacén.`
+                : r.causa === 'ventana' ? 'Se acabaron los diez minutos: HELIOS cerró la ventana. Lo recuperado sigue en el almacén.'
+                  : 'Las unidades de HELIOS han alcanzado a ADA. Lo recuperado sigue en el almacén.'}</p>
             ${r.codexSize >= RELICS.length
               ? '<p><b>Auditoría completa:</b> HELIOS recibe la orden de apagado y Meta vuelve a ver el sol.</p>'
               : `<p>Auditoría de HELIOS: <b>${r.codexSize}/${RELICS.length}</b> pruebas para apagar el velo de todo Meta.</p>`}
@@ -282,7 +289,7 @@ export function showResults(r: Results, again: () => void, menu: () => void) {
 
         <div class="cols">
           <section class="panel orange">
-            <h3>Registro <small>Sector Delta</small></h3>
+            <h3>Registro <small>Todos los sectores</small></h3>
             <div class="record ${r.newRecord ? 'new' : ''}">
               <small>${r.newRecord ? '¡NUEVO RÉCORD EN ESTE SECTOR!' : 'MEJOR MARCA'}</small>
               <b>${compact(r.newRecord ? r.score : r.best.score)}</b>
@@ -301,8 +308,8 @@ export function showResults(r: Results, again: () => void, menu: () => void) {
             <div class="mini">
               <div><b>${r.level}</b><small>NIVEL</small></div>
               <div><b>${compact(r.scrap)}</b><small>CHATARRA</small></div>
+              <div><b>${r.restos ?? 0}</b><small>RESTOS</small></div>
               <div><b>${r.relics.length}</b><small>RELIQUIAS</small></div>
-              <div><b>${Math.round(r.hpLost)}</b><small>DAÑO RECIBIDO</small></div>
             </div>
             <h4>Daño por herramienta</h4>
             ${damageRows || '<p class="muted">Ni un arañazo.</p>'}

@@ -4,6 +4,10 @@ import {
   PALETA, barril, brillo, caja, capsula, conDetalle, contorno, esfera, pieza, punta, toon, toro,
 } from './modelos/kit.ts';
 import { crearNavePosada, ESCALA_POSADA } from './modelos/nave.ts';
+import { ALTO_PLATAFORMA, RADIO_PLATAFORMA, TORRE, crearPlataforma } from './modelos/plataforma.ts';
+import { crearNaveModular, fusionarNave } from './modelos/nave-modular.ts';
+import type { Diseno } from './nave/piezas.ts';
+import { PLANETA_INICIAL, type Fluido, type Planeta, type Relieve } from './planetas.ts';
 
 // El mundo de Meta Space: el sector donde se juega cada partida.
 //
@@ -15,23 +19,14 @@ import { crearNavePosada, ESCALA_POSADA } from './modelos/nave.ts';
 // Todo lo que se ve está hecho con las piezas y los materiales toon del kit,
 // así el mapa y los personajes son del mismo dibujo.
 //
-// El sector (260 × 260 m con la arena por defecto de 130):
-// - Llanura de lomas y dunas teñidas por el velo, con la explanada de salida
-//   en el centro y la del cohete al norte.
-// - Tres macizos de montañas con las cumbres heladas (Meta se congela) y una
-//   muralla de picos en el borde que cierra el mapa. El corazón de cada
-//   montaña no se puede cruzar.
-// - Dos mares de ácido púrpura de HELIOS, con cristales en la orilla,
-//   burbujas y vapor. Se puede vadear (por las rodillas), pero hace daño.
-// - Tres barrios en ruinas de las ciudades de Meta (muros rotos, columnas,
-//   torres caídas, cúpulas) con restos de máquinas de HELIOS.
+// El sector mide 260 × 260 m con la arena por defecto de 130, y `generar` lo
+// reconstruye entero para cada partida a partir de un Planeta (ver planetas.ts):
+// relieve, macizos, lagos del fluido que toque, barrios en ruinas, decorado, cielo,
+// clima y carta. Lo único fijo es la explanada de salida, la nave posada y la
+// plataforma al norte. Solo se regeneran geometrías: los materiales del kit se
+// comparten, y los de cada sector se liberan al cambiar.
 
-/** El velo de sulfatos: horizonte anaranjado que oscurece hacia arriba. */
-export const HORIZON = new THREE.Color('#df8a6a');
-const MEDIO = new THREE.Color('#a8445a');
-const CENIT = new THREE.Color('#3a1530');
-
-/** Altura de la superficie del ácido. */
+/** Altura de la superficie de los lagos, sea cual sea el fluido. */
 export const NIVEL_ACIDO = -1.6;
 /**
  * La nave de ARES-IX, posada a la izquierda de la salida (13 m): se ve al
@@ -40,9 +35,6 @@ export const NIVEL_ACIDO = -1.6;
 export const NAVE = { x: -9, z: -10 };
 /** Giro de la nave para que su costado izquierdo (la escotilla) mire a la salida. */
 const GIRO_NAVE = Math.atan2(NAVE.z, -NAVE.x);
-
-/** Cuánto se hunde quien anda por el ácido. */
-const VADEO = 0.7;
 
 /** Caja de colisión alineada con los ejes, en el plano XZ. */
 export interface Block {
@@ -69,29 +61,8 @@ interface Circulo {
 export interface OpcionesMundo {
   /** Medio lado de la zona jugable, en metros (el juego usa RUN.arena). */
   arena?: number;
-  semilla?: number;
+  planeta?: Planeta;
 }
-
-// Macizos de montañas: posición en fracciones de la arena y sus picos
-// [dx, dz, radio, altura] (dx, dz y radio también en fracciones).
-const MACIZOS = [
-  { nombre: 'Sierra de Escarcha', x: -0.56, z: -0.28, picos: [[0, 0, 0.2, 46], [0.15, 0.1, 0.13, 30], [-0.13, 0.12, 0.13, 28], [0.05, -0.16, 0.12, 24], [-0.16, -0.08, 0.1, 20]] },
-  { nombre: 'Picos del Velo', x: 0.6, z: 0.12, picos: [[0, 0, 0.18, 40], [-0.12, 0.13, 0.13, 26], [0.09, -0.13, 0.11, 22]] },
-  { nombre: 'Colmillo', x: 0.06, z: 0.66, picos: [[0, 0, 0.13, 34], [0.13, 0.05, 0.09, 20]] },
-] as const;
-
-// Mares de ácido: centro y radio en fracciones de la arena.
-const LAGOS = [
-  { nombre: 'Mar de HELIOS', x: -0.38, z: 0.47, r: 0.25 },
-  { nombre: 'Charca del Este', x: 0.48, z: -0.44, r: 0.13 },
-] as const;
-
-// Barrios en ruinas: centro y medio tamaño en fracciones de la arena.
-const BARRIOS = [
-  { nombre: 'Puerto viejo', x: 0.3, z: -0.2, w: 0.16, d: 0.13 },
-  { nombre: 'Barrio del Observatorio', x: -0.25, z: -0.64, w: 0.13, d: 0.1 },
-  { nombre: 'Mercado de Meridia', x: 0.52, z: 0.62, w: 0.13, d: 0.12 },
-] as const;
 
 // ------------------------------------------------------------------ ruido
 
@@ -116,6 +87,25 @@ function fbm(x: number, z: number) {
 function crestas(x: number, z: number) {
   const r = (v: number) => 1 - Math.abs(v * 2 - 1);
   return r(noise(x, z)) * 0.6 + r(noise(x * 2.3, z * 2.3)) * 0.3 + r(noise(x * 5.1, z * 5.1)) * 0.1;
+}
+
+/** Lo que cada estilo de relieve añade a la llanura. */
+function formaRelieve(r: Relieve, x: number, z: number, h: number, a: number) {
+  if (r.estilo === 'dunas') {
+    return (Math.abs(Math.sin((x + z * 0.45) * 0.055 + fbm((x + r.ox) * 0.02, (z + r.oz) * 0.02) * 5)) - 0.5) * 2.4;
+  }
+  if (r.estilo === 'mesetas') {
+    const e = 2.8, t = h / e, b = Math.floor(t);
+    return (b + smoothstep(0.42, 0.62, t - b)) * e - h;
+  }
+  let extra = 0;
+  for (const c of r.crateres) {
+    const d = Math.hypot(x - c.x * a, z - c.z * a) / (c.r * a);
+    if (d > 1.5) continue;
+    // Cuenco por dentro y un reborde levantado por fuera.
+    extra += d < 1 ? -c.hondo * (1 - d * d) + 1.3 * d * d : 1.3 * smoothstep(1.5, 1, d);
+  }
+  return extra;
 }
 
 function smoothstep(a: number, b: number, v: number) {
@@ -161,10 +151,19 @@ function fusionar(grupo: THREE.Object3D, destino: THREE.Object3D, sombras = true
 // ------------------------------------------------------------------ mundo
 
 const CELL = 8;
+/** Hacia dónde mira la nave en la plataforma: de lado a quien llega por el sur. */
+const GIRO_PLATAFORMA = 2.45;
 
 export class World {
   readonly blocks: Block[] = [];
   readonly sun: THREE.DirectionalLight;
+  /** El sector que hay ahora mismo. */
+  planeta: Planeta = PLANETA_INICIAL;
+  /** Todo lo que se tira al cambiar de sector. */
+  private raiz = new THREE.Group();
+  private propios: { dispose(): void }[] = [];
+  private ambiente: THREE.HemisphereLight;
+  private clima: Particulas | null = null;
   readonly padPosition: THREE.Vector3;
   /** Dónde está la nave posada y hacia dónde mira (para el minimapa). */
   readonly nave = { x: NAVE.x, z: NAVE.z, giro: GIRO_NAVE };
@@ -173,6 +172,8 @@ export class World {
   readonly lugares: { tipo: 'montaña' | 'lago' | 'barrio'; nombre: string; x: number; z: number; r: number }[] = [];
   /** Cristales, árboles, rocas y tecnología de HELIOS que atraen a Bruno. */
   readonly interes: PuntoInteres[] = [];
+  /** La nave en la plataforma: cambia cuando el jugador la modifica. */
+  private naveMontada = new THREE.Group();
 
   private circulos: Circulo[] = [];
   private grid = new Map<number, Block[]>();
@@ -180,7 +181,7 @@ export class World {
   private half: number;
   private side: number;
   private heights: Float32Array;
-  private sky: THREE.Group;
+  private sky = new THREE.Group();
   private tiempo = 0;
   private acido: THREE.ShaderMaterial | null = null;
   private burbujas: { malla: THREE.InstancedMesh; x: Float32Array; z: Float32Array; fase: Float32Array } | null = null;
@@ -199,16 +200,9 @@ export class World {
     this.side = Math.round(this.half * 2) + 1;
     this.heights = new Float32Array(this.side * this.side);
     this.padPosition = new THREE.Vector3(0, 0, -0.7 * a);
-    for (const m of MACIZOS) this.lugares.push({ tipo: 'montaña', nombre: m.nombre, x: m.x * a, z: m.z * a, r: m.picos[0][2] * a * 1.6 });
-    for (const l of LAGOS) this.lugares.push({ tipo: 'lago', nombre: l.nombre, x: l.x * a, z: l.z * a, r: l.r * a });
-    for (const b of BARRIOS) this.lugares.push({ tipo: 'barrio', nombre: b.nombre, x: b.x * a, z: b.z * a, r: Math.max(b.w, b.d) * a });
-
-    scene.background = HORIZON;
-    scene.fog = new THREE.Fog(HORIZON, 70, 330);
-    this.muestrear();
 
     // Luz cálida del sol bajo y sombras frías violetas: contraste de dibujo.
-    scene.add(new THREE.HemisphereLight('#ffd0b4', '#3a2a5e', 1.5));
+    this.ambiente = new THREE.HemisphereLight('#ffd0b4', '#3a2a5e', 1.5);
     this.sun = new THREE.DirectionalLight('#ffcfa0', 2.6);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
@@ -219,22 +213,74 @@ export class World {
     cam.far = 180;
     this.sun.shadow.bias = -0.0006;
     this.sun.shadow.normalBias = 0.04;
-    scene.add(this.sun, this.sun.target);
+    scene.add(this.ambiente, this.sun, this.sun.target, this.raiz, this.naveMontada);
+    this.navePosada();
+    this.generar(opciones.planeta ?? PLANETA_INICIAL);
+  }
 
-    const semilla = opciones.semilla ?? 2026;
+  /** Tira el sector anterior y levanta este. */
+  generar(p: Planeta) {
+    this.vaciar();
+    this.planeta = p;
+    const b = p.bioma, a = this.arena;
+    for (const m of p.relieve.macizos) this.lugares.push({ tipo: 'montaña', nombre: m.nombre, x: m.x * a, z: m.z * a, r: m.picos[0].r * a });
+    for (const l of p.relieve.lagos) this.lugares.push({ tipo: 'lago', nombre: l.nombre, x: l.x * a, z: l.z * a, r: l.r * a });
+    for (const q of p.relieve.barrios) this.lugares.push({ tipo: 'barrio', nombre: q.nombre, x: q.x * a, z: q.z * a, r: Math.max(q.w, q.d) * a });
+
+    const horizonte = new THREE.Color(b.cielo.horizonte);
+    this.scene.background = horizonte;
+    this.scene.fog = new THREE.Fog(horizonte, b.niebla[0] * p.clima.vista, b.niebla[1] * p.clima.vista);
+    this.ambiente.color.set(b.luz.cielo);
+    this.ambiente.groundColor.set(b.luz.suelo);
+    this.ambiente.intensity = b.luz.ambiente;
+    this.sun.color.set(b.luz.sol);
+    this.sun.intensity = b.luz.fuerza * p.clima.luz;
+    this.scene.environmentIntensity = 0.8 * p.clima.luz;
+
+    this.muestrear();
+    const s = p.semilla >>> 8;
     this.sky = this.cielo();
     this.terreno();
-    this.mares(semilla);
+    this.mares(s + 1);
     // El sitio de la nave se reserva antes que ruinas y decorado, para que no
     // salgan rocas ni árboles debajo.
     this.reservarNave();
-    this.montanas(semilla + 1);
-    this.ruinas(semilla + 2);
-    this.decorado(semilla + 3);
-    this.horizonte(semilla + 4);
+    this.montanas(s + 2);
+    this.ruinas(s + 3);
+    this.decorado(s + 4);
+    this.horizonte(s + 5);
     this.cohete();
-    this.navePosada();
     this.bordes();
+    this.clima = crearParticulas(p);
+    if (this.clima) this.raiz.add(this.clima.puntos);
+  }
+
+  /** Quita lo del sector anterior. La nave posada y la que armas se quedan. */
+  private vaciar() {
+    this.raiz.traverse((o) => {
+      if (o instanceof THREE.Mesh || o instanceof THREE.Points) (o.geometry as THREE.BufferGeometry).dispose();
+    });
+    this.raiz.clear();
+    for (const m of this.propios) m.dispose();
+    this.propios = [];
+    this.clima?.material.dispose();
+    this.clima = null;
+    this.blocks.length = 0;
+    this.circulos = [];
+    this.grid.clear();
+    this.gridCirculos.clear();
+    this.lugares.length = 0;
+    this.interes.length = 0;
+    this.vapores = [];
+    this.burbujas = null;
+    this.acido = null;
+    this.coloresSuelo = null;
+    this.cartaHecha = null;
+  }
+
+  /** El líquido de los lagos de este sector. */
+  get fluido(): Fluido {
+    return this.planeta.bioma.fluido;
   }
 
   // ------------------------------------------------------------- relieve
@@ -242,10 +288,11 @@ export class World {
   /** Cuánto pertenece un punto a un mar de ácido (0 fuera, 1 dentro). */
   private enLago(x: number, z: number) {
     let m = 0;
-    for (const l of LAGOS) {
+    const { lagos, ox, oz } = this.planeta.relieve;
+    for (const l of lagos) {
       const cx = l.x * this.arena, cz = l.z * this.arena, r = l.r * this.arena;
       // Orilla irregular: el radio cambia con el ángulo y un poco de ruido.
-      const borde = r * (0.82 + 0.28 * fbm(x * 0.05 + 7, z * 0.05 - 3));
+      const borde = r * (0.82 + 0.28 * fbm((x + ox) * 0.05 + 7, (z + oz) * 0.05 - 3));
       m = Math.max(m, smoothstep(1.0, 0.72, Math.hypot(x - cx, z - cz) / borde));
     }
     return m;
@@ -253,24 +300,25 @@ export class World {
 
   /** La forma del mundo. Solo se usa para rellenar la cuadrícula de alturas. */
   private alturaCruda(x: number, z: number) {
-    const a = this.arena;
+    const a = this.arena, r = this.planeta.relieve, ox = r.ox, oz = r.oz;
     // Llanura: lomas grandes y dunas pequeñas.
-    let h = (fbm(x * 0.018, z * 0.018) - 0.45) * 7 + (fbm(x * 0.08 + 40, z * 0.08) - 0.5) * 1.1;
+    let h = (fbm((x + ox) * 0.018, (z + oz) * 0.018) - 0.45) * r.lomas + (fbm((x + ox) * 0.08 + 40, (z + oz) * 0.08) - 0.5) * 1.1;
+    h += formaRelieve(r, x, z, h, a);
     h = Math.max(h, -1.0);
     // Barrios: el suelo se allana para que las ruinas asienten.
-    for (const b of BARRIOS) {
+    for (const b of r.barrios) {
       const dx = Math.abs(x - b.x * a) / (b.w * a), dz = Math.abs(z - b.z * a) / (b.d * a);
       const k = smoothstep(1.25, 0.85, Math.max(dx, dz));
       h += (0.3 - h) * k * 0.85;
     }
     // Macizos: picos afilados con crestas.
-    for (const m of MACIZOS) {
-      for (const [dx, dz, rr, alto] of m.picos) {
-        const cx = (m.x + dx) * a, cz = (m.z + dz) * a, r = rr * a;
-        const d = Math.hypot(x - cx, z - cz) / r;
+    for (const m of r.macizos) {
+      for (const { dx, dz, r: rr, alto } of m.picos) {
+        const cx = (m.x + dx) * a, cz = (m.z + dz) * a, radio = rr * a;
+        const d = Math.hypot(x - cx, z - cz) / radio;
         if (d >= 1) continue;
         const perfil = Math.pow(1 - d, 1.6);
-        let monte = h * (1 - perfil) + alto * perfil * (0.7 + 0.45 * crestas(x * 0.06, z * 0.06) + 0.15 * crestas(x * 0.16, z * 0.16));
+        let monte = h * (1 - perfil) + alto * perfil * (0.7 + 0.45 * crestas((x + ox) * 0.06, (z + oz) * 0.06) + 0.15 * crestas((x + ox) * 0.16, z * 0.16));
         // Terrazas: cortados escalonados de 3,5 m, que el sombreado toon lee
         // como acantilados de dibujo.
         const escalon = 3.5, t = monte / escalon, base = Math.floor(t);
@@ -284,9 +332,9 @@ export class World {
     // Muralla de picos en el borde (esquinas redondeadas).
     const borde = Math.pow(Math.pow(Math.abs(x), 4) + Math.pow(Math.abs(z), 4), 0.25);
     h += smoothstep(a - 10, a + 34, borde) ** 1.4 * (18 + 30 * crestas(x * 0.025, z * 0.025));
-    // Llano donde se empieza y donde está el cohete.
+    // Llano donde se empieza y donde está la plataforma.
     const salida = smoothstep(18, 8, Math.hypot(x, z));
-    const plataforma = smoothstep(26, 15, Math.hypot(x - this.padPosition.x, z - this.padPosition.z));
+    const plataforma = smoothstep(40, 27, Math.hypot(x - this.padPosition.x, z - this.padPosition.z));
     const nave = smoothstep(12, 7, Math.hypot(x - NAVE.x, z - NAVE.z));
     h += (0 - h) * Math.max(salida, plataforma, nave);
     return h;
@@ -304,7 +352,10 @@ export class World {
    * pero la superficie es opaca y no se ve).
    */
   heightAt(x: number, z: number) {
-    return Math.max(this.fondo(x, z), NIVEL_ACIDO - VADEO);
+    // La plataforma se pisa: quien se sube a ella no se hunde en el disco.
+    const hastaPlataforma = Math.hypot(x - this.padPosition.x, z - this.padPosition.z);
+    const encima = ALTO_PLATAFORMA * smoothstep(RADIO_PLATAFORMA + 1.6, RADIO_PLATAFORMA, hastaPlataforma);
+    return Math.max(this.fondo(x, z) + encima, NIVEL_ACIDO - this.fluido.vadeo);
   }
 
   /** Altura del terreno en un punto, interpolada (en el ácido, el fondo). */
@@ -333,7 +384,8 @@ export class World {
   onIce(x: number, z: number) {
     if (this.acidoEn(x, z) > 0) return false;
     const y = this.fondo(x, z);
-    const mancha = smoothstep(0.62, 0.78, fbm(x * 0.03 - 21, z * 0.03 + 5))
+    const umbral = this.planeta.bioma.hielo;
+    const mancha = smoothstep(umbral, umbral + 0.16, fbm(x * 0.03 - 21, z * 0.03 + 5))
       * (1 - smoothstep(0.5, 2, y));
     return y >= 30 || mancha > 0.42;
   }
@@ -347,10 +399,11 @@ export class World {
     const geo = new THREE.PlaneGeometry(this.half * 2, this.half * 2, segmentos, segmentos).rotateX(-Math.PI / 2);
     const pos = geo.attributes.position as THREE.BufferAttribute;
     const colores = new Float32Array(pos.count * 3);
-    const arena = new THREE.Color('#dba57c'), duna = new THREE.Color('#f0c69c'), valle = new THREE.Color('#b67e68');
-    const roca = new THREE.Color('#5c3e60'), rocaAlta = new THREE.Color('#3e2c50'), escarcha = new THREE.Color('#ece6f2');
-    const helada = new THREE.Color('#cdbfd6'), grava = new THREE.Color('#7e6070');
-    const manchado = new THREE.Color('#5c2e66'), losa = new THREE.Color('#9a8274'), quemado = new THREE.Color('#4a3040');
+    const s = this.planeta.bioma.suelo, tinte = this.planeta.bioma.tinteSuelo, { barrios, ox, oz } = this.planeta.relieve;
+    const arena = new THREE.Color(s.arena), duna = new THREE.Color(s.duna), valle = new THREE.Color(s.valle);
+    const roca = new THREE.Color(s.roca), rocaAlta = new THREE.Color(s.rocaAlta), escarcha = new THREE.Color(s.cumbre);
+    const helada = new THREE.Color(s.helada), grava = new THREE.Color(s.grava);
+    const manchado = new THREE.Color(s.manchado), losa = new THREE.Color(s.losa), quemado = new THREE.Color(s.quemado);
     const c = new THREE.Color();
     const a = this.arena;
     const lado = segmentos + 1, paso = (this.half * 2) / segmentos;
@@ -361,19 +414,20 @@ export class World {
       pos.setY(i, y);
       const p = this.pendiente(x, z);
       // Llanura: dunas claras en lo alto, valles más oscuros y manchas grandes.
-      c.copy(arena).lerp(duna, smoothstep(0, 2.5, y) * 0.7 + (fbm(x * 0.3, z * 0.3) - 0.5) * 0.3);
-      c.lerp(valle, smoothstep(0.55, 0.75, fbm(x * 0.045 + 13, z * 0.045)) * 0.6 + smoothstep(0, -1, y) * 0.4);
+      c.copy(arena).lerp(duna, smoothstep(0, 2.5, y) * 0.7 + (fbm((x + ox) * 0.3, (z + oz) * 0.3) - 0.5) * 0.3);
+      c.lerp(valle, smoothstep(0.55, 0.75, fbm((x + ox) * 0.045 + 13, (z + oz) * 0.045)) * 0.6 + smoothstep(0, -1, y) * 0.4);
       // Manchas frías: escarcha en las hondonadas y grava oscura.
-      c.lerp(helada, smoothstep(0.62, 0.78, fbm(x * 0.03 - 21, z * 0.03 + 5)) * 0.55 * (1 - smoothstep(0.5, 2, y)));
-      c.lerp(grava, smoothstep(0.66, 0.8, fbm(x * 0.06 + 50, z * 0.06 - 8)) * 0.45);
+      c.lerp(helada, smoothstep(0.62, 0.78, fbm((x + ox) * 0.03 - 21, (z + oz) * 0.03 + 5)) * 0.55 * (1 - smoothstep(0.5, 2, y)));
+      c.lerp(grava, smoothstep(0.66, 0.8, fbm((x + ox) * 0.06 + 50, (z + oz) * 0.06 - 8)) * 0.45);
       // Barrios: losas viejas bajo la arena.
-      for (const b of BARRIOS) {
+      for (const b of barrios) {
         const k = smoothstep(1.0, 0.7, Math.max(Math.abs(x - b.x * a) / (b.w * a), Math.abs(z - b.z * a) / (b.d * a)));
         if (k > 0) c.lerp(losa, k * 0.55 * (0.6 + 0.4 * noise(x * 0.5, z * 0.5)));
       }
       // Orillas del ácido: suelo manchado de púrpura.
-      const orilla = smoothstep(0.0, 0.25, this.enLago(x, z) + 0.12) * (1 - smoothstep(0.3, 0.6, this.enLago(x, z)));
-      c.lerp(manchado, Math.min(1, orilla * 1.4));
+      const lago = this.enLago(x, z);
+      const orilla = smoothstep(0.0, 0.25, lago) * (1 - smoothstep(0.3, 0.6, lago));
+      c.lerp(manchado, Math.min(1, tinte + orilla * 1.4));
       // Montaña: roca en lo empinado, roca oscura en lo alto y escarcha en las cumbres.
       // Las montañas son de roca aunque las terrazas sean llanas.
       c.lerp(roca, Math.max(smoothstep(0.45, 1.2, p), smoothstep(3, 8, y) * 0.85));
@@ -396,28 +450,33 @@ export class World {
     geo.computeVertexNormals();
     const textura = texturaSuelo();
     textura.repeat.set(this.half / 6, this.half / 6);
-    const suelo = new THREE.Mesh(geo, new THREE.MeshToonMaterial({ vertexColors: true, map: textura, gradientMap: rampa(true) }));
+    const materialSuelo = this.propio(new THREE.MeshToonMaterial({ vertexColors: true, map: textura, gradientMap: rampa(true) }))
+    const suelo = new THREE.Mesh(geo, materialSuelo);
     suelo.receiveShadow = true;
-    this.scene.add(suelo);
+    this.raiz.add(suelo);
 
     // Más allá del terreno, un anillo hasta el horizonte para que no haya borde.
     const lejos = new THREE.Mesh(
       new THREE.RingGeometry(this.half - 6, 1400, 64).rotateX(-Math.PI / 2),
-      new THREE.MeshLambertMaterial({ color: '#7a3a46' }),
+      this.propio(new THREE.MeshLambertMaterial({ color: s.lejos })),
     );
     lejos.position.y = 20;
-    this.scene.add(lejos);
+    this.raiz.add(lejos);
   }
 
   // ------------------------------------------------------------- ácido
 
   private mares(semilla: number) {
     const rand = aleatorio(semilla);
-    const a = this.arena;
-    this.acido = new THREE.ShaderMaterial({
+    const a = this.arena, { lagos } = this.planeta.relieve, f = this.fluido;
+    const [cHondo, cMedio, cCresta, cEspuma] = f.colores.map((c) => new THREE.Color(c));
+    this.acido = this.propio(new THREE.ShaderMaterial({
       transparent: false,
       fog: true,
-      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { tiempo: { value: 0 } }]),
+      uniforms: {
+        ...THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { tiempo: { value: 0 } }]),
+        cHondo: { value: cHondo }, cMedio: { value: cMedio }, cCresta: { value: cCresta }, cEspuma: { value: cEspuma },
+      },
       vertexShader: `
         attribute float prof;
         varying float vProf;
@@ -432,6 +491,7 @@ export class World {
         }`,
       fragmentShader: `
         uniform float tiempo;
+        uniform vec3 cHondo; uniform vec3 cMedio; uniform vec3 cCresta; uniform vec3 cEspuma;
         varying float vProf;
         varying vec2 vXZ;
         #include <fog_pars_fragment>
@@ -442,18 +502,17 @@ export class World {
           // Ondas: dos capas de ruido que se mueven en sentidos distintos.
           float o = n(vXZ * 0.35 + vec2(tiempo * 0.25, tiempo * 0.1)) * 0.6 + n(vXZ * 0.9 - vec2(tiempo * 0.18, -tiempo * 0.3)) * 0.4;
           // Tres tonos, como el toon: hondo, medio y cresta que brilla.
-          vec3 hondo = vec3(0.16, 0.04, 0.27), medio = vec3(0.45, 0.16, 0.76), cresta = vec3(0.78, 0.49, 1.0);
-          vec3 c = mix(hondo, medio, step(0.42, o));
-          c = mix(c, cresta, step(0.72, o));
+          vec3 c = mix(cHondo, cMedio, step(0.42, o));
+          c = mix(c, cCresta, step(0.72, o));
           // Orilla: espuma clara donde el ácido es poco profundo.
           float espuma = 1.0 - smoothstep(0.05, 0.5 + 0.15 * sin(tiempo * 2.0 + vXZ.x * 0.4), vProf);
-          c = mix(c, vec3(0.95, 0.8, 1.0), step(0.5, espuma));
+          c = mix(c, cEspuma, step(0.5, espuma));
           gl_FragColor = vec4(c, 1.0);
           #include <fog_fragment>
         }`,
-    });
+    }));
     const todas: { x: number; z: number }[] = [];
-    for (const l of LAGOS) {
+    for (const l of lagos) {
       const cx = l.x * a, cz = l.z * a, r = l.r * a * 1.2;
       const geo = new THREE.PlaneGeometry(r * 2, r * 2, Math.round(r), Math.round(r)).rotateX(-Math.PI / 2);
       const pos = geo.attributes.position as THREE.BufferAttribute;
@@ -465,39 +524,41 @@ export class World {
       geo.setAttribute('prof', new THREE.BufferAttribute(prof, 1));
       const malla = new THREE.Mesh(geo, this.acido);
       malla.position.set(cx, NIVEL_ACIDO, cz);
-      this.scene.add(malla);
+      this.raiz.add(malla);
       // Puntos de burbujas: dentro, donde el ácido cubre.
-      for (let k = 0; k < 40; k++) {
+      for (let k = 0; f.burbujas && k < 40; k++) {
         const ang = rand() * Math.PI * 2, d = Math.sqrt(rand()) * l.r * a * 0.8;
         const x = cx + Math.cos(ang) * d, z = cz + Math.sin(ang) * d;
         if (this.acidoEn(x, z) > 0.6) todas.push({ x, z });
       }
-      // Vapor púrpura sobre el mar.
-      for (let k = 0; k < 6; k++) {
-        const v = new THREE.Sprite(new THREE.SpriteMaterial({ map: texturaVapor(), transparent: true, depthWrite: false, opacity: 0.55 }));
+      // Vapor sobre el lago.
+      for (let k = 0; f.vapor && k < 6; k++) {
+        const v = new THREE.Sprite(this.propio(new THREE.SpriteMaterial({ color: f.colores[2], map: texturaVapor(), transparent: true, depthWrite: false, opacity: 0.55 })));
         const ang = rand() * Math.PI * 2, d = rand() * l.r * a * 0.7;
         v.position.set(cx + Math.cos(ang) * d, NIVEL_ACIDO + 2 + rand() * 2, cz + Math.sin(ang) * d);
         const s = 14 + rand() * 12;
         v.scale.set(s, s * 0.45, 1);
         v.userData = { base: v.position.clone(), fase: rand() * 10 };
         this.vapores.push(v);
-        this.scene.add(v);
+        this.raiz.add(v);
       }
     }
     // Burbujas que suben y revientan.
-    const malla = new THREE.InstancedMesh(conDetalle(0.5, () => esfera(0.25)), brillo(PALETA.purpuraBrillo), todas.length);
-    malla.frustumCulled = false;
-    this.burbujas = {
-      malla,
-      x: Float32Array.from(todas.map((p) => p.x)),
-      z: Float32Array.from(todas.map((p) => p.z)),
-      fase: Float32Array.from(todas.map(() => rand())),
-    };
-    this.scene.add(malla);
+    if (todas.length) {
+      const malla = new THREE.InstancedMesh(conDetalle(0.5, () => esfera(0.25)), brillo(f.colores[2]), todas.length);
+      malla.frustumCulled = false;
+      this.burbujas = {
+        malla,
+        x: Float32Array.from(todas.map((p) => p.x)),
+        z: Float32Array.from(todas.map((p) => p.z)),
+        fase: Float32Array.from(todas.map(() => rand())),
+      };
+      this.raiz.add(malla);
+    }
 
-    // Cristales púrpura en las orillas.
+    // Cristales en las orillas.
     const grupo = new THREE.Group();
-    for (const l of LAGOS) {
+    for (const l of lagos) {
       const cx = l.x * a, cz = l.z * a;
       for (let k = 0; k < Math.round(l.r * a * 1.4); k++) {
         const ang = rand() * Math.PI * 2;
@@ -507,17 +568,17 @@ export class World {
         this.racimo(grupo, x, z, 0.6 + rand() * 1.1, rand);
       }
     }
-    fusionar(grupo, this.scene);
+    fusionar(grupo, this.raiz);
   }
 
-  /** Racimo de cristales púrpura (algunos brillan) clavado en el suelo. */
+  /** Racimo de cristales (algunos brillan) clavado en el suelo. */
   private racimo(grupo: THREE.Group, x: number, z: number, tam: number, rand: () => number, chocar = true) {
-    const y = this.fondo(x, z);
+    const y = this.fondo(x, z), [mate, luz] = this.planeta.bioma.props.cristal;
     conDetalle(0.6, () => {
       const n = 3 + Math.floor(rand() * 3);
       for (let k = 0; k < n; k++) {
         const alto = tam * (0.8 + rand() * 1.4);
-        const c = pieza(grupo, punta(tam * 0.22, alto, 6), k % 2 ? brillo(PALETA.purpuraBrillo) : toon(PALETA.purpura),
+        const c = pieza(grupo, punta(tam * 0.22, alto, 6), k % 2 ? brillo(luz) : toon(mate),
           x + (rand() - 0.5) * tam * 0.7, y + alto * 0.35, z + (rand() - 0.5) * tam * 0.7, { contorno: k % 2 === 0 });
         c.rotation.set((rand() - 0.5) * 0.9, rand() * Math.PI, (rand() - 0.5) * 0.9);
       }
@@ -532,13 +593,13 @@ export class World {
     const rand = aleatorio(semilla);
     const a = this.arena;
     const grupo = new THREE.Group();
-    for (const m of MACIZOS) {
-      for (const [dx, dz, rr] of m.picos) {
+    for (const m of this.planeta.relieve.macizos) {
+      for (const { dx, dz, r: rr } of m.picos) {
         // El corazón de cada pico no se puede cruzar.
         this.addCirculo({ x: (m.x + dx) * a, z: (m.z + dz) * a, r: rr * a * 0.52 });
       }
       // Rocas al pie y vetas de cristal en las laderas.
-      const cx = m.x * a, cz = m.z * a, r = m.picos[0][2] * a;
+      const cx = m.x * a, cz = m.z * a, r = m.picos[0].r * a;
       for (let k = 0; k < 26; k++) {
         const ang = rand() * Math.PI * 2, d = r * (0.6 + rand() * 0.9);
         const x = cx + Math.cos(ang) * d, z = cz + Math.sin(ang) * d;
@@ -548,18 +609,18 @@ export class World {
         else this.roca(grupo, x, z, 0.8 + rand() * 1.8, rand);
       }
     }
-    fusionar(grupo, this.scene);
+    fusionar(grupo, this.raiz);
   }
 
   /** Roca toon de formas redondas, medio enterrada. */
   private roca(grupo: THREE.Group, x: number, z: number, tam: number, rand: () => number, chocar = true) {
-    const y = this.fondo(x, z);
+    const y = this.fondo(x, z), { rocas, capa } = this.planeta.bioma.props;
     conDetalle(0.4, () => {
-      const r = pieza(grupo, esfera(tam, 1 + rand() * 0.5, 0.6 + rand() * 0.4, 1 + rand() * 0.4), toon(rand() < 0.5 ? '#6a4a4e' : '#7d5a55'), x, y + tam * 0.15, z);
+      const r = pieza(grupo, esfera(tam, 1 + rand() * 0.5, 0.6 + rand() * 0.4, 1 + rand() * 0.4), toon(rand() < 0.5 ? rocas[0] : rocas[1]), x, y + tam * 0.15, z);
       r.rotation.set(rand() * 0.4, rand() * Math.PI, rand() * 0.4);
-      if (rand() < 0.4) {
-        // Escarcha encima: el planeta se congela.
-        const e = pieza(grupo, esfera(tam * 0.7, 1.2, 0.35, 1.1), toon('#e6e0ee'), x, y + tam * 0.62, z, { contorno: false });
+      if (capa && rand() < 0.4) {
+        // Lo que cubre las rocas de este sector: escarcha, musgo, sal…
+        const e = pieza(grupo, esfera(tam * 0.7, 1.2, 0.35, 1.1), toon(capa), x, y + tam * 0.62, z, { contorno: false });
         e.rotation.y = rand() * Math.PI;
       }
     });
@@ -574,9 +635,9 @@ export class World {
     const rand = aleatorio(semilla);
     const a = this.arena;
     const grupo = new THREE.Group();
-    const hormigon = ['#8a8288', '#76707e', '#968c8a'];
+    const { hormigon } = this.planeta.bioma.props;
     const color = () => hormigon[Math.floor(rand() * hormigon.length)];
-    for (const b of BARRIOS) {
+    for (const b of this.planeta.relieve.barrios) {
       const cx = b.x * a, cz = b.z * a, w = b.w * a, d = b.d * a;
       const lote = 9;
       for (let lx = -w + lote / 2; lx < w; lx += lote) {
@@ -593,7 +654,7 @@ export class World {
         }
       }
     }
-    fusionar(grupo, this.scene);
+    fusionar(grupo, this.raiz);
   }
 
   /** Esquina de un edificio: dos muros en L con el borde de arriba roto y ventanas. */
@@ -707,25 +768,26 @@ export class World {
     const a = this.arena;
     const grupo = new THREE.Group();
     const libre = (x: number, z: number, margen: number) =>
-      Math.hypot(x, z) > 14 && Math.hypot(x - this.padPosition.x, z - this.padPosition.z) > 22 &&
+      Math.hypot(x, z) > 14 && Math.hypot(x - this.padPosition.x, z - this.padPosition.z) > 34 &&
       this.acidoEn(x, z) === 0 && this.pendiente(x, z) < 0.9 && !this.ocupado(x, z, margen);
+    const t = this.planeta.bioma.props.densidad;
     let rocas = 0, arboles = 0, cristales = 0, matas = 0;
-    for (let k = 0; k < 6000 && (rocas < 140 || arboles < 65 || cristales < 36 || matas < 160); k++) {
+    for (let k = 0; k < 8000 && (rocas < t.rocas || arboles < t.arboles || cristales < t.cristales || matas < t.matas); k++) {
       const x = (rand() * 2 - 1) * (a + 8), z = (rand() * 2 - 1) * (a + 8);
       if (!libre(x, z, 2)) continue;
       const que = rand();
-      if (que < 0.3 && rocas < 140) { this.roca(grupo, x, z, 0.5 + rand() * rand() * 2.2, rand); rocas++; }
-      else if (que < 0.48 && arboles < 65) { this.arbol(grupo, x, z, rand); arboles++; }
-      else if (que < 0.58 && cristales < 36) { this.racimo(grupo, x, z, 0.5 + rand() * 0.8, rand); cristales++; }
-      else if (matas < 160) { this.mata(grupo, x, z, rand); matas++; }
+      if (que < 0.3 && rocas < t.rocas) { this.roca(grupo, x, z, 0.5 + rand() * rand() * 2.2, rand); rocas++; }
+      else if (que < 0.48 && arboles < t.arboles) { this.arbol(grupo, x, z, rand); arboles++; }
+      else if (que < 0.58 && cristales < t.cristales) { this.racimo(grupo, x, z, 0.5 + rand() * 0.8, rand); cristales++; }
+      else if (matas < t.matas) { this.mata(grupo, x, z, rand); matas++; }
     }
-    fusionar(grupo, this.scene);
+    fusionar(grupo, this.raiz);
   }
 
-  /** Mata seca y helada: tres bolas de hierba muerta, sin colisión. */
+  /** Mata: tres bolas de lo que crezca aquí, sin colisión. */
   private mata(grupo: THREE.Group, x: number, z: number, rand: () => number) {
     const y = this.fondo(x, z);
-    const color = rand() < 0.5 ? '#9a6a5a' : '#8a6a78';
+    const [uno, otro] = this.planeta.bioma.props.mata, color = rand() < 0.5 ? uno : otro;
     // Son muchas y pequeñas: poco detalle y sin contorno.
     conDetalle(0.25, () => {
       for (let k = 0; k < 3; k++) {
@@ -735,33 +797,94 @@ export class World {
     });
   }
 
-  /** Árbol muerto: tronco, tres ramas y escarcha. */
+  /** Lo que crece en este sector: cada bioma tiene su silueta. */
   private arbol(grupo: THREE.Group, x: number, z: number, rand: () => number) {
-    const y = this.fondo(x, z);
-    const alto = 2.5 + rand() * 2.5;
+    const y = this.fondo(x, z), { arbol, colorArbol: [base, punta2] } = this.planeta.bioma.props;
     conDetalle(0.4, () => {
-      const tronco = pieza(grupo, capsula(0.22, alto), toon('#4a3230'), x, y + alto / 2, z);
-      tronco.rotation.z = (rand() - 0.5) * 0.25;
-      for (let k = 0; k < 3; k++) {
-        const ang = rand() * Math.PI * 2, largo = 0.9 + rand() * 1.2;
-        const rama = pieza(grupo, capsula(0.1, largo), toon('#4a3230'), x + Math.cos(ang) * 0.5, y + alto * (0.55 + k * 0.15), z + Math.sin(ang) * 0.5);
-        rama.rotation.set(Math.sin(ang) * 0.9, 0, -Math.cos(ang) * 0.9);
-      }
-      pieza(grupo, esfera(0.3, 1.2, 0.5, 1.2), toon('#e6e0ee'), x, y + alto + 0.15, z, { contorno: false });
+      if (arbol === 'seta') this.seta(grupo, x, y, z, base, punta2, rand);
+      else if (arbol === 'palma') this.palma(grupo, x, y, z, base, punta2, rand);
+      else if (arbol === 'pilar') this.pilar(grupo, x, y, z, base, punta2, rand);
+      else if (arbol === 'antena') this.antena(grupo, x, y, z, base, punta2, rand);
+      else this.arbolMuerto(grupo, x, y, z, base, punta2, rand);
     });
-    this.addCirculo({ x, z, r: 0.35 });
+    this.addCirculo({ x, z, r: arbol === 'seta' ? 0.6 : arbol === 'pilar' ? 0.7 : 0.35 });
     this.interes.push({ x, z, tipo: 'arbol' });
+  }
+
+  private arbolMuerto(grupo: THREE.Group, x: number, y: number, z: number, base: string, punta2: string, rand: () => number) {
+    const alto = 2.5 + rand() * 2.5;
+    const tronco = pieza(grupo, capsula(0.22, alto), toon(base), x, y + alto / 2, z);
+    tronco.rotation.z = (rand() - 0.5) * 0.25;
+    for (let k = 0; k < 3; k++) {
+      const ang = rand() * Math.PI * 2, largo = 0.9 + rand() * 1.2;
+      const rama = pieza(grupo, capsula(0.1, largo), toon(base), x + Math.cos(ang) * 0.5, y + alto * (0.55 + k * 0.15), z + Math.sin(ang) * 0.5);
+      rama.rotation.set(Math.sin(ang) * 0.9, 0, -Math.cos(ang) * 0.9);
+    }
+    pieza(grupo, esfera(0.3, 1.2, 0.5, 1.2), toon(punta2), x, y + alto + 0.15, z, { contorno: false });
+  }
+
+  /** Seta gigante: pie claro, sombrero aplastado y motas que brillan. */
+  private seta(grupo: THREE.Group, x: number, y: number, z: number, base: string, sombrero: string, rand: () => number) {
+    const alto = 2.5 + rand() * 4.5, r = 1.1 + alto * 0.32;
+    pieza(grupo, capsula(0.28 + alto * 0.05, alto), toon(base), x, y + alto / 2, z);
+    pieza(grupo, esfera(r, 1, 0.5, 1), toon(sombrero), x, y + alto, z);
+    pieza(grupo, esfera(r * 0.8, 1, 0.16, 1), toon(base), x, y + alto - r * 0.34, z, { contorno: false });
+    for (let k = 0; k < 5; k++) {
+      const a = rand() * Math.PI * 2, d = rand() * r * 0.72;
+      pieza(grupo, esfera(0.12 + rand() * 0.14), brillo('#e8ffd8'), x + Math.cos(a) * d, y + alto + r * 0.46 * (1 - (d / r) ** 2), z + Math.sin(a) * d, { contorno: false });
+    }
+  }
+
+  /** Palmera: tronco en tres tramos que se doblan y una corona de hojas. */
+  private palma(grupo: THREE.Group, x: number, y: number, z: number, tronco: string, hoja: string, rand: () => number) {
+    const alto = 4 + rand() * 3.5, giro = rand() * Math.PI * 2, tramo = alto / 3;
+    let cx = x, cy = y, cz = z;
+    for (let k = 0; k < 3; k++) {
+      const incl = 0.08 + k * 0.1;
+      const t = pieza(grupo, capsula(0.24 - k * 0.04, tramo + 0.5), toon(tronco), cx + Math.cos(giro) * incl * tramo * 0.5, cy + tramo / 2, cz + Math.sin(giro) * incl * tramo * 0.5);
+      t.rotation.set(Math.sin(giro) * incl, 0, -Math.cos(giro) * incl);
+      cx += Math.cos(giro) * incl * tramo;
+      cy += tramo;
+      cz += Math.sin(giro) * incl * tramo;
+    }
+    for (let k = 0; k < 7; k++) {
+      const a = (k / 7) * Math.PI * 2 + rand() * 0.3, l = 1.5 + rand() * 0.8;
+      const h = pieza(grupo, esfera(l, 1, 0.08, 0.3), toon(hoja), cx + Math.cos(a) * l * 0.8, cy - 0.25, cz + Math.sin(a) * l * 0.8);
+      h.rotation.set(0, -a, -0.4);
+    }
+  }
+
+  /** Aguja de hielo, de sal o de cuarzo, en grupos. */
+  private pilar(grupo: THREE.Group, x: number, y: number, z: number, base: string, luz: string, rand: () => number) {
+    const n = 2 + Math.floor(rand() * 3);
+    for (let k = 0; k < n; k++) {
+      const alto = (k === 0 ? 3.5 : 1.5) + rand() * (k === 0 ? 4.5 : 2.2), r = 0.3 + alto * 0.08;
+      const p2 = pieza(grupo, punta(r, alto, 6), k === 0 ? toon(base) : toon(luz), x + (k ? (rand() - 0.5) * 1.5 : 0), y + alto * 0.38, z + (k ? (rand() - 0.5) * 1.5 : 0));
+      p2.rotation.set((rand() - 0.5) * 0.3, rand() * Math.PI, (rand() - 0.5) * 0.3);
+    }
+  }
+
+  /** Mástil de la flota, torcido, con su luz de aviso aún encendida. */
+  private antena(grupo: THREE.Group, x: number, y: number, z: number, base: string, luz: string, rand: () => number) {
+    const alto = 4 + rand() * 4, incl = (rand() - 0.5) * 0.3;
+    const m = pieza(grupo, caja(0.26, alto, 0.26, 0.05), toon(base), x, y + alto / 2, z);
+    m.rotation.z = incl;
+    for (let k = 1; k <= 2; k++) {
+      const b = pieza(grupo, caja(1.5 - k * 0.3, 0.14, 0.14, 0.03), toon(base), x - Math.sin(incl) * alto * (0.3 + k * 0.22), y + alto * (0.3 + k * 0.22), z);
+      b.rotation.z = incl;
+    }
+    pieza(grupo, esfera(0.2), brillo(luz), x - Math.sin(incl) * alto, y + alto + 0.1, z, { contorno: false });
   }
 
   // ----------------------------------------------------- cielo y horizonte
 
   private cielo() {
-    const grupo = new THREE.Group();
+    const grupo = new THREE.Group(), c = this.planeta.bioma.cielo, r = this.planeta.relieve;
     const cupula = new THREE.Mesh(
       new THREE.SphereGeometry(600, 32, 16),
-      new THREE.ShaderMaterial({
+      this.propio(new THREE.ShaderMaterial({
         side: THREE.BackSide, depthWrite: false, fog: false,
-        uniforms: { horizonte: { value: HORIZON }, medio: { value: MEDIO }, cenit: { value: CENIT } },
+        uniforms: { horizonte: { value: new THREE.Color(c.horizonte) }, medio: { value: new THREE.Color(c.medio) }, cenit: { value: new THREE.Color(c.cenit) } },
         vertexShader: `varying vec3 vDir;
           void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
         fragmentShader: `uniform vec3 horizonte; uniform vec3 medio; uniform vec3 cenit; varying vec3 vDir;
@@ -773,24 +896,33 @@ export class World {
             c *= 1.0 - 0.08 * step(0.5, fract(h * 9.0 + sin(vDir.x * 3.0) * 0.3)) * smoothstep(0.08, 0.4, h);
             gl_FragColor = vec4(c, 1.0);
           }`,
-      }),
+      })),
     );
     cupula.renderOrder = -10;
     grupo.add(cupula);
-    const sol = new THREE.Sprite(new THREE.SpriteMaterial({ map: texturaSol(), fog: false, depthWrite: false, transparent: true }));
+    const sol = new THREE.Sprite(this.propio(new THREE.SpriteMaterial({ color: c.sol, map: texturaSol(), fog: false, depthWrite: false, transparent: true })));
     sol.position.set(-330, 120, 190);
     sol.scale.setScalar(110);
     grupo.add(sol);
+    // Las lunas de Meta: en cada sector asoman unas distintas.
+    for (const l of r.lunas) {
+      const luna = new THREE.Sprite(this.propio(new THREE.SpriteMaterial({ color: l.color, map: texturaLuna(), fog: false, depthWrite: false, transparent: true })));
+      luna.position.set(Math.cos(l.x) * 500, 560 * l.y, Math.sin(l.x) * 500);
+      luna.scale.setScalar(l.tam);
+      luna.renderOrder = -9;
+      grupo.add(luna);
+    }
+    const salida = this.planeta.semilla % 360;
     for (let i = 0; i < 12; i++) {
-      const nube = new THREE.Sprite(new THREE.SpriteMaterial({ map: texturaNube(i), fog: false, depthWrite: false, transparent: true, opacity: 0.85 }));
-      const ang = (i / 12) * Math.PI * 2 + hash(i, 1) * 0.4;
+      const nube = new THREE.Sprite(this.propio(new THREE.SpriteMaterial({ color: c.nube, map: texturaNube(i), fog: false, depthWrite: false, transparent: true })));
+      const ang = (i / 12) * Math.PI * 2 + hash(i, 1 + salida) * 0.6;
       const d = 360 + hash(i, 2) * 120;
       nube.position.set(Math.cos(ang) * d, 70 + hash(i, 3) * 80, Math.sin(ang) * d);
       const w = 120 + hash(i, 4) * 90;
       nube.scale.set(w, w * 0.32, 1);
       grupo.add(nube);
     }
-    this.scene.add(grupo);
+    this.raiz.add(grupo);
     return grupo;
   }
 
@@ -798,9 +930,10 @@ export class World {
   private horizonte(semilla: number) {
     const rand = aleatorio(semilla);
     const grupo = new THREE.Group();
-    const montes = new THREE.MeshBasicMaterial({ color: '#8a4250', fog: false });
-    const montesLejos = new THREE.MeshBasicMaterial({ color: '#a8566a', fog: false });
-    const nieve = new THREE.MeshBasicMaterial({ color: '#e8c8d4', fog: false });
+    const c = this.planeta.bioma.montes;
+    const montes = this.propio(new THREE.MeshBasicMaterial({ color: c.cerca, fog: false }));
+    const montesLejos = this.propio(new THREE.MeshBasicMaterial({ color: c.lejos, fog: false }));
+    const nieve = this.propio(new THREE.MeshBasicMaterial({ color: c.nieve, fog: false }));
     for (let i = 0; i < 60; i++) {
       const ang = (i / 60) * Math.PI * 2 + rand() * 0.05;
       const lejano = i % 2 === 0;
@@ -818,8 +951,8 @@ export class World {
       }
     }
     // Agujas de HELIOS: torres finísimas con una luz roja arriba.
-    const aguja = new THREE.MeshBasicMaterial({ color: '#3a2236', fog: false });
-    const luz = new THREE.MeshBasicMaterial({ color: PALETA.helios, fog: false });
+    const aguja = this.propio(new THREE.MeshBasicMaterial({ color: c.aguja, fog: false }));
+    const luz = this.propio(new THREE.MeshBasicMaterial({ color: PALETA.helios, fog: false }));
     for (const ang of [0.6, 2.4, 4.1]) {
       const d = this.half + 210;
       const t = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 6, 190, 6), aguja);
@@ -829,40 +962,36 @@ export class World {
       l.position.set(t.position.x, 192, t.position.z);
       grupo.add(l);
     }
-    fusionar(grupo, this.scene, false);
+    fusionar(grupo, this.raiz, false);
   }
 
-  /** El cohete en su explanada, al norte: se ve desde casi todo el mapa. */
+  /** La plataforma y su torre, al norte: la nave se ve desde casi todo el mapa. */
   private cohete() {
-    const grupo = new THREE.Group();
+    const grupo = crearPlataforma();
     grupo.position.copy(this.padPosition);
-    conDetalle(0.8, () => {
-      pieza(grupo, barril(9, 9.5, 0.8, 0.3), toon('#8a6a5e'), 0, 0.4, 0);
-      pieza(grupo, barril(2.6, 2.6, 26, 0.6), toon('#efe8de'), 0, 14, 0);
-      pieza(grupo, toro(2.62, 0.35), toon('#2a1a18'), 0, 27.2, 0);
-      pieza(grupo, barril(2.2, 2.6, 10, 0.5), toon('#efe8de'), 0, 32.4, 0);
-      pieza(grupo, punta(2.2, 6.5, 16), toon(PALETA.naranja), 0, 40.6, 0);
-      for (const s of [-1, 1]) {
-        pieza(grupo, barril(1.1, 1.1, 18, 0.4), toon('#efe8de'), s * 3.7, 9.8, 0);
-        pieza(grupo, punta(1.1, 2.6, 12), toon(PALETA.naranja), s * 3.7, 20.2, 0);
-      }
-      // Torre de servicio.
-      for (const cx of [-1.8, 1.8]) for (const cz of [-1.8, 1.8]) pieza(grupo, caja(0.4, 44, 0.4, 0.1), toon('#5a2e26'), 8 + cx, 22, cz);
-      for (let y = 3; y < 44; y += 3.5) {
-        pieza(grupo, caja(3.6, 0.25, 0.25, 0.08), toon('#5a2e26'), 8, y, -1.8, { contorno: false });
-        pieza(grupo, caja(3.6, 0.25, 0.25, 0.08), toon('#5a2e26'), 8, y, 1.8, { contorno: false });
-      }
-      pieza(grupo, caja(4.4, 0.8, 1.2, 0.2), toon('#5a2e26'), 4, 18, 0);
-      pieza(grupo, caja(4.4, 0.8, 1.2, 0.2), toon('#5a2e26'), 4, 30, 0);
-      pieza(grupo, esfera(0.5), brillo('#ff2a12'), 8, 44.6, 0, { contorno: false });
-    });
     const temporal = new THREE.Group();
     temporal.add(grupo);
-    fusionar(temporal, this.scene);
+    fusionar(temporal, this.raiz);
     const p = this.padPosition;
-    this.addBlock({ minX: p.x - 5, maxX: p.x + 5, minZ: p.z - 5, maxZ: p.z + 5 });
-    this.addBlock({ minX: p.x + 5.5, maxX: p.x + 10.5, minZ: p.z - 2.5, maxZ: p.z + 2.5 });
-    this.interes.push({ x: p.x + 8, z: p.z, tipo: 'antena' });
+    this.naveMontada.position.set(p.x, p.y + ALTO_PLATAFORMA, p.z);
+    this.naveMontada.rotation.y = GIRO_PLATAFORMA;
+    // Se puede pasar bajo las alas; lo que no se atraviesa es el fuselaje.
+    for (const t of [-13, -7, -1, 5, 11]) {
+      this.addCirculo({ x: p.x + Math.sin(GIRO_PLATAFORMA) * t, z: p.z + Math.cos(GIRO_PLATAFORMA) * t, r: 3.2 });
+    }
+    this.addBlock({ minX: p.x + TORRE.x - 2.5, maxX: p.x + TORRE.x + 2.5, minZ: p.z + TORRE.z - 2.5, maxZ: p.z + TORRE.z + 2.5 });
+    this.interes.push({ x: p.x + TORRE.x, z: p.z + TORRE.z, tipo: 'antena' });
+  }
+
+  /** Pone en la plataforma la nave que el jugador lleva armada. */
+  montarNave(d: Diseno) {
+    const g = this.naveMontada;
+    for (const hijo of [...g.children]) {
+      (hijo as THREE.Mesh).geometry.dispose();
+      g.remove(hijo);
+    }
+    const n = crearNaveModular(d);
+    fusionarNave(n.raiz, g);
   }
 
   // ------------------------------------------------------------ nave
@@ -910,6 +1039,7 @@ export class World {
   /** El cielo y la luz siguen al jugador; el mapa de sombras así basta pequeño. */
   follow(target: THREE.Vector3) {
     this.sky.position.set(target.x, 0, target.z);
+    this.clima?.material.uniforms.centro.value.copy(target);
     this.sun.target.position.copy(target);
     this.sun.position.set(target.x - 55, target.y + 46, target.z + 30);
   }
@@ -924,6 +1054,7 @@ export class World {
     this.tiempo += dt;
     this.mezcladorNave?.update(dt);
     if (this.acido) this.acido.uniforms.tiempo.value = this.tiempo;
+    if (this.clima) this.clima.material.uniforms.t.value = this.tiempo;
     const b = this.burbujas;
     if (b) {
       for (let i = 0; i < b.x.length; i++) {
@@ -938,6 +1069,12 @@ export class World {
       const { base, fase } = v.userData as { base: THREE.Vector3; fase: number };
       v.position.set(base.x + Math.sin(this.tiempo * 0.1 + fase) * 4, base.y + Math.sin(this.tiempo * 0.3 + fase) * 0.6, base.z + Math.cos(this.tiempo * 0.08 + fase) * 4);
     }
+  }
+
+  /** Un material de este sector: se libera al cambiar de sector. */
+  private propio<T extends { dispose(): void }>(m: T): T {
+    this.propios.push(m);
+    return m;
   }
 
   // ------------------------------------------------------------ colisiones
@@ -978,7 +1115,8 @@ export class World {
     const base = document.createElement('canvas');
     base.width = base.height = lado;
     const img = base.getContext('2d')!.createImageData(lado, lado);
-    const hondo = new THREE.Color('#7a2cd8'), orilla = new THREE.Color('#d7a0ff'), borde = new THREE.Color('#2a1e36');
+    const [, medio, cresta] = this.fluido.colores;
+    const hondo = new THREE.Color(medio), orilla = new THREE.Color(cresta), borde = new THREE.Color(this.planeta.bioma.suelo.rocaAlta).multiplyScalar(0.7);
     const sol = new THREE.Color(1.2, 1.0, 0.8), c = new THREE.Color();
     for (let iz = 0; iz < lado; iz++) {
       for (let ix = 0; ix < lado; ix++) {
@@ -1028,7 +1166,7 @@ export class World {
 
   /**
    * Un sitio libre para colocar contenido (altares, cajas, NPC…): en llano,
-   * fuera del ácido y sin nada sólido cerca, entre dos distancias al centro.
+   * fuera del ácido, de la plataforma y de lo sólido, entre dos distancias al centro.
    */
   lugarLibre(rand: () => number, distancia: readonly [number, number], margen = 4, lejosDe: { x: number; z: number; r: number }[] = []) {
     for (let k = 0; k < 600; k++) {
@@ -1036,6 +1174,7 @@ export class World {
       const x = Math.cos(ang) * d, z = Math.sin(ang) * d;
       if (Math.abs(x) > this.arena - 10 || Math.abs(z) > this.arena - 10) continue;
       if (this.acidoEn(x, z) > 0 || this.pendiente(x, z) > 0.35 || this.ocupado(x, z, margen)) continue;
+      if (Math.hypot(x - this.padPosition.x, z - this.padPosition.z) < RADIO_PLATAFORMA + 8) continue;
       if (lejosDe.some((p) => Math.hypot(x - p.x, z - p.z) < p.r)) continue;
       return { x, z };
     }
@@ -1101,11 +1240,14 @@ function rampa(clara = false) {
   return r;
 }
 
+let suelo: THREE.CanvasTexture | null = null;
+
 /**
  * Textura del suelo (en gris, multiplica el color de cada zona): ondas de
  * arena, motas y alguna grieta, para que la llanura no se vea lisa.
  */
 function texturaSuelo() {
+  if (suelo) return suelo;
   const t = lienzo(256, 256, (ctx) => {
     ctx.fillStyle = '#f2f2f2';
     ctx.fillRect(0, 0, 256, 256);
@@ -1139,6 +1281,7 @@ function texturaSuelo() {
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
+  suelo = t;
   return t;
 }
 
@@ -1165,7 +1308,17 @@ function texturaSol() {
   });
 }
 
+const nubes = new Map<number, THREE.Texture>();
+
 function texturaNube(semilla: number) {
+  const hecha = nubes.get(semilla);
+  if (hecha) return hecha;
+  const nueva = lienzoNube(semilla);
+  nubes.set(semilla, nueva);
+  return nueva;
+}
+
+function lienzoNube(semilla: number) {
   return lienzo(256, 96, (ctx) => {
     for (let k = 0; k < 9; k++) {
       const x = 40 + hash(semilla, k) * 176, y = 40 + hash(k, semilla) * 26, r = 22 + hash(semilla + k, 3) * 26;
@@ -1179,14 +1332,122 @@ function texturaNube(semilla: number) {
 }
 
 let vapor: THREE.CanvasTexture | null = null;
+let luna: THREE.Texture | null = null;
+
+/** Disco con su lado en sombra y unos cráteres: el color lo pone cada sector. */
+function texturaLuna() {
+  if (luna) return luna;
+  luna = lienzo(256, 256, (ctx) => {
+    const g = ctx.createRadialGradient(92, 92, 10, 128, 128, 122);
+    g.addColorStop(0, '#ffffff');
+    g.addColorStop(0.7, '#d8d8e0');
+    g.addColorStop(1, '#8a8a98');
+    ctx.beginPath();
+    ctx.arc(128, 128, 122, 0, Math.PI * 2);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.save();
+    ctx.clip();
+    ctx.fillStyle = 'rgba(90, 90, 110, .28)';
+    for (const [x, y, r] of [[90, 80, 26], [160, 110, 18], [120, 170, 34], [190, 180, 16], [70, 150, 12], [150, 50, 10]]) {
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Sombra del terminador.
+    const s = ctx.createLinearGradient(40, 40, 240, 240);
+    s.addColorStop(0.45, 'rgba(10, 10, 30, 0)');
+    s.addColorStop(1, 'rgba(10, 10, 30, .78)');
+    ctx.fillStyle = s;
+    ctx.fillRect(0, 0, 256, 256);
+    ctx.restore();
+  });
+  return luna;
+}
+
 function texturaVapor() {
   if (vapor) return vapor;
   vapor = lienzo(128, 64, (ctx) => {
     const g = ctx.createRadialGradient(64, 32, 0, 64, 32, 60);
-    g.addColorStop(0, 'rgba(200, 120, 255, 0.5)');
-    g.addColorStop(1, 'rgba(160, 80, 220, 0)');
+    g.addColorStop(0, 'rgba(255, 255, 255, 0.5)');
+    g.addColorStop(1, 'rgba(255, 255, 255, 0)');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, 128, 64);
   });
   return vapor;
+}
+
+// ------------------------------------------------------------------ clima
+
+interface Particulas {
+  puntos: THREE.Points;
+  material: THREE.ShaderMaterial;
+}
+
+/** Cómo se mueve cada clima: viento (m/s), cuántas, tamaño y si brillan. */
+const MOVIMIENTO = {
+  nieve: { viento: [4, -7, 2], n: 1100, tam: 0.16, brilla: false, raya: false },
+  ceniza: { viento: [2, -1.6, 1], n: 900, tam: 0.14, brilla: true, raya: false },
+  lluvia: { viento: [1.5, -30, 0.5], n: 1200, tam: 0.42, brilla: false, raya: true },
+  esporas: { viento: [0.3, 0.5, 0.2], n: 650, tam: 0.2, brilla: true, raya: false },
+  polvo: { viento: [7, -0.2, 3], n: 700, tam: 0.12, brilla: false, raya: false },
+  chispas: { viento: [0.2, 1.1, 0.1], n: 420, tam: 0.14, brilla: true, raya: false },
+} as const;
+
+/**
+ * Partículas alrededor del jugador en una sola llamada de dibujo: cada punto
+ * sale de su semilla en el vértice y da la vuelta en una caja que le sigue, así
+ * que no hay nada que actualizar en cada fotograma.
+ */
+function crearParticulas(p: Planeta): Particulas | null {
+  const tipo = p.clima.particula;
+  if (!tipo) return null;
+  const m = MOVIMIENTO[tipo];
+  const semillas = new Float32Array(m.n * 3);
+  const rand = aleatorio(p.semilla + 77);
+  for (let k = 0; k < semillas.length; k++) semillas[k] = rand();
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(semillas, 3));
+  const material = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, fog: false,
+    blending: m.brilla ? THREE.AdditiveBlending : THREE.NormalBlending,
+    uniforms: {
+      t: { value: 0 },
+      centro: { value: new THREE.Vector3() },
+      caja: { value: new THREE.Vector3(70, 34, 70) },
+      viento: { value: new THREE.Vector3(...m.viento) },
+      tam: { value: m.tam },
+      color: { value: new THREE.Color(p.clima.color ?? p.bioma.cielo.nube) },
+      raya: { value: m.raya ? 1 : 0 },
+    },
+    vertexShader: `
+      uniform float t; uniform vec3 centro; uniform vec3 caja; uniform vec3 viento; uniform float tam;
+      varying float vLejos;
+      void main() {
+        vec3 s = position;
+        vec3 p = s * caja + viento * t * (0.75 + s.x * 0.5);
+        p.x += sin(t * 0.7 + s.y * 9.0) * 1.1;
+        p.z += cos(t * 0.5 + s.z * 9.0) * 1.1;
+        // Da la vuelta dentro de la caja, centrada en el jugador.
+        p = mod(p - centro, caja) + centro - caja * 0.5;
+        p.y += 8.0;
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        vLejos = clamp(-mv.z / 42.0, 0.0, 1.0);
+        gl_PointSize = clamp(tam * 620.0 / max(0.5, -mv.z), 1.0, 26.0);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      uniform vec3 color; uniform float raya; varying float vLejos;
+      void main() {
+        vec2 c = gl_PointCoord - 0.5;
+        float a = raya > 0.5 ? smoothstep(0.08, 0.0, abs(c.x)) * smoothstep(0.5, 0.2, abs(c.y)) : smoothstep(0.5, 0.15, length(c));
+        a *= 0.8 * (1.0 - vLejos * vLejos);
+        if (a < 0.01) discard;
+        gl_FragColor = vec4(color, a);
+      }`,
+  });
+  const puntos = new THREE.Points(geo, material);
+  puntos.frustumCulled = false;
+  puntos.renderOrder = 5;
+  return { puntos, material };
 }

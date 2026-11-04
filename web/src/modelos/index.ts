@@ -33,6 +33,8 @@ import { crearSegadorJefe } from './segador-jefe.ts';
 import { crearSembrador } from './sembrador.ts';
 import { crearTorreVelo } from './torre-velo.ts';
 import { crearRacion } from './racion.ts';
+import { crearFragmento } from './fragmento.ts';
+import { DEF_RANURA, RANURAS } from '../nave/piezas.ts';
 import { crearImanGrua } from './iman-grua.ts';
 import { crearJaula } from './jaula.ts';
 import { crearSuperviviente } from './superviviente.ts';
@@ -106,6 +108,7 @@ export const CATALOGO: { id: string; nombre: string; tipo: Tipo; crear: () => Mo
   { id: 'caja-abandonada', nombre: 'Caja abandonada', tipo: 'objeto', crear: () => crearCaja('abandonada') },
   { id: 'caja-trampa', nombre: 'Caja abandonada (trampa)', tipo: 'objeto', crear: () => crearCaja('trampa') },
   { id: 'racion', nombre: 'Ración de la colonia', tipo: 'objeto', crear: crearRacion },
+  ...RANURAS.map((r) => ({ id: `fragmento-${r}`, nombre: DEF_RANURA[r].fragmento, tipo: 'objeto' as const, crear: () => crearFragmento(r) })),
   { id: 'iman-grua', nombre: 'Imán de grúa', tipo: 'mapa', crear: crearImanGrua },
   { id: 'jaula', nombre: 'Jaula de HELIOS', tipo: 'mapa', crear: crearJaula },
   { id: 'superviviente', nombre: 'Teo, superviviente', tipo: 'npc', crear: () => crearSuperviviente(0) },

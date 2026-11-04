@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && node --check creator-server.ts && vite build",
+    "build": "tsc --noEmit && node --check creator-server.ts && node --check voces-servidor.ts && vite build",
     "test": "node --test creator-server.test.ts src/voz.test.ts src/guion.test.ts test/*.test.ts",
     "preview": "vite preview",
     "serve": "node creator-server.ts",
-    "start": "node creator-server.ts"
+    "start": "node creator-server.ts",
+    "voces": "node scripts/descargar-voces.mjs"
   },
   "dependencies": {
     "three": "0.186.1"
@@ -21,5 +22,8 @@
   },
   "engines": {
     "node": ">=22.18"
+  },
+  "optionalDependencies": {
+    "onnxruntime-node": "1.31.1"
   }
 }

@@ -2,27 +2,30 @@
 // en cada uno y el momento en que estalla Ares. Solo datos, sin pantalla ni
 // audio: lo leen la cinemática, la banda sonora y las pruebas.
 //
-// La historia, de principio a fin: Meta ardía y encendió HELIOS; el velo lo
-// enfrió hasta congelarlo y su gente vive bajo tierra; pidió ayuda y Ares
-// respondió; HELIOS vio en la ayuda una amenaza, fue a la guerra y rompió
-// Ares; de Ares queda una nave; la única llave para apagar HELIOS es ADA, que
-// Noa Herrera escondió en Meta; y así se juega: diez minutos por sector hasta
-// que el cohete sube la orden y vuelve el sol, y las siete reliquias para
-// apagar el velo de todo el planeta.
+// Toda la cinemática es un mensaje de ADA para el último superviviente: por eso
+// habla en primera persona y le trata de tú. La historia, de principio a fin:
+// Meta ardía y creó una IA, HELIOS, que tapó el cielo con un velo rojo; lo enfrió
+// y nadie le enseñó a parar; Meta se congela y pidió ayuda; Ares mandó su flota a
+// apagar el velo; HELIOS, que solo sabe protegerlo, destruyó la flota y rompió
+// Ares; de Ares queda tu nave; ADA es la única que puede firmar el apagado y Noa
+// Herrera la escondió en Meta; y así se juega: aguantar diez minutos hasta que
+// despegue el cohete con su firma, y siete pruebas para apagar el velo entero.
 
 /** Planos en segundos: [inicio, fin]. Van seguidos y suman la duración. */
 export const PLANOS = {
-  prologo: [0, 8], // Meta ardía: encienden HELIOS y el velo lo cubre
-  refugio: [8, 15], // Meta hoy: se congela, su gente vive bajo tierra y pide ayuda
-  ares: [15, 20], // Ares responde con su flota
-  helios: [20, 25], // el ojo de HELIOS se abre en el velo
-  guerra: [25, 31], // la flota contra el enjambre y el Dragón
-  ciudad: [31, 35], // los colosos en las ciudades de Ares
-  caida: [35, 39.5], // el velo cubre Ares y lo rompe
-  especialista: [39.5, 42.1], // el último especialista
-  llave: [42.1, 49], // ADA, el módulo 7, y Noa Herrera, que la escondió
-  meta: [49, 53], // rumbo a Meta, donde late la señal de ADA
-  mision: [53, 63], // cada sector: diez minutos, el cohete y el sol que vuelve
+  senal: [0, 4], // el mensaje de ADA llega entre estática
+  prologo: [4, 12], // Meta arde: crean a HELIOS y el velo lo cubre
+  anos: [12, 18], // pasan dos siglos: el sol se apaga y avanza el hielo
+  refugio: [18, 25], // Meta hoy: se congela, su gente vive bajo tierra y pide ayuda
+  ares: [25, 30.5], // Ares responde con su flota
+  helios: [30.5, 36], // el ojo de HELIOS se abre en el velo
+  guerra: [36, 42], // la flota contra el enjambre y el Dragón
+  ciudad: [42, 46.5], // los colosos en las ciudades de Ares
+  caida: [46.5, 51.5], // el velo cubre Ares y lo rompe
+  especialista: [51.5, 55], // el último superviviente
+  llave: [55, 65], // ADA y Noa Herrera, que la escondió
+  meta: [65, 69.5], // rumbo a Meta, donde late la señal de ADA
+  mision: [69.5, 83], // diez minutos, el cohete, el sol y las siete pruebas
 } as const;
 
 export type Plano = keyof typeof PLANOS;
@@ -34,9 +37,11 @@ export const en = (plano: Plano, s: number) => PLANOS[plano][0] + s;
 
 /** Segundo en que Ares se rompe. */
 export const ESTALLA = en('caida', 3);
-/** En la misión: cuándo se abre la ventana (despega el cohete) y cuándo atraviesa el velo. */
-export const VENTANA = en('mision', 5);
-export const VUELVE_EL_SOL = en('mision', 6.4);
+/** En la misión: cuándo despega el cohete y cuándo atraviesa el velo. */
+export const VENTANA = en('mision', 5.5);
+export const VUELVE_EL_SOL = en('mision', 7.5);
+/** Qué segundo de la llave deja paso de ADA a Noa Herrera. */
+export const LLEGA_NOA = 7.2;
 
 export function planoEn(t: number): Plano {
   for (const p of ORDEN) if (t < PLANOS[p][1]) return p;
@@ -46,7 +51,7 @@ export function planoEn(t: number): Plano {
 export interface Rotulo {
   de: number;
   a: number;
-  /** El narrador va abajo; HELIOS, arriba, en rojo y con su lenguaje de protocolo. */
+  /** ADA, que narra, va abajo; HELIOS, arriba, en rojo y con su lenguaje de protocolo. */
   voz: 'narra' | 'helios';
   texto: string;
 }
@@ -55,34 +60,40 @@ const r = (plano: Plano, de: number, a: number, voz: Rotulo['voz'], texto: strin
   ({ de: en(plano, de), a: en(plano, a), voz, texto });
 
 export const ROTULOS: readonly Rotulo[] = [
-  r('prologo', 0.5, 3.0, 'narra', 'Hace dos siglos, Meta ardía.'),
-  r('prologo', 3.1, 5.4, 'narra', 'Para enfriarlo, encendieron HELIOS.'),
+  r('senal', 0.6, 3.8, 'narra', 'Si recibes esto, eres el último.'),
+  r('prologo', 0.3, 3.0, 'narra', 'Este es Meta. Hace dos siglos, ardía.'),
+  r('prologo', 3.1, 5.5, 'narra', 'Para salvarse, crearon una IA: HELIOS.'),
   r('prologo', 3.6, 5.6, 'helios', 'INICIANDO VELO DE SULFATOS.'),
-  r('prologo', 5.6, 7.8, 'narra', 'Funcionó. Y nunca se detuvo.'),
-  r('refugio', 0.4, 2.9, 'narra', 'Hoy el velo tapa el sol y Meta se congela.'),
-  r('refugio', 3.0, 4.8, 'narra', 'Su gente sobrevive bajo tierra.'),
-  r('refugio', 4.9, 6.9, 'narra', 'Y desde aquí pidió ayuda a las estrellas.'),
-  r('ares', 0.4, 2.6, 'narra', 'Ares, nuestro mundo, respondió.'),
-  r('ares', 2.7, 4.8, 'narra', 'Mandó su flota a ayudar.'),
-  r('helios', 0.5, 2.5, 'helios', 'AMENAZA PARA EL VELO DETECTADA.'),
-  r('helios', 2.7, 4.8, 'helios', 'PROTOCOLO: PROTEGER A META.'),
-  r('guerra', 0.5, 3.1, 'narra', 'HELIOS vio una amenaza en la ayuda.'),
-  r('guerra', 3.3, 5.8, 'narra', 'Y los dos mundos entraron en guerra.'),
-  r('ciudad', 0.4, 3.8, 'narra', 'Sus colosos bajaron a nuestras ciudades.'),
-  r('caida', 0.5, 2.6, 'helios', 'EXTENDIENDO EL VELO.'),
-  r('caida', 3.3, 4.4, 'helios', 'AMENAZA NEUTRALIZADA.'),
-  r('especialista', 0.3, 2.5, 'narra', 'De Ares solo quedó una nave.'),
-  r('llave', 0.3, 2.5, 'narra', 'Solo ADA puede firmar el apagado de HELIOS.'),
-  r('llave', 2.6, 4.5, 'narra', 'Es su módulo de auditoría, el número 7.'),
-  r('llave', 3.1, 5.3, 'helios', 'MÓDULO 7: NO LOCALIZADO.'),
-  r('llave', 4.6, 6.8, 'narra', 'Noa Herrera la arrancó y la escondió en Meta.'),
-  r('meta', 0.3, 2.2, 'narra', 'El especialista puso rumbo a Meta.'),
-  r('meta', 2.3, 3.9, 'narra', 'Tiene que encontrar a ADA.'),
-  r('mision', 0.4, 2.8, 'narra', 'En cada sector, aguanta diez minutos.'),
-  r('mision', 2.9, 5.0, 'narra', 'Al abrirse la ventana, el cohete sube la orden.'),
-  r('mision', 5.6, 7.5, 'narra', 'Y el sol vuelve a ese sector.'),
-  r('mision', 6.4, 8.2, 'helios', 'ORDEN DE APAGADO: SECTOR DELTA.'),
-  r('mision', 7.7, 9.9, 'narra', 'Reúne las siete reliquias y ADA apagará el velo.'),
+  r('prologo', 5.6, 7.9, 'narra', 'Cubrió el cielo con un velo rojo.'),
+  r('anos', 0.3, 2.6, 'narra', 'Tapó el sol y Meta se enfrió.'),
+  r('anos', 2.7, 5.8, 'narra', 'Pero nadie le enseñó a parar.'),
+  r('refugio', 0.4, 2.5, 'narra', 'Hoy Meta se congela.'),
+  r('refugio', 2.6, 4.6, 'narra', 'Su gente vive bajo tierra.'),
+  r('refugio', 4.7, 6.9, 'narra', 'Y pidió ayuda a las estrellas.'),
+  r('ares', 0.3, 2.6, 'narra', 'Tu mundo, Ares, oyó la llamada.'),
+  r('ares', 2.7, 5.3, 'narra', 'Mandó su flota a apagar el velo.'),
+  r('helios', 0.4, 2.5, 'helios', 'AMENAZA PARA EL VELO DETECTADA.'),
+  r('helios', 2.6, 5.4, 'narra', 'HELIOS solo sabe proteger el velo.'),
+  r('guerra', 0.4, 3.2, 'narra', 'Para él, tu flota era el enemigo.'),
+  r('guerra', 3.3, 5.8, 'narra', 'Y la destruyó.'),
+  r('ciudad', 0.3, 2.0, 'narra', 'Después fue a por Ares.'),
+  r('ciudad', 2.1, 4.3, 'narra', 'Sus máquinas bajaron a tus ciudades.'),
+  r('caida', 0.3, 2.6, 'helios', 'EXTENDIENDO EL VELO.'),
+  r('caida', 0.4, 2.7, 'narra', 'Y cubrió tu mundo con el velo.'),
+  r('caida', 3.2, 4.8, 'helios', 'AMENAZA NEUTRALIZADA.'),
+  r('especialista', 0.3, 3.3, 'narra', 'De Ares solo quedó una nave. La tuya.'),
+  r('llave', 0.3, 2.4, 'narra', 'Pero HELIOS tiene una debilidad.'),
+  r('llave', 2.5, 4.8, 'narra', 'Yo. Soy ADA, la pieza que lo vigilaba.'),
+  r('llave', 4.9, 7.2, 'narra', 'Solo mi firma puede apagarlo.'),
+  r('llave', 5.2, 7.4, 'helios', 'MÓDULO 7: NO LOCALIZADO.'),
+  r('llave', 7.3, 9.8, 'narra', 'Noa Herrera me escondió en Meta.'),
+  r('meta', 0.3, 2.1, 'narra', 'HELIOS me está buscando.'),
+  r('meta', 2.2, 4.3, 'narra', 'Ven. Encuéntrame antes que él.'),
+  r('mision', 0.4, 3.0, 'narra', 'En cada zona hay un cohete.'),
+  r('mision', 3.1, 5.4, 'narra', 'Aguanta diez minutos a que despegue.'),
+  r('mision', 5.5, 7.4, 'narra', 'Llevará mi firma hasta el velo.'),
+  r('mision', 7.6, 9.4, 'narra', 'Y el sol volverá a esa tierra.'),
+  r('mision', 9.6, 12.8, 'narra', 'Con siete pruebas, lo apagaré del todo.'),
 ];
 
 /** Letras por segundo al escribir un rótulo. */

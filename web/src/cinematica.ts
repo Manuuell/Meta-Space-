@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { PALETA, barril, caja, conDetalle, cono, pieza, toon, toro } from './modelos/kit.ts';
 import type { Modelo } from './modelos/kit.ts';
-import { crearAdaNoa } from './modelos/ada.ts';
+import { crearAdaNoa, crearAdaOrbe } from './modelos/ada.ts';
 import { crearAstronauta } from './modelos/astronauta.ts';
 import { crearBaliza } from './modelos/baliza.ts';
 import { crearNpcVigia } from './modelos/npc-vigia.ts';
@@ -16,22 +16,23 @@ import { crearNave } from './modelos/nave.ts';
 import { crearSabueso } from './modelos/sabueso.ts';
 import { azar, cielo, monotona, planeta, punto, sonar, soplido, suave, tono, tramo, velo } from './intro.ts';
 import { tocarBanda } from './musica.ts';
+import { crearPost } from './cinematica-post.ts';
+import type { AcabadoImagen } from './cinematica-post.ts';
 import {
-  DURACION, ESTALLA, LETRAS_POR_SEGUNDO, ORDEN, PLANOS, RELIQUIAS, ROTULOS, VENTANA, VUELVE_EL_SOL, en, planoEn,
+  DURACION, ESTALLA, LETRAS_POR_SEGUNDO, LLEGA_NOA, ORDEN, PLANOS, RELIQUIAS, ROTULOS, VENTANA, VUELVE_EL_SOL, en, planoEn,
 } from './cinematica-guion.ts';
 import type { Plano, Rotulo } from './cinematica-guion.ts';
 
 // META SPACE — Cinemática de la historia, entre la intro del título y el menú.
 //
-// Once planos en algo más de un minuto, que cuentan la historia entera (el
-// guion y sus tiempos, en cinematica-guion.ts): Meta ardía y encendió HELIOS;
-// el velo lo congeló y su gente vive bajo tierra; pidió ayuda y Ares, el mundo
-// del jugador, mandó su flota; HELIOS vio en la ayuda una amenaza para el
-// velo, soltó al Dragón y a sus enjambres, bajó con sus colosos a las ciudades
-// de Ares y lo cubrió con el velo hasta romperlo; de Ares queda una nave, la
-// del especialista; la llave para apagar HELIOS es ADA, el módulo 7, que Noa
-// Herrera escondió en Meta; y así se juega: diez minutos por sector hasta que
-// el cohete sube la orden y vuelve el sol, y siete reliquias para todo Meta.
+// Trece planos en algo menos de minuto y medio: un mensaje de ADA para el último
+// superviviente, que cuenta la historia entera (el guion y sus tiempos, en
+// cinematica-guion.ts). Meta ardía y creó una IA, HELIOS, que tapó el cielo con un
+// velo rojo; pasan dos siglos y Meta se congela; pidió ayuda y Ares mandó su flota
+// a apagar el velo; HELIOS destruyó la flota, bajó con sus colosos a las ciudades
+// y rompió Ares; de Ares queda tu nave; solo ADA puede firmar el apagado y Noa
+// Herrera la escondió en Meta; y así se juega: diez minutos hasta que despega el
+// cohete con su firma y vuelve el sol, y siete pruebas para apagarlo del todo.
 // Como en la intro, cada fotograma sale solo del
 // tiempo `t`: disparos, explosiones, esquirlas y chispas se recalculan desde
 // el guion, así que saltar a cualquier segundo es exacto y las capturas se
@@ -66,7 +67,7 @@ const ENJAMBRE = 14;
 /** Quién cae en la batalla y cuándo: índice → segundo. */
 const enGuerra = (lista: readonly (readonly [number, number])[]) => new Map(lista.map(([i, s]) => [i, en('guerra', s)] as [number, number]));
 const CAE_AVISPA = enGuerra([[1, 1.1], [6, 1.8], [3, 2.6], [9, 3.4], [12, 4.7], [5, 5.5]]);
-const CAE_NAVE = enGuerra([[2, 3.95], [4, 5.35]]);
+const CAE_NAVE = enGuerra([[2, 3.95], [0, 4.45], [5, 4.8], [4, 5.1], [1, 5.4], [3, 5.7]]);
 const viva = (cae: Map<number, number>, i: number, t: number) => (cae.get(i) ?? Infinity) > t;
 
 /** La flota de Ares, a la izquierda, avanza despacio hacia el enjambre. */
@@ -117,14 +118,44 @@ interface Estallido {
   tam: number;
 }
 
+/** Misil con estela de humo: va de `de` a `a` por un arco. */
+interface Misil {
+  t0: number;
+  dur: number;
+  de: THREE.Vector3;
+  a: THREE.Vector3;
+  arco: THREE.Vector3;
+}
+
+/** Escudo de una nave que encaja un disparo. */
+interface Impacto {
+  t: number;
+  pos: THREE.Vector3;
+}
+
+/** Lo que salta de una nave rota o de un edificio. */
+interface Restos {
+  plano: Plano;
+  t: number;
+  pos: THREE.Vector3;
+  n: number;
+  /** Tamaño de cada trozo y velocidad a la que salen, en metros. */
+  tam: number;
+  vel: number;
+  semilla: number;
+}
+
 /**
  * Todo el fuego de la cinemática, decidido de antemano: cada rayo sale de
  * donde está el que dispara y llega a donde estará su blanco, y cada baja
  * tiene el disparo que la causa. Así la batalla es la misma en cada pase.
  */
-function guionDeFuego(): { rayos: Rayo[]; estallidos: Estallido[] } {
+function guionDeFuego() {
   const rayos: Rayo[] = [];
   const estallidos: Estallido[] = [];
+  const misiles: Misil[] = [];
+  const impactos: Impacto[] = [];
+  const restos: Restos[] = [];
   const cian = new THREE.Color(PALETA.ada), rojo = new THREE.Color(PALETA.helios), purpura = new THREE.Color(PALETA.purpuraBrillo);
   const disparo = (t0: number, dur: number, de: THREE.Vector3, a: THREE.Vector3, color: THREE.Color, grosor: number, impacto: number, largo = grosor * 24) => {
     rayos.push({ plano: 'guerra', t0, dur, de, a, color, grosor, largo });
@@ -135,7 +166,7 @@ function guionDeFuego(): { rayos: Rayo[]; estallidos: Estallido[] } {
   const DUR = 0.42;
 
   // Fuego cruzado: la flota dispara en cyan y el enjambre en rojo.
-  for (let k = 0, t0 = ini + 0.15; t0 < fin - 0.5; k++, t0 += 0.16) {
+  for (let k = 0, t0 = ini + 0.15; t0 < ini + 5.2; k++, t0 += 0.1) {
     if (k % 2 === 0) {
       const i = (k * 5 + 1) % FLOTA;
       let j = (k * 7) % ENJAMBRE;
@@ -148,6 +179,7 @@ function guionDeFuego(): { rayos: Rayo[]; estallidos: Estallido[] } {
       if (!viva(CAE_AVISPA, j, t0)) continue;
       for (let n = 0; n < FLOTA && !viva(CAE_NAVE, i, t0 + DUR); n++) i = (i + 1) % FLOTA;
       disparo(t0, DUR, avispaEnGuerra(j, t0, new THREE.Vector3()).add(morroAvispa), naveEnGuerra(i, t0 + DUR, new THREE.Vector3()), rojo, 0.075, 0.5);
+      impactos.push({ t: t0 + DUR, pos: naveEnGuerra(i, t0 + DUR, new THREE.Vector3()) });
     }
   }
   // Cada avispa que cae, la derriba un disparo de la flota.
@@ -155,32 +187,56 @@ function guionDeFuego(): { rayos: Rayo[]; estallidos: Estallido[] } {
     let i = j % FLOTA;
     while (!viva(CAE_NAVE, i, tc - DUR)) i = (i + 1) % FLOTA;
     disparo(tc - DUR, DUR, naveEnGuerra(i, tc - DUR, new THREE.Vector3()).add(morroNave), avispaEnGuerra(j, tc, new THREE.Vector3()), cian, 0.11, 0);
-    estallidos.push({ plano: 'guerra', t: tc, pos: avispaEnGuerra(j, tc, new THREE.Vector3()), tam: 2.4 });
+    const pos = avispaEnGuerra(j, tc, new THREE.Vector3());
+    estallidos.push({ plano: 'guerra', t: tc, pos, tam: 2.4 });
+    restos.push({ plano: 'guerra', t: tc, pos: pos.clone(), n: 5, tam: 0.22, vel: 5, semilla: j * 17 + 1 });
+  }
+  // Andanadas de misiles de la flota: tardan, dejan humo y estallan al llegar.
+  for (let n = 0, t0 = ini + 0.45; t0 < ini + 4.6; n++, t0 += 0.34) {
+    const i = (n * 5 + 2) % FLOTA, j = (n * 3 + 1) % ENJAMBRE;
+    if (!viva(CAE_NAVE, i, t0) || !viva(CAE_AVISPA, j, t0 + 0.9)) continue;
+    const a = avispaEnGuerra(j, t0 + 0.9, new THREE.Vector3());
+    misiles.push({ t0, dur: 0.9, de: naveEnGuerra(i, t0, new THREE.Vector3()).add(morroNave), a, arco: new THREE.Vector3(0, 2.5 + azar(n) * 5, (azar(n + 9) - 0.5) * 7) });
+    estallidos.push({ plano: 'guerra', t: t0 + 0.9, pos: a.clone(), tam: 1.3 });
   }
   // El Heraldo bombardea desde arriba con orbes lentos; uno acaba con la nave 4.
   const boca = new THREE.Vector3(-1.5, -1, 0);
   for (let n = 0, t0 = ini + 0.7; t0 < fin - 0.9; n++, t0 += 0.75) {
     const i = (n * 2 + 1) % FLOTA;
-    if (!viva(CAE_NAVE, i, t0 + 0.8) || i === 4) continue;
+    if (!viva(CAE_NAVE, i, t0 + 0.8)) continue;
     disparo(t0, 0.8, heraldoEnGuerra(t0, new THREE.Vector3()).add(boca), naveEnGuerra(i, t0 + 0.8, new THREE.Vector3()), purpura, 0.3, 0.9, 1.4);
   }
-  const t4 = CAE_NAVE.get(4)!;
-  disparo(t4 - 0.8, 0.8, heraldoEnGuerra(t4 - 0.8, new THREE.Vector3()).add(boca), naveEnGuerra(4, t4, new THREE.Vector3()), purpura, 0.34, 0, 1.6);
-  // La nave 2 la quema el aliento del Dragón (ver `aliento`).
-  for (const [i, tc] of CAE_NAVE) estallidos.push({ plano: 'guerra', t: tc, pos: naveEnGuerra(i, tc, new THREE.Vector3()), tam: 3.4 });
+  // Caen todas las naves: cinco por un orbe del Heraldo y la 2 por el aliento del Dragón (ver `aliento`).
+  for (const [i, tc] of CAE_NAVE) {
+    const pos = naveEnGuerra(i, tc, new THREE.Vector3());
+    if (i !== 2) disparo(tc - 0.8, 0.8, heraldoEnGuerra(tc - 0.8, new THREE.Vector3()).add(boca), pos.clone(), purpura, 0.34, 0, 1.6);
+    estallidos.push({ plano: 'guerra', t: tc, pos, tam: 3.4 });
+    restos.push({ plano: 'guerra', t: tc, pos: pos.clone(), n: 16, tam: 0.42, vel: 9, semilla: i * 41 + 3 });
+  }
 
   // En la ciudad estallan edificios y retumban los pisotones del Titán.
   for (const [s, x, y, z, tam] of [
     [0.4, -30, 24, -110, 7], [1.1, 46, 16, -140, 8], [2.0, -72, 28, -160, 9], [3.0, 22, 34, -125, 8], [3.45, -12, 18, -95, 6],
     [1.15, 5, 0.4, -19, 2.4], [3.15, 5, 0.4, -19, 2.4],
-  ] as const) estallidos.push({ plano: 'ciudad', t: en('ciudad', s), pos: new THREE.Vector3(x, y, z), tam });
+  ] as const) {
+    const pos = new THREE.Vector3(x, y, z);
+    estallidos.push({ plano: 'ciudad', t: en('ciudad', s), pos, tam });
+    if (tam < 5) continue;
+    // Cada edificio que estalla lo alcanza un rayo que cae del enjambre.
+    rayos.push({ plano: 'ciudad', t0: en('ciudad', s) - 0.28, dur: 0.28, de: new THREE.Vector3(x * 0.55 - 20, 64, z + 24), a: pos, color: rojo, grosor: 0.4, largo: 26 });
+    restos.push({ plano: 'ciudad', t: en('ciudad', s), pos: pos.clone(), n: 10, tam: 1.2, vel: 16, semilla: s * 31 });
+  }
 
   // Y Ares.
   estallidos.push({ plano: 'caida', t: ESTALLA, pos: CENTRO_CAIDA.clone(), tam: 30 });
   // En la misión: el despegue del cohete y el velo que se rompe cuando lo atraviesa.
   estallidos.push({ plano: 'mision', t: VENTANA, pos: new THREE.Vector3(COHETE.x, 2, COHETE.z), tam: 6 });
   estallidos.push({ plano: 'mision', t: VUELVE_EL_SOL, pos: new THREE.Vector3(COHETE.x, 400, COHETE.z), tam: 30 });
-  return { rayos, estallidos };
+  // Al volver el sol revientan las máquinas de la horda.
+  for (let j = 0; j < 8; j++) {
+    estallidos.push({ plano: 'mision', t: VUELVE_EL_SOL + 0.3 + j * 0.1, pos: new THREE.Vector3((j - 3.5) * 1.7, 1, -11 - (j % 3) * 2.4), tam: 1.8 });
+  }
+  return { rayos, estallidos, misiles, impactos, restos };
 }
 
 /** Donde está el cohete de la misión, en el horizonte del sector. */
@@ -200,9 +256,9 @@ const CSS = `
 .msc__banda { position: absolute; left: 0; right: 0; height: 9cqh; background: #000; pointer-events: none; will-change: transform; }
 .msc__banda--arriba { top: 0; }
 .msc__banda--abajo { bottom: 0; }
-.msc__narra { position: absolute; left: 16px; right: 16px; bottom: calc(9cqh + 2.6cqh); margin: 0; text-align: center; color: #f3f4ff;
+.msc__narra { position: absolute; left: 16px; right: 16px; bottom: calc(9cqh + 2.6cqh); margin: 0; text-align: center; color: #dff9ff;
   font-weight: 700; font-size: clamp(14px, min(3.4cqw, 3.8cqh), 32px); line-height: 1.25; opacity: 0; pointer-events: none;
-  text-shadow: 0 2px 0 #0b0a1d, 0 0 18px rgba(5, 6, 26, .9); }
+  text-shadow: 0 2px 0 #06101c, 0 0 22px rgba(60, 190, 255, .5), 0 0 18px rgba(5, 6, 26, .9); }
 .msc__helios { position: absolute; left: 16px; right: 16px; top: calc(9cqh + 3cqh); margin: 0; text-align: center;
   color: ${PALETA.helios}; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-weight: 800;
   letter-spacing: .16em; font-size: clamp(11px, min(1.9cqw, 2.8cqh), 22px); opacity: 0; pointer-events: none;
@@ -289,7 +345,7 @@ function cieloIncendio(): THREE.CanvasTexture {
   return tex;
 }
 
-/** El ojo de HELIOS: iris rojo con estrías, pupila rasgada y un brillo. */
+/** El ojo de HELIOS: un diafragma de cámara al rojo, porque es una máquina que mira. */
 function texturaOjo(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = 256;
@@ -316,14 +372,29 @@ function texturaOjo(): THREE.CanvasTexture {
   g.lineWidth = 9;
   g.strokeStyle = 'rgba(255, 214, 150, .95)';
   g.stroke();
+  const vertice = (k: number, r: number, giro = 0) => {
+    const a = (k / 8) * TAU + 0.2 + giro;
+    return [128 + Math.cos(a) * r, 128 + Math.sin(a) * r] as const;
+  };
   g.fillStyle = '#14060c';
   g.beginPath();
-  g.ellipse(128, 128, 11, 46, 0, 0, TAU);
+  for (let k = 0; k < 8; k++) g[k ? 'lineTo' : 'moveTo'](...vertice(k, 38));
+  g.closePath();
   g.fill();
-  g.fillStyle = 'rgba(255, 255, 255, .85)';
-  g.beginPath();
-  g.arc(106, 102, 7, 0, TAU);
-  g.fill();
+  g.strokeStyle = 'rgba(255, 150, 100, .8)';
+  g.lineWidth = 2.5;
+  for (let k = 0; k < 8; k++) {
+    g.beginPath();
+    g.moveTo(...vertice(k, 38));
+    g.lineTo(...vertice(k, 62, 0.75));
+    g.stroke();
+  }
+  const foco = g.createRadialGradient(128, 128, 0, 128, 128, 16);
+  foco.addColorStop(0, 'rgba(255, 236, 200, 1)');
+  foco.addColorStop(0.4, 'rgba(255, 96, 60, .95)');
+  foco.addColorStop(1, 'rgba(255, 60, 40, 0)');
+  g.fillStyle = foco;
+  g.fillRect(100, 100, 56, 56);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
@@ -595,7 +666,8 @@ const SONIDOS: readonly (readonly [number, (a: AudioContext, t0: number) => void
   [en('prologo', 5.6), (a, t0) => estallido(a, t0, 1.4, 0.12, 300)],
   // Refugio: viento helado y la llamada de auxilio en morse.
   [en('refugio', 0), (a, t0) => viento(a, t0, 7)],
-  [en('refugio', 4.9), sos],
+  [en('anos', 0.2), (a, t0) => viento(a, t0, 5.6)],
+  [en('refugio', 4.8), sos],
   [en('ares', 1.25), (a, t0) => soplido(a, t0, 1.0, 260, 1700, 0.12)],
   [en('helios', 0.4), (a, t0) => tono(a, t0, 'sawtooth', 55, 110, 1.6, 0.05)],
   [en('helios', 0.5), alarma],
@@ -606,6 +678,7 @@ const SONIDOS: readonly (readonly [number, (a: AudioContext, t0: number) => void
   [en('ciudad', 0.1), sirena],
   [en('ciudad', 1.15), (a, t0) => estallido(a, t0, 0.9, 0.22, 400)],
   [en('ciudad', 3.15), (a, t0) => estallido(a, t0, 0.9, 0.22, 400)],
+  [en('ciudad', 2.0), (a, t0) => estallido(a, t0, 1.8, 0.1, 200)],
   [en('caida', 0.5), alarma],
   [en('caida', 2.0), (a, t0) => estallido(a, t0, 1.1, 0.1, 220)],
   [ESTALLA, (a, t0) => {
@@ -618,12 +691,14 @@ const SONIDOS: readonly (readonly [number, (a: AudioContext, t0: number) => void
     soplido(a, t0, 0.8, 400, 3000, 0.06);
     tono(a, t0, 'sine', 660, 990, 0.7, 0.03);
   }],
-  [en('llave', 3.1), alarma],
+  [en('llave', 2.5), (a, t0) => tono(a, t0, 'sine', 330, 660, 0.9, 0.03)],
+  [en('llave', 5.2), alarma],
+  [en('llave', LLEGA_NOA), (a, t0) => soplido(a, t0, 0.7, 500, 2600, 0.05)],
   [PLANOS.meta[0] - 0.05, (a, t0) => barrido(a, t0, 1.2, 3200, 280, 0.12)],
   // La señal de ADA suena con cada latido de la baliza (ver el plano «meta»).
-  ...[1, 2, 3, 4, 5].map((k) => [en('meta', k / 1.4), ping] as const),
+  ...[1, 2, 3, 4, 5, 6].map((k) => [en('meta', k / 1.4), ping] as const),
   // Misión: la cuenta atrás, el despegue y el velo que se abre.
-  ...[0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5].map((s) => [en('mision', s), tic] as const),
+  ...[0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0].map((s) => [en('mision', s), tic] as const),
   [VENTANA, (a, t0) => {
     tono(a, t0, 'sine', 880, 1320, 0.5, 0.05);
     estallido(a, t0, 1.8, 0.25, 900);
@@ -637,6 +712,24 @@ const SONIDOS: readonly (readonly [number, (a: AudioContext, t0: number) => void
 
 /** Cuándo suelta un pulso el ojo de HELIOS: al abrirse y al rugir el Dragón. */
 const PULSOS_OJO = [en('helios', 1.1), en('helios', 2.95)];
+
+/** Golpes que deforman la imagen: segundo, centro en pantalla (0 a 1), fuerza y duración. */
+const GOLPES: readonly { t: number; x: number; y: number; fuerza: number; dur: number }[] = [
+  { t: en('prologo', 3.5), x: 0.5, y: 0.46, fuerza: 0.7, dur: 1.1 },
+  ...PULSOS_OJO.map((t) => ({ t, x: 0.5, y: 0.6, fuerza: 0.9, dur: 1.2 })),
+  { t: en('ciudad', 1.15), x: 0.56, y: 0.2, fuerza: 0.6, dur: 0.8 },
+  { t: en('ciudad', 3.15), x: 0.56, y: 0.2, fuerza: 0.6, dur: 0.8 },
+  { t: ESTALLA, x: 0.5, y: 0.5, fuerza: 1.7, dur: 2.2 },
+  { t: en('meta', 0.05), x: 0.5, y: 0.5, fuerza: 0.8, dur: 1 },
+  { t: VENTANA, x: 0.72, y: 0.55, fuerza: 0.5, dur: 0.9 },
+  { t: VUELVE_EL_SOL, x: 0.62, y: 0.9, fuerza: 1.3, dur: 1.8 },
+];
+
+/** Cuánto brilla lo más claro en cada plano y desde qué luz empieza a brillar. */
+const BRILLO: Record<Plano, readonly [number, number]> = {
+  senal: [0.9, 0.3], prologo: [0.55, 0.66], anos: [0.55, 0.6], refugio: [0.35, 0.86], ares: [0.3, 0.86], helios: [0.7, 0.55], guerra: [0.42, 0.72],
+  ciudad: [0.6, 0.6], caida: [0.5, 0.7], especialista: [0.22, 0.95], llave: [0.4, 0.8], meta: [0.28, 0.82], mision: [0.35, 0.92],
+};
 
 // ------------------------------------------------------------ actores
 
@@ -806,6 +899,7 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
     return () => undefined;
   }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  const post = crearPost(renderer);
   const escena = new THREE.Scene();
   const espacio = cielo(), incendio = cieloIncendio();
   const niebla = new THREE.Fog('#4a1726', 45, 230);
@@ -882,12 +976,16 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
   /** Ventanas encendidas: [x, y, z, fase] en las fachadas que miran a la cámara. */
   const ventanas: (readonly [number, number, number, number])[] = [];
   const fuegos: THREE.Sprite[] = [];
+  /** Medidas de cada edificio: los que se derrumban se recalculan en cada fotograma. */
+  const casas: { x: number; z: number; ancho: number; alto: number; fondo: number; giro: number }[] = [];
   {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
     for (let k = 0; k < N_EDIFICIOS; k++) {
       const x = (azar(k * 5 + 1) * 2 - 1) * 130, z = -55 - azar(k * 5 + 2) * 150;
       const ancho = 6 + azar(k * 5 + 3) * 12, alto = 10 + azar(k * 5 + 4) ** 1.5 * 50, fondo = 6 + azar(k * 5 + 5) * 10;
-      q.setFromAxisAngle(ARRIBA, (azar(k * 5 + 6) - 0.5) * 0.4);
+      const giro = (azar(k * 5 + 6) - 0.5) * 0.4;
+      casas.push({ x, z, ancho, alto, fondo, giro });
+      q.setFromAxisAngle(ARRIBA, giro);
       edificios.setMatrixAt(k, m.compose(p.set(x, 0, z), q, s.set(ancho, alto, fondo)));
       for (let w = 0; w < 3; w++) {
         if (azar(k * 9 + w) < 0.35) continue;
@@ -905,7 +1003,7 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
   // ---------------------------------------------------------- efectos
 
   // Esquirlas de Ares: roca que gira y trozos de lava que se van apagando.
-  const N_ESQUIRLAS = 72;
+  const N_ESQUIRLAS = 150;
   const esquirlas = Array.from({ length: N_ESQUIRLAS }, (_, k) => {
     const y = azar(k * 7 + 1) * 2 - 1, a = azar(k * 7 + 2) * TAU, r = Math.sqrt(1 - y * y);
     return {
@@ -930,7 +1028,7 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
   const nucleo = destello(mapaPunto, '#fff3d6', 1);
 
   // Rayos: un cilindro por disparo (núcleo claro y halo de su color).
-  const MAX_RAYOS = 48;
+  const MAX_RAYOS = 96;
   const geoRayo = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true).rotateX(Math.PI / 2);
   const aditivo = (opacidad: number) => new THREE.MeshBasicMaterial({
     transparent: true, opacity: opacidad, blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
@@ -944,7 +1042,7 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
 
   // Chispas: explosiones, aliento, ascuas y ventanas. Cada punto lleva su
   // tamaño en metros, así una explosión lejana y una cercana se leen igual.
-  const MAX_CHISPAS = 4000;
+  const MAX_CHISPAS = 14000;
   const chispaPos = new Float32Array(MAX_CHISPAS * 3), chispaTinte = new Float32Array(MAX_CHISPAS * 3), chispaTam = new Float32Array(MAX_CHISPAS);
   const geoChispas = new THREE.BufferGeometry();
   geoChispas.setAttribute('position', new THREE.BufferAttribute(chispaPos, 3));
@@ -975,12 +1073,57 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
     chispaTam[nChispas++] = tam;
   };
 
+  // Humo y polvo: como las chispas, pero tapan en vez de brillar.
+  const MAX_HUMO = 1800;
+  const humoPos = new Float32Array(MAX_HUMO * 3), humoTinte = new Float32Array(MAX_HUMO * 4), humoTam = new Float32Array(MAX_HUMO);
+  const geoHumo = new THREE.BufferGeometry();
+  geoHumo.setAttribute('position', new THREE.BufferAttribute(humoPos, 3));
+  geoHumo.setAttribute('tinte', new THREE.BufferAttribute(humoTinte, 4));
+  geoHumo.setAttribute('tam', new THREE.BufferAttribute(humoTam, 1));
+  const humareda = new THREE.Points(geoHumo, new THREE.ShaderMaterial({
+    uniforms: { mapa: { value: mapaPunto }, escala: matChispas.uniforms.escala },
+    vertexShader: `
+      attribute float tam; attribute vec4 tinte; varying vec4 vTinte; uniform float escala;
+      void main() {
+        vTinte = tinte;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = clamp(tam * escala / max(0.1, -mv.z), 0.0, 420.0);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      uniform sampler2D mapa; varying vec4 vTinte;
+      void main() { gl_FragColor = vec4(vTinte.rgb, texture2D(mapa, gl_PointCoord).a * vTinte.a); }`,
+    transparent: true, depthWrite: false,
+  }));
+  humareda.frustumCulled = false;
+  humareda.renderOrder = 1;
+  chispas.renderOrder = 2;
+  let nHumo = 0;
+  const humo = (x: number, y: number, z: number, c: THREE.Color, tam: number, alfa: number) => {
+    if (nHumo >= MAX_HUMO || alfa <= 0.003) return;
+    humoPos.set([x, y, z], nHumo * 3);
+    humoTinte.set([c.r, c.g, c.b, alfa], nHumo * 4);
+    humoTam[nHumo++] = tam;
+  };
+
+  // Trozos de nave y de edificio que salen volando.
+  const MAX_TROZOS = 220;
+  const trozos = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), toon('#5a4a58'), MAX_TROZOS);
+  trozos.frustumCulled = false;
+  trozos.count = 0;
+  let nTrozos = 0;
+
+  // La flota lejana de Ares: siluetas que salen detrás de las seis naves grandes.
+  const N_FLOTILLA = 64;
+  const flotilla = new THREE.InstancedMesh(new THREE.ConeGeometry(0.5, 2.8, 5).rotateX(Math.PI / 2), toon('#e9e4ee'), N_FLOTILLA);
+  flotilla.frustumCulled = false;
+
   const destellos = Array.from({ length: 12 }, () => destello(mapaPunto, '#ffe2a8', 1));
   // Cada destello lleva su raya de lente horizontal, como en una cámara de cine.
   const rayas = Array.from({ length: 12 }, () => destello(mapaPunto, '#ffd9a0', 1));
 
   // Salida del salto al llegar a Meta: rayas de estrellas que se frenan.
-  const N_SALTO = 140;
+  const N_SALTO = 320;
   const saltoPos = new Float32Array(N_SALTO * 6), saltoColor = new Float32Array(N_SALTO * 6);
   const geoSalto = new THREE.BufferGeometry();
   geoSalto.setAttribute('position', new THREE.BufferAttribute(saltoPos, 3));
@@ -1010,18 +1153,24 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
   // ---------------------------------------------------------- campo helado
 
   // El suelo helado de Meta bajo el velo y su cielo, que se abre al volver el sol.
-  const HORIZONTE_VELO = new THREE.Color(0.72, 0.36, 0.38), HORIZONTE_SOL = new THREE.Color(0.96, 0.82, 0.62);
+  const HORIZONTE_VELO = new THREE.Color(0.72, 0.36, 0.38), HORIZONTE_SOL = new THREE.Color(0.9, 0.78, 0.6);
   const matCupula = new THREE.ShaderMaterial({
-    uniforms: { sol: { value: 0 }, horizonte: { value: new THREE.Color() } },
+    uniforms: { agujero: { value: 0 }, centro: { value: new THREE.Vector3(COHETE.x, 390, COHETE.z).normalize() }, horizonte: { value: new THREE.Color() } },
     vertexShader: `varying vec3 vDir; void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: `
-      uniform float sol; uniform vec3 horizonte; varying vec3 vDir;
+      uniform float agujero; uniform vec3 centro; uniform vec3 horizonte; varying vec3 vDir;
       void main() {
-        float h = clamp(vDir.y, 0.0, 1.0);
-        vec3 alto = mix(vec3(0.17, 0.04, 0.08), vec3(0.3, 0.5, 0.82), sol);
-        vec3 medio = mix(vec3(0.5, 0.16, 0.2), vec3(0.62, 0.72, 0.88), sol);
+        vec3 dir = normalize(vDir);
+        float h = clamp(dir.y, 0.0, 1.0);
+        // El sol entra por donde el cohete rompió el velo, y el borde arde al abrirse.
+        float d = acos(clamp(dot(dir, centro), -1.0, 1.0));
+        float abre = 1.0 - smoothstep(agujero - 0.28, agujero, d);
+        vec3 alto = mix(vec3(0.17, 0.04, 0.08), vec3(0.3, 0.5, 0.82), abre);
+        vec3 medio = mix(vec3(0.5, 0.16, 0.2), vec3(0.62, 0.72, 0.88), abre);
         vec3 c = mix(horizonte, medio, smoothstep(0.0, 0.18, h));
-        gl_FragColor = vec4(mix(c, alto, smoothstep(0.18, 0.75, h)), 1.0);
+        c = mix(c, alto, smoothstep(0.18, 0.75, h));
+        float borde = (1.0 - smoothstep(0.0, 0.2, abs(d - agujero))) * step(0.001, agujero) * (1.0 - step(3.3, agujero));
+        gl_FragColor = vec4(c + vec3(1.0, 0.62, 0.3) * borde, 1.0);
       }`,
     side: THREE.BackSide, depthWrite: false,
   });
@@ -1033,7 +1182,9 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
   const rocasCampo = new THREE.InstancedMesh(geoEsquirla, toon('#9fb0cc'), N_ROCAS);
   rocasCampo.frustumCulled = false;
   const campo = new THREE.Group();
-  campo.add(cupula, new THREE.Mesh(new THREE.PlaneGeometry(900, 900).rotateX(-Math.PI / 2), toon('#cbd5e8')), rocasCampo);
+  const matSuelo = toon('#cbd5e8').clone();
+  const SUELO_HIELO = matSuelo.color.clone(), SUELO_DESHIELO = new THREE.Color('#a8c28a');
+  campo.add(cupula, new THREE.Mesh(new THREE.PlaneGeometry(900, 900).rotateX(-Math.PI / 2), matSuelo), rocasCampo);
 
   // El refugio, Tali vigilando, dos Torres del Velo al fondo y la llamada de auxilio.
   const refugio = actor(crearRefugio(), 0);
@@ -1046,6 +1197,8 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
   // ---------------------------------------------------------- la llave
 
   const noa = actor(crearAdaNoa(), 0);
+  const orbe = actor(crearAdaOrbe(), 0);
+  const reflejo = destello(mapaPunto, '#ff9a50', 1), reflejoNucleo = destello(mapaPunto, '#fff0c8', 1);
   const auraLlave = destello(mapaPunto, PALETA.ada, 1);
   const aroLlave = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 64).rotateX(-Math.PI / 2), aditivoColor(PALETA.ada));
 
@@ -1058,14 +1211,19 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
   const llamaCohete = destello(mapaPunto, '#ffd28a', 1);
   const hazSol = new THREE.Mesh(new THREE.CylinderGeometry(3, 16, 130, 32, 1, true), aditivoColor('#ffd98a'));
   const solMision = destello(mapaPunto, '#fff2c8', 1);
+  // Más haces de sol por el agujero del velo y brotes que salen al deshelarse.
+  const hacesSol = Array.from({ length: 6 }, () => new THREE.Mesh(new THREE.CylinderGeometry(1.2, 8, 170, 16, 1, true), aditivoColor('#ffdf9a')));
+  const N_BROTES = 170;
+  const brotes = new THREE.InstancedMesh(new THREE.ConeGeometry(0.1, 0.6, 5).translate(0, 0.3, 0), toon('#6fd36a'), N_BROTES);
+  brotes.frustumCulled = false;
 
   const nuevos: THREE.Object3D[] = [metaAntes, solAntes, ...nodos, ...haces, campo, refugio.raiz, tali.raiz, ...torres.map((a) => a.raiz),
-    hazSenal, ...anillosSenal, noa.raiz, auraLlave, aroLlave, ...horda.map((a) => a.raiz), balizaHelios.raiz, cohete.raiz, llamaCohete,
-    hazSol, solMision];
+    hazSenal, ...anillosSenal, noa.raiz, orbe.raiz, auraLlave, aroLlave, ...horda.map((a) => a.raiz), balizaHelios.raiz, cohete.raiz, llamaCohete,
+    hazSol, solMision, ...hacesSol, brotes, flotilla, reflejo, reflejoNucleo];
 
   escena.add(ares, brasaAres, meta, ojo, brilloOjo, rayaOjo, pulsoOjo, baliza, balizaNucleo, ciudad, roca, lava, onda, nucleo, salto,
     ...rayas, heroe.raiz, dragon.raiz, heraldo.raiz, titan.raiz, cancerbero.raiz, especialista.raiz,
-    ...flota.map((a) => a.raiz), ...enjambre.map((a) => a.raiz), nucleoRayos, haloRayos, chispas, ...destellos, ...nuevos);
+    ...flota.map((a) => a.raiz), ...enjambre.map((a) => a.raiz), nucleoRayos, haloRayos, trozos, humareda, chispas, ...destellos, ...nuevos);
   /** Lo que cada plano enciende a mano; el resto se apaga en cada fotograma. */
   const conmutables: THREE.Object3D[] = [ares, brasaAres, meta, ojo, brilloOjo, rayaOjo, pulsoOjo, baliza, balizaNucleo, ciudad, roca, lava, onda, nucleo, salto,
     heroe.raiz, dragon.raiz, heraldo.raiz, titan.raiz, cancerbero.raiz, especialista.raiz, ...flota.map((a) => a.raiz), ...enjambre.map((a) => a.raiz),
@@ -1074,18 +1232,21 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
     for (const o of objs) o.visible = true;
   };
 
-  const { rayos: RAYOS, estallidos: ESTALLIDOS } = guionDeFuego();
+  const { rayos: RAYOS, estallidos: ESTALLIDOS, misiles: MISILES, impactos: IMPACTOS, restos: RESTOS } = guionDeFuego();
 
   // ---------------------------------------------------------- utilidades
 
   const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3(), vD = new THREE.Vector3();
-  const qA = new THREE.Quaternion(), mA = new THREE.Matrix4(), cA = new THREE.Color();
+  const vE = new THREE.Vector3(), vF = new THREE.Vector3(), vG = new THREE.Vector3();
+  const qA = new THREE.Quaternion(), qB = new THREE.Quaternion(), mA = new THREE.Matrix4(), cA = new THREE.Color();
   const fantasma = new THREE.Object3D();
   const CALIENTE = [new THREE.Color('#fff4d6'), new THREE.Color('#ffd36b'), new THREE.Color('#ff7a2a'), new THREE.Color('#9a1f1f')];
   const VELO_A = new THREE.Color('#ff4a3a'), VELO_B = new THREE.Color(PALETA.purpuraBrillo);
   const BRASA = new THREE.Color('#ff8a3d'), LUZ_VENTANA = new THREE.Color('#ffcf7a'), ESTELA = new THREE.Color(PALETA.ada);
   const LUZ_VELO = new THREE.Color('#ffb89a'), LUZ_SOL = new THREE.Color('#fff2c8'), OSCURIDAD = new THREE.Color('#04060f');
   const CIAN = new THREE.Color(PALETA.ada), ROJO_HELIOS = new THREE.Color(PALETA.helios);
+  const HUMO_OSCURO = new THREE.Color(0.1, 0.07, 0.09), HUMO_GRIS = new THREE.Color(0.45, 0.42, 0.45), POLVO = new THREE.Color(0.42, 0.34, 0.33);
+  const HUMO_CLARO = new THREE.Color(0.9, 0.88, 0.86), HUMO_VELO = new THREE.Color(0.42, 0.1, 0.12), NIEVE_RASA = new THREE.Color(0.96, 0.97, 1);
 
   /** Blanco → amarillo → naranja → rojo oscuro según la edad (0 a 1). */
   const rampa = (f: number, out: THREE.Color) => {
@@ -1097,8 +1258,23 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
     return out.set(Math.cos(a) * r, y, Math.sin(a) * r);
   };
 
+  /** Direcciones de las ciudades de Meta, que se van apagando con los años. */
+  const lucesMeta = Array.from({ length: 340 }, (_, k) => ({ dir: direccion(k * 3 + 9, new THREE.Vector3()), apaga: 0.4 + azar(k * 3 + 11) * 4.6 }));
+  /** Los edificios más altos del primer término: se derrumban durante el plano. */
+  const derrumbes = casas
+    .map((c, k) => ({ ...c, k }))
+    .filter((c) => Math.abs(c.x) < 78 && c.z > -130)
+    .sort((a, b) => b.alto - a.alto)
+    .slice(0, 6)
+    .map((c, n) => ({ ...c, t0: 0.5 + n * 0.62, lado: n % 2 ? 1 : -1 }));
+
   let t = opts.fijo ?? opts.inicio ?? 0;
   let sacudida = 0;
+  /** Cuánto se reduce el brillo en este fotograma (lo pone cada plano). */
+  let atenuaBrillo = 1;
+  /** Rasgado de radio de este fotograma y de qué color (lo pone cada plano). */
+  let estatica = 0;
+  const tinteEstatica = new THREE.Color();
   /** Cámara en `p` mirando a `m`, con el temblor del momento. */
   const encuadrar = (px: number, py: number, pz: number, mx: number, my: number, mz: number) => {
     const s = Math.min(1.2, sacudida);
@@ -1125,31 +1301,73 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
     rebote.intensity = fuerza;
   };
 
+  const ponerFicha = (clave: string, titulo: string, linea: string) => {
+    if (ficha.dataset.quien === clave) return;
+    ficha.dataset.quien = clave;
+    fichaTitulo.textContent = titulo;
+    fichaLinea.textContent = linea;
+  };
+
   // ---------------------------------------------------------- planos
 
   const planos: Record<Plano, (tl: number) => void> = {
+    senal: (tl) => {
+      ver(auraLlave);
+      escena.background = OSCURIDAD;
+      estrellas.visible = false;
+      const entra = tramo(tl, 0.1, 0.9);
+      // Cada 1,25 s la señal late; entre latidos, casi se pierde en la estática.
+      const latido = campana(tl % 1.25, 0.32, 0.14);
+      estatica = (0.32 + 0.42 * (1 - latido)) * entra;
+      tinteEstatica.copy(CIAN);
+      for (let k = 0; k < 520; k++) {
+        const s = k / 519, envolvente = Math.sin(s * Math.PI) ** 1.4;
+        const rompe = (azar(k + Math.floor(t * 24) * 7) - 0.5) * 0.5 * (1 - latido);
+        const y = (Math.sin(s * 42 + t * 9) * 0.34 + Math.sin(s * 97 - t * 15) * 0.2 + rompe) * envolvente * (0.22 + 1.2 * latido);
+        chispa((s - 0.5) * 7.6, y, -6, cA.copy(CIAN).multiplyScalar(entra * (0.5 + 0.5 * envolvente)), 0.04);
+      }
+      anillosSenal.forEach((a, k) => {
+        const tau = tl - (0.32 + k * 1.25);
+        if (tau < 0 || tau > 1.2) return;
+        ver(a);
+        a.position.set(0, 0, -6.5);
+        a.scale.setScalar(0.6 + tau * 7);
+        (a.material as THREE.SpriteMaterial).opacity = 0.7 * (1 - tau / 1.2) ** 1.5;
+      });
+      auraLlave.position.set(0, 0, -7);
+      auraLlave.scale.setScalar(5 * (0.7 + 0.5 * latido));
+      (auraLlave.material as THREE.SpriteMaterial).color.copy(CIAN);
+      (auraLlave.material as THREE.SpriteMaterial).opacity = 0.16 * entra;
+      encuadrar(0, 0, 0, 0, 0, -6);
+      ponerFicha('senal', 'TRANSMISIÓN ENTRANTE', 'ORIGEN: META · SEÑAL DÉBIL');
+      ficha.style.transform = `translate(${Math.max(16, W * 0.06).toFixed(1)}px, ${(H * 0.17).toFixed(1)}px) translateY(-50%)`;
+      ficha.style.opacity = (tramo(tl, 0.4, 0.8) * (azar(Math.floor(t * 9)) > 0.2 ? 1 : 0.35)).toFixed(3);
+    },
+
     prologo: (tl) => {
       ver(metaAntes, solAntes);
       luz(-0.85, 0.3, 0.45, '#fff1dc', 2.2);
       contraluz(1, -0.2, -0.6, PALETA.helios, 0.6);
       ambiente('#c3c6ff', '#3d2440', 1.0);
-      const cubre = tramo(tl, 3.9, 6.6), frio = tramo(tl, 5.4, 7.8);
+      const cubre = tramo(tl, 3.9, 7.4);
       metaAntes.position.set(0, -8, -190);
       metaAntes.rotation.y = 0.4 + t * 0.04;
       const u = matMetaAntes.uniforms;
       u.cubre.value = cubre;
-      u.polo.value = THREE.MathUtils.lerp(1.6, 0.62, frio);
+      u.polo.value = 1.6;
+      u.grietas.value = 0.72 * (1 - tramo(tl, 4.6, 7.2));
       u.tiempo.value = t;
       colorHalosAntes.forEach((c, k) => c.lerpColors(CALOR[k], ROJO[k], cubre));
       solAntes.position.set(-300, 90, -460);
       solAntes.scale.setScalar(170);
       (solAntes.material as THREE.SpriteMaterial).opacity = 1 - 0.55 * cubre;
       encuadrar(Math.sin(t * 0.3) * 0.4, 2 - tl * 0.1, 12 - tl * 1.3, 0, -5, -190);
+      pintarErupciones(1 - tramo(tl, 5.0, 7.2));
 
       // HELIOS: seis nodos en órbita que se encienden y tienden el velo con sus haces.
       if (tl < 2.8) return;
       const enciende = tramo(tl, 3.2, 3.5);
-      const tiende = tramo(tl, 3.6, 3.9) * (1 - tramo(tl, 6.6, 7.4));
+      const tiende = tramo(tl, 3.6, 3.9) * (1 - tramo(tl, 7.2, 7.9));
       nodos.forEach((n, k) => {
         ver(n);
         const a = (k / 6) * TAU + t * 0.22;
@@ -1175,6 +1393,47 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
       });
     },
 
+    anos: (tl) => {
+      ver(metaAntes, solAntes);
+      const apaga = tramo(tl, 0.2, 5.4);
+      luz(-0.85, 0.3, 0.45, '#ffe2c8', 2.0 - 1.1 * apaga);
+      contraluz(1, -0.2, -0.6, PALETA.helios, 0.6);
+      ambiente('#c3c6ff', '#3d2440', 1.0);
+      metaAntes.position.set(0, -8, -190);
+      // Pasan dos siglos: el planeta gira a toda prisa y el hielo baja de los polos.
+      const giro = 0.88 + tl * 1.1;
+      metaAntes.rotation.y = giro;
+      const u = matMetaAntes.uniforms;
+      u.cubre.value = 1;
+      u.grietas.value = 0;
+      u.polo.value = THREE.MathUtils.lerp(1.15, 0.16, apaga);
+      u.tiempo.value = t;
+      colorHalosAntes.forEach((c, k) => c.copy(ROJO[k]));
+      solAntes.position.set(-300, 90, -460);
+      solAntes.scale.setScalar(170 - 60 * apaga);
+      (solAntes.material as THREE.SpriteMaterial).opacity = 0.45 * (1 - 0.82 * apaga);
+      encuadrar(Math.sin(t * 0.3) * 0.3, 1.2 - tl * 0.1, 1.6 - tl * 0.7, 0, -6, -190);
+
+      // Las ciudades del lado de noche se apagan una a una.
+      const cg = Math.cos(giro), sg = Math.sin(giro);
+      vB.copy(clave.position).normalize();
+      for (const l of lucesMeta) {
+        const brilla = 1 - tramo(tl, l.apaga, l.apaga + 0.3);
+        if (brilla <= 0.01) continue;
+        const x = l.dir.x * cg + l.dir.z * sg, z = -l.dir.x * sg + l.dir.z * cg;
+        if (x * vB.x + l.dir.y * vB.y + z * vB.z > 0.12) continue;
+        chispa(metaAntes.position.x + x * RA * 1.006, metaAntes.position.y + l.dir.y * RA * 1.006, metaAntes.position.z + z * RA * 1.006,
+          cA.copy(LUZ_VENTANA).multiplyScalar(1.1 * brilla), 0.95);
+      }
+
+      // El contador de años, con el mismo marco que la cuenta atrás de la misión.
+      const ano = String(1 + Math.round(199 * tramo(tl, 0.3, 5.3)));
+      if (ventanaReloj.textContent !== ano) ventanaReloj.textContent = ano;
+      if (ventanaTitulo.textContent !== 'AÑOS BAJO EL VELO') ventanaTitulo.textContent = 'AÑOS BAJO EL VELO';
+      ventana.classList.remove('msc__ventana--abierta');
+      ventana.style.opacity = (tramo(tl, 0.2, 0.6) * (1 - tramo(tl, 5.5, 5.9))).toFixed(3);
+    },
+
     refugio: (tl) => {
       ver(campo, refugio.raiz, tali.raiz, ...torres.map((a) => a.raiz));
       ponerCampo(0);
@@ -1196,7 +1455,8 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
         posar(a, ['Emitir', 1, t + k * 1.3]);
       });
       pintarRocas(0);
-      nieve(1);
+      nieve(1, 1);
+      pintarVentisca();
       // La llamada: un haz y tres pulsos que suben desde la antena del refugio.
       refugio.raiz.updateMatrixWorld();
       vD.set(1.0, 4.9, -1.5).applyMatrix4(refugio.raiz.matrixWorld);
@@ -1205,15 +1465,15 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
         ver(hazSenal);
         hazSenal.position.copy(vD).add(vA.set(0, 90, 0));
         hazSenal.quaternion.setFromUnitVectors(EJE_Z, ARRIBA);
-        hazSenal.scale.set(0.08, 0.08, 180);
+        hazSenal.scale.set(0.16, 0.16, 180);
         (hazSenal.material as THREE.MeshBasicMaterial).opacity = 0.3 * aviso;
       }
       anillosSenal.forEach((s, k) => {
         const tau = tl - (4.9 + k * 0.7);
         if (tau < 0 || tau > 1.8) return;
         ver(s);
-        s.position.copy(vD).add(vA.set(0, tau * 16, 0));
-        s.scale.setScalar(1.5 + tau * 10);
+        s.position.copy(vD).add(vA.set(0, tau * 26, 0));
+        s.scale.setScalar(2 + tau * 16);
         (s.material as THREE.SpriteMaterial).opacity = (1 - tau / 1.8) ** 1.3;
       });
       // La cámara sigue la llamada hacia el cielo.
@@ -1222,7 +1482,7 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
     },
 
     ares: (tl) => {
-      ver(ares, meta);
+      ver(ares, meta, flotilla, solAntes);
       luz(1, 0.35, 0.45, '#fff1dc', 2.4);
       contraluz(-1, -0.4, -0.5, '#6a8cff', 0.5);
       ambiente('#c3c6ff', '#3d2440', 1.1);
@@ -1233,6 +1493,11 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
       meta.scale.setScalar(0.075);
       meta.rotation.y = t * 0.02;
       encuadrar(tl * 0.25, 0.3 - tl * 0.05, 0, -4, -2, -60);
+      // El sol asoma por el borde de Ares: es lo último bonito que verá.
+      solAntes.position.set(58, 26, -340);
+      solAntes.scale.setScalar(80);
+      (solAntes.material as THREE.SpriteMaterial).opacity = 0.7;
+      pintarFlotilla(tl);
 
       flota.forEach((n, i) => {
         ver(n.raiz);
@@ -1298,6 +1563,17 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
       }
       sacudida += campana(tl, 3.0, 0.35) * 0.35;
       encuadrar(0, 2 - tl * 0.4, 20 - tl * 3, 0, 4, -260);
+      // Relámpagos por el velo, que corren a alimentar el ojo.
+      if (tl > 0.6) {
+        vB.set(0, 20, -266);
+        for (let k = 0; k < 9; k++) {
+          const paso = Math.floor(t * 9) + k * 17;
+          if (azar(paso) < 0.42) continue;
+          const a = (k / 8) * Math.PI + (azar(paso + 1) - 0.5) * 0.5;
+          vA.set(Math.cos(a) * 190, -28 + Math.sin(a) * 60, -264);
+          relampago(vA, vB, paso, cA.setRGB(1, 0.35, 0.28), 1.5);
+        }
+      }
 
       // Del ojo sale el enjambre, directo a la cámara.
       enjambre.forEach((a, j) => {
@@ -1368,6 +1644,17 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
         posar(dragon, ['Volar', 1 - w, t], ['Aliento', w, tl - 2.85, false]);
         aliento();
       }
+      pintarMisiles();
+      pintarEscudos();
+      pintarRestos('guerra');
+      // La batalla sigue a lo lejos: fogonazos en el fondo.
+      for (let k = 0; k < 40; k++) {
+        const hueco = Math.floor(t * 6 + azar(k) * 9);
+        if (azar(hueco + k * 3) < 0.62) continue;
+        const f = (t * 6 + azar(k) * 9) % 1;
+        chispa(-90 + azar(hueco + k) * 190, -28 + azar(hueco + k + 1) * 60, -130 - azar(hueco + k + 2) * 170,
+          rampa(f, cA).multiplyScalar(1 - f), 1.3 + azar(k + 5) * 2.6);
+      }
     },
 
     ciudad: (tl) => {
@@ -1418,6 +1705,11 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
         const z = -40 - azar(k * 3 + 5) * 140;
         chispa(x, y, z, cA.copy(BRASA).multiplyScalar(0.8 * (1 - y / alto)), 0.6);
       }
+      pintarHumaredas();
+      pintarDerrumbes(tl);
+      pintarPisoton(tl, 1.15);
+      pintarPisoton(tl, 3.15);
+      pintarRestos('ciudad');
     },
 
     caida: (tl) => {
@@ -1431,11 +1723,24 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
         ver(ares, brasaAres);
         ares.position.copy(C);
         ares.rotation.y = 2.6 + t * 0.04;
-        estadoAres(tramo(tl, 0.1, 2.4), grietas, t);
+        estadoAres(tramo(tl, 0.1, 2.4), Math.min(1, grietas + 0.5 * campana(tl, 2.92, 0.1)), t);
         brasaAres.position.copy(C).z += 30;
         brasaAres.scale.setScalar(RA * 2.6 * grietas);
         (brasaAres.material as THREE.SpriteMaterial).opacity = 0.5 * grietas;
         sacudida += 0.14 * grietas;
+        // El velo se aprieta: los relámpagos corren por toda la superficie.
+        if (tl > 1.1) {
+          for (let k = 0; k < 12; k++) {
+            const paso = Math.floor(t * 12) + k * 23;
+            if (azar(paso) < 0.38) continue;
+            direccion(paso + 1, vA);
+            vA.z = Math.abs(vA.z);
+            direccion(paso + 2, vB).multiplyScalar(0.55).add(vA).normalize();
+            vA.multiplyScalar(RA * 1.015).add(C);
+            vB.multiplyScalar(RA * 1.015).add(C);
+            relampago(vA, vB, paso, cA.setRGB(1, 0.45, 0.3), 1.1);
+          }
+        }
 
         // Las avispas dan vueltas a Ares rociando el velo.
         for (let j = 0; j < 10; j++) {
@@ -1492,6 +1797,18 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
       empuje(heroe, 0.45, t);
       // Lo que queda de Ares sigue pasando por detrás, y flota polvo delante.
       pintarEsquirlas(vA.set(-6, 2, -45), 0.3, t - ESTALLA);
+      // La explosión se refleja en el visor mientras se apaga.
+      especialista.raiz.updateMatrixWorld(true);
+      especialista.raiz.getObjectByName('cabeza')?.getWorldPosition(vA);
+      vA.add(vB.set(0.24, 0.52, 1.1));
+      const brasas = (0.82 + 0.18 * Math.sin(t * 9)) * Math.exp(-tl * 0.2);
+      ver(reflejo, reflejoNucleo);
+      reflejo.position.copy(vA);
+      reflejo.scale.setScalar(0.75);
+      (reflejo.material as THREE.SpriteMaterial).opacity = 0.75 * brasas;
+      reflejoNucleo.position.copy(vA);
+      reflejoNucleo.scale.setScalar(0.22);
+      (reflejoNucleo.material as THREE.SpriteMaterial).opacity = brasas;
       for (let k = 0; k < 50; k++) {
         const x = (azar(k * 5 + 1) - 0.5) * 6 + Math.sin(t * 0.3 + k) * 0.2;
         const y = -1.5 + ((azar(k * 5 + 2) * 4 + t * 0.06) % 4);
@@ -1500,7 +1817,7 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
     },
 
     llave: (tl) => {
-      ver(noa.raiz, auraLlave, aroLlave);
+      ver(orbe.raiz, auraLlave, aroLlave);
       escena.background = OSCURIDAD;
       estrellas.visible = false;
       luz(0.3, 0.6, 0.8, '#bfe8ff', 1.0);
@@ -1508,41 +1825,74 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
       ambiente('#6a8cff', '#0a0a1a', 0.6);
       const aparece = tramo(tl, 0.1, 0.7);
       // Mientras HELIOS la busca, la señal falla a tirones.
-      const busca = tl > 3.1 && tl < 5.3;
+      const busca = tl > 5.2 && tl < 7.4;
       const tiron = busca && azar(Math.floor(t * 18)) > 0.7 ? 1 : 0;
+      if (busca) {
+        estatica = tiron ? 0.7 : 0.1;
+        tinteEstatica.copy(ROJO_HELIOS);
+      }
       const tinte = tiron ? ROJO_HELIOS : CIAN;
-      const talla = 1.4;
-      noa.raiz.position.set(0, 0.3, -3);
-      orientar(noa.raiz, vA.set(Math.sin(t * 0.3) * 0.2, 0, 1));
-      noa.raiz.scale.set(talla * (1 + tiron * 0.25), talla * Math.max(0.02, aparece) * (1 - tiron * 0.08), talla);
-      const wE = tramo(tl, 3.0, 3.3) * (1 - tramo(tl, 4.5, 4.8)), wH = tramo(tl, 4.5, 4.8);
-      posar(noa, ['Reposo', Math.max(0, 1 - wE - wH), t], ['Escanear', wE, tl - 3.0, false], ['Hablar', wH, t]);
-      auraLlave.position.set(0, 0.3, -3.4);
-      auraLlave.scale.setScalar(4.5 * aparece * (1 + 0.05 * Math.sin(t * 3)));
+      const conNoa = tramo(tl, LLEGA_NOA - 0.1, LLEGA_NOA + 0.5);
+      // «Yo»: ADA se enciende al presentarse.
+      const yo = campana(tl, 2.7, 0.35);
+
+      // ADA es la luz del orbe; cuando llega Noa, se aparta a su hombro.
+      vA.set(1.15, 1.25, -2.9);
+      orbe.raiz.position.set(0, 0.45, -3).lerp(vA, conNoa);
+      orbe.raiz.position.y += Math.sin(t * 1.6) * 0.05;
+      orientar(orbe.raiz, vA.set(Math.sin(t * 0.5) * 0.3, 0, 1));
+      orbe.raiz.scale.setScalar(Math.max(0.02, aparece) * THREE.MathUtils.lerp(1.5, 0.7, conNoa) * (1 + 0.1 * yo));
+      posar(orbe, ['Reposo', 1, t]);
+
+      auraLlave.position.copy(orbe.raiz.position).z -= 0.5;
+      auraLlave.scale.setScalar(THREE.MathUtils.lerp(4.8, 2.2, conNoa) * aparece * (1 + 0.05 * Math.sin(t * 3) + 0.4 * yo));
       (auraLlave.material as THREE.SpriteMaterial).color.copy(tinte);
-      (auraLlave.material as THREE.SpriteMaterial).opacity = 0.5;
-      aroLlave.position.set(0, 0.3 - 0.95 * talla - 0.02, -3);
+      (auraLlave.material as THREE.SpriteMaterial).opacity = 0.42 + 0.3 * yo;
+
+      // Aro de escaneo que sube y baja por quien esté en el centro.
+      aroLlave.position.set(0, 0.3 + Math.sin(t * 1.5) * 1.05, -3);
       aroLlave.scale.setScalar(1.5 * (1 + 0.06 * Math.sin(t * 4)));
       (aroLlave.material as THREE.MeshBasicMaterial).opacity = 0.7 * aparece;
-      // Datos que suben en espiral alrededor de ADA.
-      for (let k = 0; k < 120; k++) {
-        const a = k * 2.399 + t * (0.8 + (k % 3) * 0.2), r = 0.9 + (k % 4) * 0.25;
+
+      // Noa aparece proyectada, de abajo arriba.
+      if (conNoa > 0.001) {
+        ver(noa.raiz);
+        const talla = 1.4;
+        noa.raiz.position.set(-0.15, 0.3, -3);
+        orientar(noa.raiz, vA.set(Math.sin(t * 0.3) * 0.2, 0, 1));
+        noa.raiz.scale.set(talla, talla * Math.max(0.02, conNoa), talla);
+        posar(noa, ['Hablar', 1, t]);
+      }
+
+      // Datos que suben en espiral.
+      for (let k = 0; k < 240; k++) {
+        const a = k * 2.399 + t * (0.8 + (k % 3) * 0.2), r = 0.9 + (k % 4) * 0.25 + 0.5 * yo;
         const y = -1.0 + ((k * 0.137 + t * 0.35) % 3.0);
         chispa(Math.cos(a) * r, 0.3 + y, -3 + Math.sin(a) * r, cA.copy(tinte).multiplyScalar(0.7 * aparece), 0.045);
       }
-      const giro = -0.5 + tl * 0.12;
+
+      // «Solo mi firma»: la firma se escribe en el aire, trazo a trazo.
+      const firma = tramo(tl, 4.9, 6.3), sigueFirma = 1 - tramo(tl, 6.9, LLEGA_NOA + 0.2);
+      if (firma > 0 && sigueFirma > 0) {
+        for (let k = 0; k < 340; k++) {
+          const s = k / 339;
+          if (s > firma) break;
+          const x = -1.55 + s * 3.1 + Math.sin(s * 19) * 0.13;
+          const y = -0.72 + Math.sin(s * 27) * 0.2 * (1 - s * 0.45) + Math.sin(s * 61) * 0.06;
+          chispa(x, y, -2.3, cA.copy(tinte).multiplyScalar(1.1 * sigueFirma), 0.05);
+          if (k % 4 === 0 && firma - s < 0.04) chispa(x, y, -2.3, cA.setRGB(1, 1, 1), 0.16);
+        }
+      }
+
+      const giro = -0.5 + tl * 0.08;
       encuadrar(Math.sin(giro) * 3.6, 0.9, -3 + Math.cos(giro) * 3.6, 0, 0.5, -3);
       // Ficha junto al holograma: primero ADA, luego Noa.
-      const deNoa = String(tl >= 4.6);
-      if (ficha.dataset.quien !== deNoa) {
-        ficha.dataset.quien = deNoa;
-        fichaTitulo.textContent = deNoa === 'true' ? 'NOA HERRERA' : 'ADA · MÓDULO DE AUDITORÍA 7';
-        fichaLinea.textContent = deNoa === 'true' ? 'INGENIERA DE HELIOS · LA ESCONDIÓ EN META' : 'AUTORIDAD: FIRMAR EL APAGADO';
-      }
-      const e = enPantalla(vA.set(0.95, 1.5, 0).add(noa.raiz.position));
+      if (tl >= LLEGA_NOA) ponerFicha('noa', 'NOA HERRERA', 'INGENIERA DE HELIOS · ME ESCONDIÓ EN META');
+      else ponerFicha('ada', 'ADA · MÓDULO DE AUDITORÍA 7', 'AUTORIDAD: FIRMAR EL APAGADO');
+      const e = enPantalla(vA.set(0.95, 1.5, 0).add(tl >= LLEGA_NOA ? noa.raiz.position : vB.set(0, 0.3, -3)));
       const x = Math.max(16, Math.min(e.x, W - ficha.offsetWidth - 16));
       ficha.style.transform = `translate(${x.toFixed(1)}px, ${e.y.toFixed(1)}px) translateY(-50%)`;
-      ficha.style.opacity = (tramo(tl, 0.8, 1.2) * (1 - tramo(tl, 6.5, 6.85)) * (tiron ? 0.4 : 1)).toFixed(3);
+      ficha.style.opacity = (tramo(tl, 0.8, 1.2) * (1 - campana(tl, LLEGA_NOA, 0.12)) * (1 - tramo(tl, 9.5, 9.85)) * (tiron ? 0.4 : 1)).toFixed(3);
     },
 
     meta: (tl) => {
@@ -1564,6 +1914,15 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
       const w = tramo(tl, 0.5, 1.2);
       posar(heroe, ['Turbo', 1 - w, t], ['Volar', w, t]);
       empuje(heroe, 1.5 - 0.65 * w, t);
+      // Tormenta en el velo, por el horizonte de Meta.
+      for (let k = 0; k < 5; k++) {
+        const paso = Math.floor(t * 7) + k * 29;
+        if (azar(paso) < 0.5) continue;
+        const a = Math.PI / 2 + (azar(paso + 1) - 0.5) * 1.5, b = a + 0.14 + azar(paso + 2) * 0.2, R = RM * 1.012;
+        vA.set(Math.cos(a) * R, Math.sin(a) * R, 0).add(meta.position);
+        vB.set(Math.cos(b) * R, Math.sin(b) * R, 0).add(meta.position);
+        relampago(vA, vB, paso, cA.setRGB(1, 0.4, 0.3), 1.8);
+      }
       if (tl < 1.1) {
         ver(salto);
         pintarSalto(tl);
@@ -1582,12 +1941,14 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
     },
 
     mision: (tl) => {
-      const sol = tramo(t, VUELVE_EL_SOL, VUELVE_EL_SOL + 1.6);
+      const sol = tramo(t, VUELVE_EL_SOL, VUELVE_EL_SOL + 2.6);
       ver(campo, especialista.raiz, ...horda.map((a) => a.raiz), balizaHelios.raiz, cohete.raiz);
       ponerCampo(sol);
-      luz(-0.5, 0.55, 0.5, cA.lerpColors(LUZ_VELO, LUZ_SOL, sol), 1.4 + 1.4 * sol);
+      luz(-0.5, 0.55, 0.5, cA.lerpColors(LUZ_VELO, LUZ_SOL, sol), 1.4 + 0.5 * sol);
       contraluz(0.4, 0.3, -1, sol > 0.5 ? '#ffd9a0' : PALETA.helios, 0.8);
-      ambiente(sol > 0.5 ? '#fff0d8' : '#f0d8e8', '#3a2a3a', 1.1 + 0.5 * sol);
+      ambiente(sol > 0.5 ? '#fff0d8' : '#f0d8e8', '#3a2a3a', 1.1);
+      // Con el sol, casi todo es claro: si todo brilla, la imagen se quema.
+      atenuaBrillo = 1 - 0.85 * sol;
       // El suelo corre hacia la cámara: el especialista huye de la horda hasta que vuelve el sol.
       const parada = VUELVE_EL_SOL - PLANOS.mision[0] + 0.2;
       pintarRocas(tl < parada ? 9 * tl : 9 * parada + 4.5 * (1 - Math.exp(-(tl - parada) * 2)));
@@ -1597,15 +1958,15 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
       const fiesta = tramo(tl, parada + 0.1, parada + 0.4);
       posar(especialista, ['Correr', 1 - fiesta, t], ['Victoria', fiesta, tl - parada]);
       horda.forEach((a, j) => {
-        const cae = VUELVE_EL_SOL + 0.2 + j * 0.08;
+        const cae = VUELVE_EL_SOL + 0.3 + j * 0.1;
         a.raiz.position.set((j - 3.5) * 1.7 + Math.sin(t * 2 + j) * 0.3, 0, -11 - (j % 3) * 2.4 + Math.sin(t * 3 + j) * 0.3);
         orientar(a.raiz, vA.set(-a.raiz.position.x * 0.05, 0, 1));
         a.raiz.scale.setScalar(1.3);
         if (t < cae) posar(a, ['Caminar', 1, t * 1.6 + j * 0.13]);
         else posar(a, ['Derrota', 1, t - cae, false]);
       });
-      balizaHelios.raiz.position.set(3, 0.6 + Math.sin(t * 1.3) * 0.2, -9);
-      orientar(balizaHelios.raiz, vA.set(-0.3, 0, 1));
+      balizaHelios.raiz.position.set(-3.4, 0.6 + Math.sin(t * 1.3) * 0.2, -9);
+      orientar(balizaHelios.raiz, vA.set(0.3, 0, 1));
       balizaHelios.raiz.scale.setScalar(1.4);
       const apaga = VUELVE_EL_SOL + 0.3;
       posar(balizaHelios, t < apaga ? ['Triangular', 1, t] : ['Derrota', 1, t - apaga, false]);
@@ -1620,18 +1981,27 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
       if (vuelo > 0 && vuelo < subida) {
         ver(llamaCohete);
         llamaCohete.position.set(COHETE.x, alto(vuelo) * 2.6 + 1.5, COHETE.z);
-        llamaCohete.scale.setScalar(16 * (0.8 + 0.2 * Math.sin(t * 40)));
+        llamaCohete.scale.setScalar(26 * (0.8 + 0.2 * Math.sin(t * 40)));
       }
+      if (vuelo > 0) pintarDespegue(vuelo, subida, alto);
       for (let s = 1; s <= 30 && vuelo > 0; s++) {
         const pasado = Math.min(vuelo, subida) - s * 0.045;
         if (pasado <= 0) break;
-        chispa(COHETE.x + Math.sin(s * 1.7) * 1.2, alto(pasado) * 2.6, COHETE.z, cA.copy(BRASA).multiplyScalar(1 - s / 31), 3.5 + s * 0.2);
+        chispa(COHETE.x + Math.sin(s * 1.7) * 1.2, alto(pasado) * 2.6, COHETE.z, cA.copy(BRASA).multiplyScalar(1.3 * (1 - s / 31)), 5 + s * 0.3);
       }
       // Vuelve el sol: un haz de luz cae sobre el sector y brillan las motas en él.
       if (sol > 0) {
         ver(hazSol, solMision);
         hazSol.position.set(0, 65, -6);
-        (hazSol.material as THREE.MeshBasicMaterial).opacity = 0.2 * sol * (0.9 + 0.1 * Math.sin(t * 2));
+        (hazSol.material as THREE.MeshBasicMaterial).opacity = 0.09 * sol * (0.9 + 0.1 * Math.sin(t * 2));
+        hacesSol.forEach((h, k) => {
+          ver(h);
+          const x = -46 + k * 19 + Math.sin(k * 2.1) * 4;
+          h.position.set(x, 84, -46 - (k % 3) * 18);
+          h.rotation.set(0.06, 0, -x * 0.0036);
+          (h.material as THREE.MeshBasicMaterial).opacity = 0.05 * sol * (0.7 + 0.3 * Math.sin(t * 1.3 + k * 1.9));
+        });
+        pintarBrotes();
         solMision.position.set(-60, 170, -280);
         solMision.scale.setScalar(150 * sol);
         for (let k = 0; k < 60; k++) {
@@ -1641,9 +2011,9 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
       }
       nieve(1 - sol);
       // La cámara mira a la horda, sigue al cohete hacia el velo y baja con el sol.
-      const sigue = tramo(tl, 4.8, 5.6) * (1 - tramo(tl, 6.6, 7.6));
+      const sigue = tramo(tl, 5.2, 6.0) * (1 - tramo(tl, 8.0, 9.2));
       vB.set(0, 1.6, -10).lerp(vC.set(COHETE.x, Math.max(25, alto(Math.min(vuelo, subida)) * 2.6), COHETE.z), sigue);
-      encuadrar(0.6 * Math.sin(tl * 0.5), 2 + 0.6 * tramo(tl, 6.6, 8), 2.5 + 1.5 * tramo(tl, 6.6, 9), vB.x, vB.y, vB.z);
+      encuadrar(0.6 * Math.sin(tl * 0.5), 2 + 0.6 * tramo(tl, 8, 9.6), 2.5 + 1.5 * tramo(tl, 8, 11), vB.x, vB.y, vB.z);
       pintarVentana(tl);
     },
   };
@@ -1661,15 +2031,234 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
     rocasCampo.instanceMatrix.needsUpdate = true;
   }
 
-  /** Nieve que cae delante de la cámara; `cuanta`, de 0 a 1. */
-  function nieve(cuanta: number) {
+  /** Nieve que cae delante de la cámara; `cuanta`, de 0 a 1. Con `viento` va de lado y hay más. */
+  function nieve(cuanta: number, viento = 0) {
     if (cuanta <= 0.01) return;
-    for (let k = 0; k < 300; k++) {
+    const n = Math.round(300 + 620 * viento);
+    const racha = 11 + 6 * Math.sin(t * 0.9);
+    for (let k = 0; k < n; k++) {
       const caida = 0.9 + azar(k * 3 + 1) * 1.4, alto = 16;
       const y = alto - ((t * caida + azar(k * 3 + 2) * alto) % alto);
-      const x = (azar(k * 3) - 0.5) * 36 + Math.sin(t * 0.7 + k) * 0.6;
+      const x = ((azar(k * 3) * 36 + (viento ? t * racha * (0.7 + azar(k * 3 + 7) * 0.6) : 0)) % 36) - 18 + Math.sin(t * 0.7 + k) * 0.6;
       chispa(x, y, 1 - azar(k * 3 + 5) * 34, cA.setRGB(0.85, 0.9, 1).multiplyScalar(0.55 * cuanta), 0.09);
     }
+  }
+
+  /** Nieve que corre a ras de suelo, humo rojo de las torres y una aurora en el velo. */
+  function pintarVentisca() {
+    for (let k = 0; k < 46; k++) {
+      const x = ((azar(k * 3 + 1) * 70 + t * (9 + azar(k * 3 + 2) * 8)) % 70) - 35;
+      humo(x, 0.25 + azar(k * 3 + 3) * 0.9, -1 - azar(k * 3 + 4) * 20, NIEVE_RASA, 2.5 + azar(k) * 3, 0.14);
+    }
+    torres.forEach((a, n) => {
+      const p = a.raiz.position;
+      for (let k = 0; k < 18; k++) {
+        const f = (t * 0.16 + k / 18 + n * 0.37) % 1;
+        humo(p.x + f * 26 + Math.sin(f * 7 + k) * 2, 26 + f * 42, p.z, HUMO_VELO, 7 + f * 24, 0.5 * (1 - f) * Math.min(1, f * 7));
+      }
+    });
+    for (let c = 0; c < 3; c++) {
+      for (let k = 0; k < 110; k++) {
+        const x = -150 + k * 2.8;
+        const y = 92 + Math.sin(x * 0.03 + t * 0.5 + c * 1.7) * 12 + c * 9;
+        const pulso = 0.5 + 0.5 * Math.sin(x * 0.08 - t * 1.1 + c * 2.3);
+        for (let j = 0; j < 3; j++) {
+          chispa(x, y + j * 6.5, -190 - c * 22, cA.lerpColors(VELO_A, VELO_B, (j + c) / 5).multiplyScalar(0.12 * pulso * (1 - j / 3)), 7);
+        }
+      }
+    }
+  }
+
+  /** Meta arde: erupciones que saltan de la superficie y pavesas que vuelan hacia la cámara. */
+  function pintarErupciones(fuerza: number) {
+    if (fuerza <= 0.01) return;
+    const c = metaAntes.position, cg = Math.cos(metaAntes.rotation.y), sg = Math.sin(metaAntes.rotation.y);
+    for (let e = 0; e < 11; e++) {
+      direccion(e * 13 + 4, vA);
+      const x = vA.x * cg + vA.z * sg, y = vA.y, z = -vA.x * sg + vA.z * cg;
+      if (z < -0.12) continue;
+      const periodo = 1.4 + azar(e * 13 + 6) * 1.3;
+      const ciclo = ((t + azar(e * 13 + 7) * periodo) % periodo) / periodo;
+      for (let k = 0; k < 44; k++) {
+        const s = e * 97 + k * 3, f = ciclo - k * 0.011;
+        if (f < 0) continue;
+        const alto = RA * (1.002 + (0.1 + 0.24 * azar(s)) * Math.sin(Math.PI * f));
+        direccion(s + 1, vB);
+        const abre = 7 * f;
+        chispa(c.x + x * alto + vB.x * abre, c.y + y * alto + vB.y * abre, c.z + z * alto + vB.z * abre,
+          rampa(f * 0.9, cA).multiplyScalar(fuerza * (1.3 - f * 0.7)), 1.5 * (1 - f * 0.6));
+      }
+    }
+    const ojoZ = camara.position.z;
+    for (let k = 0; k < 280; k++) {
+      const z = ojoZ - 46 + ((t * (10 + azar(k * 3) * 8) + azar(k * 3 + 1) * 46) % 46);
+      chispa((azar(k * 3 + 2) - 0.5) * 46 + Math.sin(t + k) * 0.6, (azar(k * 3 + 4) - 0.5) * 26, z, cA.copy(BRASA).multiplyScalar(fuerza * 0.7), 0.13);
+    }
+  }
+
+  /** Un relámpago quebrado de `de` a `a`: cambia de forma muchas veces por segundo. */
+  function relampago(de: THREE.Vector3, a: THREE.Vector3, semilla: number, c: THREE.Color, grosor: number) {
+    const paso = Math.floor(t * 24), TRAMOS = 13, largo = vE.subVectors(a, de).length();
+    vF.copy(de);
+    for (let k = 1; k <= TRAMOS; k++) {
+      const f = k / TRAMOS, amplitud = k === TRAMOS ? 0 : largo * 0.09 * Math.sin(Math.PI * f);
+      const s = semilla * 7 + k * 3 + paso * 11;
+      vG.lerpVectors(de, a, f);
+      vG.x += (azar(s) - 0.5) * amplitud * 2;
+      vG.y += (azar(s + 1) - 0.5) * amplitud * 2;
+      vG.z += (azar(s + 2) - 0.5) * amplitud;
+      // Puntos seguidos, para que se lea como una línea a cualquier distancia.
+      const puntos = Math.min(16, Math.ceil(vF.distanceTo(vG) / (grosor * 0.45)));
+      for (let n = 0; n < puntos; n++) {
+        const u = n / puntos;
+        chispa(vF.x + (vG.x - vF.x) * u, vF.y + (vG.y - vF.y) * u, vF.z + (vG.z - vF.z) * u, c, grosor);
+      }
+      vF.copy(vG);
+    }
+  }
+
+  /** La flota lejana: sale de Ares detrás de las naves grandes, con su estela. */
+  function pintarFlotilla(tl: number) {
+    for (let i = 0; i < N_FLOTILLA; i++) {
+      const salida = azar(i * 3) * 1.6, f = Math.max(0, tl - salida) / 8;
+      const base = vA.set(-84 + (i % 12) * 13 + azar(i * 3 + 1) * 6, -30 + Math.floor(i / 12) * 8 + azar(i * 3 + 2) * 4, -96 - azar(i * 3 + 3) * 42);
+      vB.copy(DESTINO_FLOTA).sub(base);
+      vC.copy(base).addScaledVector(vB, f ** 1.5);
+      qA.setFromUnitVectors(EJE_Z, vD.copy(vB).normalize());
+      flotilla.setMatrixAt(i, mA.compose(vC, qA, vE.setScalar(f > 0 ? 1 : 0.001)));
+      if (f <= 0) continue;
+      // Fogonazo al encender los motores y estela detrás.
+      const encendido = campana(tl - salida, 0.08, 0.1);
+      chispa(vC.x - vD.x * 1.5, vC.y - vD.y * 1.5, vC.z - vD.z * 1.5, cA.copy(ESTELA).multiplyScalar(0.9 + 1.4 * encendido), 0.8 + 2.4 * encendido);
+      for (let s = 1; s <= 6; s++) chispa(vC.x - vD.x * s * 1.8, vC.y - vD.y * s * 1.8, vC.z - vD.z * s * 1.8, cA.copy(ESTELA).multiplyScalar(0.5 * (1 - s / 7)), 0.4);
+    }
+    flotilla.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Misiles de la flota: arco, llama y estela de humo. */
+  function pintarMisiles() {
+    const punto3 = (m: Misil, f: number, out: THREE.Vector3) => out.lerpVectors(m.de, m.a, f).addScaledVector(m.arco, Math.sin(Math.PI * f));
+    for (const m of MISILES) {
+      const f = (t - m.t0) / m.dur;
+      if (f < 0 || f > 1.6) continue;
+      if (f < 1) {
+        punto3(m, f, vA);
+        chispa(vA.x, vA.y, vA.z, cA.setRGB(1, 0.86, 0.6), 0.5);
+      }
+      for (let s = 0; s < 14; s++) {
+        const u = Math.min(1, f) - s * 0.05;
+        if (u <= 0) break;
+        punto3(m, u, vB);
+        const edad = Math.max(0, f - u);
+        humo(vB.x, vB.y, vB.z, HUMO_GRIS, 0.5 + edad * 2.2, 0.4 * Math.max(0, 1 - edad * 1.3));
+      }
+    }
+  }
+
+  /** Escudos de las naves: un aro cian donde encajan el disparo. */
+  function pintarEscudos() {
+    for (const x of IMPACTOS) {
+      const tau = t - x.t;
+      if (tau < 0 || tau > 0.32) continue;
+      const k = 1 - tau / 0.32, r = 1.5 + tau * 3;
+      for (let n = 0; n < 18; n++) {
+        const a = (n / 18) * TAU;
+        chispa(x.pos.x + Math.cos(a) * r, x.pos.y + Math.sin(a) * r, x.pos.z, cA.copy(CIAN).multiplyScalar(k), 0.16);
+      }
+    }
+  }
+
+  /** Trozos que saltan de lo que se rompe, con brasas y un poco de humo. */
+  function pintarRestos(plano: Plano) {
+    for (const r of RESTOS) {
+      const tau = t - r.t;
+      if (r.plano !== plano || tau < 0 || tau > 3) continue;
+      for (let k = 0; k < r.n && nTrozos < MAX_TROZOS; k++) {
+        const s = r.semilla + k * 5;
+        direccion(s, vA);
+        vB.copy(r.pos).addScaledVector(vA, r.vel * (0.4 + azar(s + 1)) * (1 - Math.exp(-tau * 1.4)));
+        vC.set(azar(s + 2) - 0.5, azar(s + 3) - 0.5, azar(s + 4) - 0.5).normalize();
+        qA.setFromAxisAngle(vC, tau * (1 + azar(s + 5) * 6) + k);
+        const tam = r.tam * (0.4 + azar(s + 6));
+        trozos.setMatrixAt(nTrozos++, mA.compose(vB, qA, vC.setScalar(tam)));
+        if (tau < 1.6) chispa(vB.x, vB.y, vB.z, rampa(tau / 1.6, cA).multiplyScalar(1 - tau / 1.6), tam * 1.4);
+        if (k % 2 === 0) humo(vB.x, vB.y, vB.z, HUMO_OSCURO, tam * 3, 0.32 * Math.max(0, 1 - tau / 2.2));
+      }
+    }
+  }
+
+  /** Columnas de humo negro que suben de los incendios. */
+  function pintarHumaredas() {
+    for (let e = 0; e < Math.min(9, fuegos.length); e++) {
+      const p = fuegos[e].position;
+      for (let k = 0; k < 13; k++) {
+        const f = (t * 0.2 + k / 13 + e * 0.37) % 1;
+        humo(p.x + f * 16 + Math.sin(f * 6 + e) * 3, p.y + f * 56, p.z - 2, HUMO_OSCURO, 6 + f * 20, 0.36 * (1 - f) * Math.min(1, f * 6));
+      }
+    }
+  }
+
+  /** Los edificios que se vienen abajo: se hunden, se inclinan y levantan polvo. */
+  function pintarDerrumbes(tl: number) {
+    for (const d of derrumbes) {
+      const f = tramo(tl, d.t0, d.t0 + 1.5), caida = f * f;
+      qA.setFromAxisAngle(ARRIBA, d.giro).multiply(qB.setFromAxisAngle(EJE_Z, caida * 0.32 * d.lado));
+      edificios.setMatrixAt(d.k, mA.compose(vA.set(d.x + caida * d.lado * 5, -d.alto * 0.92 * caida, d.z), qA, vB.set(d.ancho, d.alto, d.fondo)));
+      const tau = tl - d.t0;
+      if (tau <= 0) continue;
+      // El polvo sale de la base y se abre a los lados.
+      for (let k = 0; k < 30; k++) {
+        const edad = tau - k * 0.035;
+        if (edad <= 0) continue;
+        const a = azar(d.k * 3 + k) * TAU, r = (d.ancho * 0.5 + edad * 9) * (0.5 + azar(d.k * 3 + k + 1) * 0.5);
+        humo(d.x + Math.cos(a) * r, 1 + edad * (2 + azar(k) * 5), d.z + d.fondo / 2 + Math.sin(a) * r * 0.5, POLVO, 5 + edad * 7, 0.55 * Math.max(0, 1 - edad / 2.6));
+      }
+    }
+    edificios.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Anillo de polvo y cascotes que levanta un pisotón del Titán. */
+  function pintarPisoton(tl: number, golpe: number) {
+    const tau = tl - golpe;
+    if (tau < 0 || tau > 1.7) return;
+    const k = 1 - tau / 1.7;
+    for (let n = 0; n < 46; n++) {
+      const a = (n / 46) * TAU + azar(n) * 0.2, r = 1.5 + (1 - Math.exp(-tau * 2.4)) * (15 + azar(n + 3) * 6);
+      humo(5 + Math.cos(a) * r, 0.5 + tau * 1.2 + azar(n + 5), -19 + Math.sin(a) * r * 0.6, POLVO, 2.6 + tau * 4, 0.6 * k);
+    }
+    for (let n = 0; n < 16 && nTrozos < MAX_TROZOS; n++) {
+      const a = azar(n * 3 + 1) * TAU, v = 5 + azar(n * 3 + 2) * 9, sube = 7 + azar(n * 3 + 3) * 9;
+      qA.setFromAxisAngle(EJE_Z, tau * 5 + n);
+      vA.set(5 + Math.cos(a) * v * tau, Math.max(0.2, 0.5 + sube * tau - 12 * tau * tau), -19 + Math.sin(a) * v * tau * 0.6);
+      trozos.setMatrixAt(nTrozos++, mA.compose(vA, qA, vB.setScalar(0.25 + azar(n * 3 + 4) * 0.5)));
+    }
+  }
+
+  /** El humo del despegue: nube en la plataforma y columna detrás del cohete. */
+  function pintarDespegue(vuelo: number, subida: number, alto: (s: number) => number) {
+    for (let k = 0; k < 70; k++) {
+      const a = azar(k * 3 + 1) * TAU, r = 3 + (1 - Math.exp(-vuelo * 1.2)) * (20 + azar(k * 3 + 2) * 18);
+      humo(COHETE.x + Math.cos(a) * r, 1.5 + azar(k * 3 + 3) * 4 + vuelo * 0.7, COHETE.z + Math.sin(a) * r * 0.5, HUMO_CLARO, 9 + vuelo * 3, 0.72 * Math.max(0.15, 1 - vuelo / 9));
+    }
+    for (let k = 0; k < 110; k++) {
+      const sale = (k / 110) * subida;
+      if (sale > vuelo) break;
+      const edad = vuelo - sale, y = alto(sale) * 2.6;
+      humo(COHETE.x + Math.sin(k * 1.7) * (0.8 + edad * 0.9), y, COHETE.z + Math.cos(k * 2.3) * (0.8 + edad * 0.5), HUMO_CLARO, 6 + edad * 5, 0.5 * Math.max(0.1, 1 - edad / 9));
+    }
+  }
+
+  /** Brotes verdes que salen de la tierra deshelada, cada uno a su momento. */
+  function pintarBrotes() {
+    ver(brotes);
+    for (let k = 0; k < N_BROTES; k++) {
+      const crece = tramo(t, VUELVE_EL_SOL + 0.8 + azar(k * 3 + 1) * 3, VUELVE_EL_SOL + 1.6 + azar(k * 3 + 1) * 3);
+      const lado = azar(k * 3 + 2) < 0.5 ? -1 : 1;
+      vA.set(lado * (1.2 + azar(k * 3 + 3) * 14), 0, -1.5 - azar(k * 3 + 4) * 20);
+      qA.setFromAxisAngle(EJE_Z, (azar(k * 3 + 5) - 0.5) * 0.5);
+      brotes.setMatrixAt(k, mA.compose(vA, qA, vB.set(crece, crece * (0.7 + azar(k * 3 + 6)), crece)));
+    }
+    brotes.instanceMatrix.needsUpdate = true;
   }
 
   /** Cielo y niebla del campo helado; `sol`, de 0 (velo) a 1 (vuelve el sol). */
@@ -1678,7 +2267,8 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
     escena.fog = nieblaCampo;
     const horizonte = (matCupula.uniforms.horizonte.value as THREE.Color).lerpColors(HORIZONTE_VELO, HORIZONTE_SOL, sol);
     nieblaCampo.color.copy(horizonte);
-    matCupula.uniforms.sol.value = sol;
+    matCupula.uniforms.agujero.value = sol * 3.6;
+    matSuelo.color.lerpColors(SUELO_HIELO, SUELO_DESHIELO, sol);
   }
 
   /** La cuenta atrás de la ventana de lanzamiento y las siete reliquias que se encienden al final. */
@@ -1691,13 +2281,13 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
     const titulo = abierta ? 'VENTANA ABIERTA' : 'VENTANA DE LANZAMIENTO';
     if (ventanaTitulo.textContent !== titulo) ventanaTitulo.textContent = titulo;
     ventana.classList.toggle('msc__ventana--abierta', abierta);
-    ventana.style.opacity = (tramo(tl, 0.2, 0.5) * (1 - tramo(tl, 6.0, 6.4)) * (abierta && Math.floor(t * 6) % 2 ? 0.55 : 1)).toFixed(3);
-    const n = RELIQUIAS.filter((_, k) => tl >= 7.7 + k * 0.22).length;
+    ventana.style.opacity = (tramo(tl, 0.2, 0.5) * (1 - tramo(tl, 7.0, 7.4)) * (abierta && Math.floor(t * 6) % 2 ? 0.55 : 1)).toFixed(3);
+    const n = RELIQUIAS.filter((_, k) => tl >= 9.9 + k * 0.32).length;
     if (n !== reliquiasEncendidas) {
       reliquiasEncendidas = n;
       piezasReliquia.forEach((li, k) => li.classList.toggle('encendida', k < n));
     }
-    reliquias.style.opacity = (tramo(tl, 7.4, 7.7) * (1 - tramo(tl, 9.6, 9.95))).toFixed(3);
+    reliquias.style.opacity = (tramo(tl, 9.5, 9.8) * (1 - tramo(tl, 12.9, 13.3))).toFixed(3);
   }
 
   /** Pose del Dragón en la batalla en cualquier segundo (también para su aliento). */
@@ -1709,7 +2299,7 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
 
   /** Aliento del Dragón: fuego del velo que sale de su boca hacia la nave 2. */
   function aliento() {
-    const TASA = 140, VIDA = 0.55;
+    const TASA = 240, VIDA = 0.6;
     for (let k = Math.ceil(Math.max(ALIENTO[0], t - VIDA) * TASA); k <= Math.floor(Math.min(ALIENTO[1], t) * TASA); k++) {
       const tau = k / TASA, edad = t - tau, f = edad / VIDA;
       poseDragon(tau, fantasma);
@@ -1718,7 +2308,7 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
       naveEnGuerra(2, tau + 0.3, vB).sub(vA).normalize();
       direccion(k * 13, vC);
       vA.addScaledVector(vB, 26 * edad).addScaledVector(vC, 3.5 * edad);
-      chispa(vA.x, vA.y, vA.z, cA.lerpColors(VELO_A, VELO_B, f).multiplyScalar(1 - f * 0.7), 0.9 + 1.8 * f);
+      chispa(vA.x, vA.y, vA.z, cA.lerpColors(VELO_A, VELO_B, f).multiplyScalar(1 - f * 0.7), 1.2 + 2.6 * f);
     }
   }
 
@@ -1749,8 +2339,11 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
       qA.setFromAxisAngle(e.eje, e.giro * tau + e.vel * 9);
       vC.setScalar(e.tam * RA * escala);
       mA.compose(vB, qA, vC);
-      if (e.lava) lava.setMatrixAt(il++, mA);
-      else roca.setMatrixAt(ir++, mA);
+      if (e.lava) {
+        lava.setMatrixAt(il++, mA);
+        // La lava deja brasas al salir despedida.
+        if (tau < 3) chispa(vB.x, vB.y, vB.z, rampa(tau / 3, cA).multiplyScalar(1 - tau / 3), e.tam * RA * escala * 0.55);
+      } else roca.setMatrixAt(ir++, mA);
     }
     roca.instanceMatrix.needsUpdate = lava.instanceMatrix.needsUpdate = true;
     matLava.color.lerpColors(LAVA_VIVA, LAVA_FRIA, Math.min(1, tau / 3));
@@ -1774,7 +2367,7 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
     ESTALLIDOS.forEach((x, e) => {
       const tau = t - x.t;
       if (x.plano !== plano || tau < 0 || tau > 2.6) return;
-      const n = Math.round(Math.min(140, 14 + x.tam * 9));
+      const n = x.tam >= 20 ? 1100 : Math.round(Math.min(140, 14 + x.tam * 9));
       for (let k = 0; k < n; k++) {
         const s = e * 211 + k * 3;
         const vida = (0.5 + 0.6 * azar(s)) * (1 + x.tam * 0.03);
@@ -1843,6 +2436,7 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
     W = capa.clientWidth || window.innerWidth;
     H = capa.clientHeight || window.innerHeight;
     renderer.setSize(W, H, false);
+    post.medir(W, H);
     camara.aspect = W / H;
     // Los planos se encuadran en horizontal: en vertical se abre el campo
     // para que quepa casi lo mismo de lado a lado.
@@ -1853,6 +2447,40 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
   encajar();
   const observador = new ResizeObserver(encajar);
   observador.observe(capa);
+
+  // ---------------------------------------------------------- acabado
+
+  const acabado: AcabadoImagen = {
+    tiempo: 0, brillo: 0.5, umbral: 0.7, aberracion: 0.2, estatica: 0, tinte: tinteEstatica, ondaX: 0.5, ondaY: 0.5, ondaRadio: 0, ondaFuerza: 0,
+  };
+  /** Brillo del plano, estática y la onda de choque más fuerte del momento. */
+  const medirAcabado = (plano: Plano) => {
+    [acabado.brillo, acabado.umbral] = BRILLO[plano];
+    acabado.brillo *= atenuaBrillo;
+    acabado.tiempo = t;
+    acabado.estatica = estatica;
+    let fuerza = 0;
+    const onda = (f: number, radio: number, x: number, y: number) => {
+      if (f <= fuerza) return;
+      fuerza = f;
+      acabado.ondaRadio = radio;
+      acabado.ondaX = x;
+      acabado.ondaY = y;
+    };
+    for (const g of GOLPES) {
+      const tau = t - g.t;
+      if (tau >= 0 && tau <= g.dur) onda(g.fuerza * (1 - tau / g.dur) ** 1.4, 1.3 * (tau / g.dur) ** 0.7, g.x, g.y);
+    }
+    // Cada nave o edificio que revienta también golpea la imagen, desde donde está.
+    for (const x of ESTALLIDOS) {
+      const tau = t - x.t;
+      if (x.plano !== plano || x.tam < 3 || x.tam >= 20 || tau < 0 || tau > 0.8) continue;
+      const p = enPantalla(x.pos);
+      if (vD.z < 1) onda(Math.min(0.55, x.tam * 0.09) * (1 - tau / 0.8) ** 1.4, 0.9 * (tau / 0.8) ** 0.7, p.x / W, 1 - p.y / H);
+    }
+    acabado.ondaFuerza = fuerza;
+    acabado.aberracion = Math.min(2, 0.2 + sacudida * 1.5 + fuerza * 0.9 + estatica * 0.8);
+  };
 
   // ---------------------------------------------------------- rótulos
 
@@ -1917,11 +2545,17 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
     escena.background = espacio;
     escena.fog = null;
     fogon.intensity = 0;
-    nChispas = 0;
+    nChispas = nHumo = nTrozos = 0;
+    estatica = 0;
+    atenuaBrillo = 1;
     sacudida = temblor(plano);
     planos[plano](t - PLANOS[plano][0]);
     pintarEstallidos(plano);
     pintarRayos(plano);
+    trozos.count = nTrozos;
+    trozos.instanceMatrix.needsUpdate = true;
+    geoHumo.setDrawRange(0, nHumo);
+    for (const nombre of ['position', 'tinte', 'tam']) geoHumo.attributes[nombre].needsUpdate = true;
     estrellas.position.copy(camara.position);
     cupula.position.copy(camara.position);
     geoChispas.setDrawRange(0, nChispas);
@@ -1939,7 +2573,8 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
     negro.style.opacity = Math.max(1 - tramo(t, 0, 0.7), corte, tramo(t, DURACION - 0.6, DURACION)).toFixed(3);
     const tauBlanco = t - ESTALLA - 0.04;
     blanco.style.opacity = (tauBlanco < 0 ? campana(t, ESTALLA + 0.04, 0.07) : 0.85 * Math.exp(-tauBlanco * 4)).toFixed(3);
-    renderer.render(escena, camara);
+    medirAcabado(plano);
+    post.pintar(escena, camara, acabado);
 
     // Sonidos al cruzar su momento (no al saltar por encima).
     if (t - antes > 0 && t - antes < 0.25) {
@@ -1974,6 +2609,7 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
   };
   const destruir = () => {
     capa.remove();
+    post.liberar();
     renderer.dispose();
     renderer.forceContextLoss();
   };
@@ -2004,12 +2640,24 @@ export function showCinematica(root: HTMLElement, onDone: () => void, opts: Cine
   boton.hidden = opts.fijo !== undefined;
   if (opts.fijo === undefined) window.addEventListener('keydown', alTecla);
 
+  // Si el equipo no llega, se baja la calidad en vez de dejar que se trabe.
+  let cuadros = 0, lentos = 0;
+  const vigilarRitmo = (dt: number) => {
+    if (t < 1.5 || opts.fijo !== undefined) return;
+    cuadros++;
+    if (dt > 1 / 26) lentos++;
+    if (cuadros < 60) return;
+    if (lentos > 30 && post.bajar()) encajar();
+    cuadros = lentos = 0;
+  };
+
   let ultimo = performance.now();
   const fotograma = (ahora: number) => {
     if (!vivo) return;
     const dt = Math.min(0.05, (ahora - ultimo) / 1000);
     ultimo = ahora;
     pintar(dt);
+    vigilarRitmo(dt);
     raf = requestAnimationFrame(fotograma);
   };
   // El primer fotograma sale ya: con `fijo`, la captura no espera a que el navegador pinte.

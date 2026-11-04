@@ -8,7 +8,8 @@ Traspaso para seguir en otro chat o hacer más cinemáticas. Refleja el estado d
 Pega esto como primer mensaje, abierto en `~/Developer/Meta Space`:
 
 ```
-Seguimos con Meta Space. Lee cinematicas.md, TRASPASO.md y lore-y-mecanicas.md.
+Seguimos con Meta Space. Lee cinematicas.md y la Parte 1 de lore-y-mecanicas.md
+(las partes 2 y 3 y buena parte de TRASPASO.md describen el juego antiguo).
 Quiero hacer esta cinemática: <qué pasa, cuándo sale y cuánto dura>.
 Antes de escribir código, propónme el guion plano a plano (tiempos, qué se ve,
 qué se dice y qué suena) y espera mi visto bueno. Todo el texto en español.
@@ -23,7 +24,9 @@ Secuencia al abrir el juego (`toTitle` en `web/src/game.ts`):
 
 1. **Intro del título** (`web/src/intro.ts`): la nave suelta las letras de META
    SPACE. Al pulsar, despega.
-2. **Historia** (`web/src/cinematica.ts`): 63 s en 11 planos, con música.
+2. **Historia** (`web/src/cinematica.ts`): 83 s en 13 planos, con música. Es un
+   mensaje de ADA para el último superviviente: habla en primera persona y le
+   trata de tú, así que todo rótulo nuevo tiene que sonar a ella.
 3. **Menú.**
 
 Las dos primeras salen una vez por carga (`introVista`). No salen con
@@ -33,6 +36,7 @@ Las dos primeras salen una vez por carga (`introVista`). No salen con
 |---|---|
 | `web/src/cinematica-guion.ts` | Planos, rótulos y momentos clave. Solo datos. |
 | `web/src/cinematica.ts` | Puesta en escena, efectos y sonidos sueltos. |
+| `web/src/cinematica-post.ts` | Brillo, onda de choque, separación de color y estática. |
 | `web/src/musica.ts` | Partitura e instrumentos sintetizados. |
 | `web/src/intro.ts` | Intro del título; exporta planetas, velo, `sonar`, `tono`, `tramo`… |
 | `web/test/cinematica.test.ts` | Comprueba tiempos, rótulos y que la música cae con la imagen. |
@@ -56,6 +60,8 @@ Las dos primeras salen una vez por carga (`introVista`). No salen con
    huecos, y sus rótulos con `r(plano, de, a, voz, texto)`.
    - `narra` va abajo. `helios` va arriba, en mayúsculas de protocolo.
    - Máximo 48 caracteres. Duración mínima: letras ÷ 38 + 0,5 s.
+   - ADA no pasa de 17 letras por segundo: hay que poder leer y mirar a la vez.
+   - Sin jerga: «módulo» o «protocolo» solo en boca de HELIOS o en las fichas.
    - Una voz no puede pisarse a sí misma; las dos sí pueden coincidir.
 2. **Objetos** (`showCinematica`): créalos antes de `const nuevos` y añádelos a esa
    lista. Todo lo de esa lista se apaga en cada fotograma.
@@ -94,7 +100,14 @@ Todo está dentro de `showCinematica` salvo que se indique.
 | `orientar(obj, dirección, alabeo)` | Apunta el frente del modelo. |
 | `ruta([[s, x, y, z], …])` | Trayectoria suave; devuelve posición y rumbo. |
 | `encuadrar(px, py, pz, mx, my, mz)` | Cámara, con el temblor de `sacudida` incluido. |
-| `chispa(x, y, z, color, metros)` | Punto luminoso: nieve, ascuas, estelas, datos. Hasta 4.000 por fotograma. |
+| `chispa(x, y, z, color, metros)` | Punto luminoso: nieve, ascuas, estelas, datos. Hasta 14.000 por fotograma. |
+| `humo(x, y, z, color, metros, alfa)` | Lo mismo, pero tapa en vez de brillar: humo, polvo, nieve a ras de suelo. Hasta 1.800. |
+| `relampago(de, a, semilla, color, grosor)` | Rayo quebrado que cambia de forma solo. |
+| `estatica` y `tinteEstatica` | Rasgado de radio de este fotograma: el plano los pone, de 0 a 1. |
+| `atenuaBrillo` | Baja el brillo en planos muy claros, o la imagen se quema entera. |
+| `GOLPES` | Ondas de choque que deforman la pantalla. Los estallidos grandes ya la lanzan solos. |
+| `BRILLO` | Cuánto brilla cada plano y desde qué luz empieza. |
+| `RESTOS` (en `guionDeFuego`) | Trozos que saltan de lo que se rompe, con brasas y humo. |
 | `estallidos.push({ plano, t, pos, tam })` | Explosión con chispas, destello, raya de lente, luz y temblor. |
 | `disparo(t0, dur, de, a, color, grosor, impacto)` | Rayo entre dos puntos, dentro de `guionDeFuego`. |
 | `destello(mapa, color, tam, niebla?)` | Sprite aditivo: halos, soles, fuegos, anillos. |
@@ -137,12 +150,20 @@ terceros.
 - **Música:** en `componer()`, `const X = de('miPlano')` y luego
   `toca(X(1.5), voz, dur, notas, vol)`. Las notas son MIDI (60 = do central).
 - **Tempo:** 120 pulsaciones por minuto; medio segundo el pulso.
-- **Voces:** `pad`, `arpa`, `bajo`, `metal`, `campana`, `zumbido`, `bombo`, `caja`,
-  `charles`, `platillo`, `tambor`, `subida`, `impacto`, `pitido`.
-- **Volumen orientativo:** colchones 0,07–0,17 (se reparte entre sus notas), bajo
-  0,12, bombo 0,5, metales 0,07, campanas 0,06.
-- **Motivos:** Ares es el arpegio en re mayor. HELIOS es re, mi bemol y la. Noa
-  tiene su tema en campanas. Reutilízalos: atan la música con la historia.
+- **Voces:** `pad`, `cuerdas`, `cortas`, `coro`, `trompa`, `metal`, `arpa`, `cajita`,
+  `campana`, `bajo`, `zumbido`, `bombo`, `caja`, `charles`, `platillo`,
+  `platilloInverso`, `tambor`, `timbal`, `gong`, `subida`, `impacto`, `pitido`,
+  `estatica`, `tic`. Cada nota lleva su posición en estéreo (`pan`).
+- **Melodías:** `frase(segundo, voz, [[nota, pulsos], …], vol)`, y `hasta(melodia, pulsos)`
+  para usar solo el principio.
+- **Volumen orientativo:** cuerdas 0,1–0,2, coro 0,07–0,15 (se reparten entre sus
+  notas), bajo 0,12, bombo 0,5, trompas 0,13–0,22, metales 0,1, campanas 0,06.
+- **Temas:** el de Meta (`temaDeMeta`), en mayor o menor, cuenta la historia: frágil
+  en la caja de música, heroico en Ares, roto tras la caída y entero al volver el
+  sol. HELIOS es re, mi bemol y la. ADA tiene su tema en campanas.
+- **Cuidado con el coste:** cada `AudioParam` que se mueve muestra a muestra sale
+  muy caro. Por eso todo va a `k-rate`, el vibrato es común y cada nota libera sus
+  nodos al acabar. Sin eso, la banda tardaba cuatro veces más en calcularse.
 - **Efectos:** `tono`, `soplido`, `estallido`, `barrido`, `sirena`, `viento`, `sos`.
 
 El navegador no deja sonar nada sin un gesto. El clic que despega la nave cuenta,
@@ -188,12 +209,12 @@ Medir la música sin oírla:
 
 ```js
 const m = await import('/src/musica.ts?t=' + Date.now());
-const sr = 16000, oc = new OfflineAudioContext(2, sr * 66, sr);
+const sr = 22050, oc = new OfflineAudioContext(2, sr * 87, sr);
 m.tocarBanda(oc, 0, 0);
 const d = (await oc.startRendering()).getChannelData(0);
 const rms = [];
 let pico = 0;
-for (let s = 0; s < 66; s++) {
+for (let s = 0; s < 87; s++) {
   let suma = 0;
   for (let i = s * sr; i < (s + 1) * sr; i++) {
     suma += d[i] * d[i];
@@ -204,14 +225,17 @@ for (let s = 0; s < 66; s++) {
 ({ pico, rms: rms.join(' ') });
 ```
 
-El pico debe quedar por debajo de 1 y sin `NaN`. Hay que escucharla igualmente: la
-medida no dice si suena bien.
+El pico debe quedar por debajo de 1 y sin `NaN`. El momento más fuerte tiene que
+ser la vuelta del sol, y el cálculo debe tardar menos de 20 s (un tiempo mucho
+mayor avisa de cortes en directo). Tarda en acabar: guarda el resultado en `window`
+y consúltalo aparte, porque la herramienta corta a los 45 s. Hay que escucharla
+igualmente: la medida no dice si suena bien.
 
 ## Actualizar el artifact
 
 El visor es **[La caída de Ares](https://claude.ai/artifact/GVgKxq2wra3RvJ3aY4Evqy)**
-(privado). La página y su `cinematica.js` no están en el repositorio: vivían en el
-directorio temporal, que se borró en un reinicio.
+(privado) y aún tiene la versión anterior, de 63 s. La página y su `cinematica.js`
+no están en el repositorio: viven en un directorio temporal que puede borrarse.
 
 1. Recupera la página con la acción `read` de la herramienta Artifact.
 2. Empaqueta con Vite en modo librería, sin minificar y con `copyPublicDir: false`.
@@ -227,8 +251,9 @@ URLs, claves y `fetch` en el paquete.
 
 ## Trampas que ya costaron tiempo
 
-- **Capturas viejas:** con el panel oculto, las capturas no se actualizan. Muestra
-  el panel y toca el DOM antes de capturar.
+- **Capturas viejas:** con el panel oculto, las capturas no se actualizan, y a veces
+  enseñan el juego de fondo en vez de la cinemática. Muestra el panel y toca el DOM
+  antes de capturar; si quitas el truco del `div` de `__ver`, fallan casi todas.
 - **Recarga de Vite:** al guardar, la página se recarga y `__ver` desaparece.
 - **Colores en shaders:** `THREE.Color` pasa a lineal y los `ShaderMaterial` no
   convierten de vuelta. Por eso las paletas de planeta van en números 0–1.
@@ -237,6 +262,11 @@ URLs, claves y `fetch` en el paquete.
 - **Rutas:** `monotona` frena en la última clave. Ponla después del corte.
 - **Instancias:** usa `frustumCulled = false` o desaparecen al moverse.
 - **Explosiones:** cada una lleva `plano`; si no, se cuela en el plano siguiente.
+- **Brillo:** lo mide sobre la imagen ya acabada. En un plano claro (nieve, traje de
+  cerca, sol) sube el umbral en `BRILLO` o usa `atenuaBrillo`, o se quema todo.
+- **Imagen copiada:** la escena se pinta en el lienzo y se copia a una textura. No
+  uses un `RenderPass` normal: los planetas y las partículas escriben su color tal
+  cual y saldrían lavados.
 - **Tests en Node:** importa con extensión `.ts`, no uses propiedades en el
   constructor y no toques `document` al cargar el módulo.
 - **Dependencias circulares:** `musica.ts` no puede importar `cinematica.ts`. Lo

@@ -38,14 +38,16 @@ fue una guerra, sino una amenaza neutralizada.
 
 De Ares solo quedó una nave, la del especialista, que pone rumbo a Meta en busca
 de la llave que puede apagar a HELIOS: ADA, escondida en el planeta. Es la
-cinemática que sigue a la intro del título (`web/src/cinematica.ts`, algo más de
-un minuto, se salta con Esc), antes del menú. Cuenta la historia entera en
-once planos: Meta ardía y encendió HELIOS; el velo lo congeló y su gente vive
-bajo tierra; pidió ayuda y Ares respondió; la guerra y la caída de Ares; el
-último especialista; ADA y Noa Herrera; y cómo se juega: diez minutos por
-sector hasta que el cohete sube la orden y vuelve el sol, y las siete reliquias
-para apagar el velo de todo Meta. El guion vive en `web/src/cinematica-guion.ts`
-y la música, compuesta para ella y sintetizada, en `web/src/musica.ts`.
+cinemática que sigue a la intro del título (`web/src/cinematica.ts`, 83 s, se
+salta con Esc), antes del menú: un mensaje de ADA para el último superviviente,
+en trece planos. Meta ardía y creó una IA, HELIOS, que tapó el cielo con un velo
+rojo; pasan dos siglos y nadie sabe pararla; Meta se congela y pide ayuda; Ares
+manda su flota a apagar el velo; HELIOS la destruye y rompe Ares; de Ares solo
+queda tu nave; ADA es la única que puede firmar el apagado y Noa Herrera la
+escondió en Meta; y cómo se juega: diez minutos por zona hasta que el cohete sube
+su firma y vuelve el sol, y siete pruebas para apagarlo del todo. El guion vive
+en `web/src/cinematica-guion.ts` y la música, compuesta para ella y sintetizada,
+en `web/src/musica.ts`.
 
 ### ADA — la llave
 

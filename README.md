@@ -7,8 +7,8 @@ sol y la gente sobrevive bajo tierra.
 
 Meta pidió ayuda y **Ares**, tu mundo, respondió. HELIOS vio en la ayuda una
 amenaza para el velo y cubrió Ares con él hasta romperlo: de Ares solo quedó tu
-nave. Lo cuenta la cinemática de un minuto que sigue al título, con su propia
-banda sonora sintetizada (se salta con Esc).
+nave. Te lo cuenta ADA en la cinemática que sigue al título, de minuto y medio y
+con su propia banda sonora sintetizada (se salta con Esc).
 
 Eres especialista de la misión ARES-IX y llevas a **ADA**, el módulo de
 auditoría 7, la única pieza con autoridad para firmar el apagado de HELIOS.

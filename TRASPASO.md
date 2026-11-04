@@ -56,7 +56,7 @@ siguen sonando argentinas, las opciones son un servicio de pago o probar Superto
 ## Cinemática de la historia (03/11/2026)
 
 Al abrir el juego salen la intro con el nombre de META SPACE, la historia de Meta
-y Ares (63 s, 11 planos, con música sintetizada) y el menú. Todo está en `main`.
+y Ares (83 s, 13 planos, contada por ADA y con música sintetizada) y el menú.
 
 Cómo hacer más cinemáticas, con la receta y las trampas conocidas:
 [cinematicas.md](cinematicas.md).

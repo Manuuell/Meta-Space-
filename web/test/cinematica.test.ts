@@ -4,12 +4,12 @@ import { DURACION, ESTALLA, LETRAS_POR_SEGUNDO, PLANOS, ROTULOS, planoEn } from 
 import { en } from '../src/cinematica-guion.ts';
 import { PARTITURA } from '../src/musica.ts';
 
-test('cinemática: los planos van seguidos y duran alrededor de un minuto', () => {
+test('cinemática: los planos van seguidos y duran menos de minuto y medio', () => {
   const lista = Object.values(PLANOS);
   assert.equal(lista[0][0], 0);
   for (let k = 1; k < lista.length; k++) assert.equal(lista[k][0], lista[k - 1][1], `hueco o solape antes del plano ${k}`);
   assert.equal(lista.at(-1)![1], DURACION);
-  assert.ok(DURACION >= 55 && DURACION <= 70, `dura ${DURACION} s`);
+  assert.ok(DURACION >= 70 && DURACION <= 90, `dura ${DURACION} s`);
   for (const [nombre, [de, a]] of Object.entries(PLANOS)) {
     assert.equal(planoEn((de + a) / 2), nombre);
     assert.ok(a - de >= 2.5, `${nombre} pasa demasiado rápido para leerse`);
@@ -25,6 +25,8 @@ test('cinemática: cada rótulo da tiempo a leerlo y no pisa a otro de su voz', 
       // Se escribe letra a letra y después se queda al menos medio segundo entero.
       assert.ok(r.a - r.de >= r.texto.length / LETRAS_POR_SEGUNDO + 0.5, `«${r.texto}» se va antes de poder leerlo`);
       assert.ok(r.texto.length <= 48, `«${r.texto}» es demasiado largo para leerlo a tiempo`);
+      // A más de esto ya no da tiempo a leer y a mirar la imagen a la vez.
+      if (voz === 'narra') assert.ok(r.texto.length / (r.a - r.de) <= 17, `«${r.texto}» va demasiado rápido`);
       if (k > 0) assert.ok(r.de >= suyos[k - 1].a, `«${r.texto}» pisa a «${suyos[k - 1].texto}»`);
     });
   }

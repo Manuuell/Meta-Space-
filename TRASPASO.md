@@ -4,6 +4,22 @@ Estado a 03/11/2026. Pega este archivo al abrir el chat nuevo.
 
 ---
 
+## El ratón solo sale en el menú de Esc (04/11/2026)
+
+Cada captura del ratón hace que Safari saque su tira de «pulsa Esc», que ninguna
+página puede quitar, y mientras se ve la primera Esc solo sirve para cerrarla. Antes
+se soltaba y recapturaba en cada tarjeta. Ahora, en tarjetas y mapa, sigue capturado
+y mueve un cursor dibujado por el juego (`abrirCursor` en `web/src/input.ts`), que
+entrega clics, arrastres y rueda a lo que tenga debajo. Las tarjetas se eligen con
+ese cursor o con 1, 2 y 3. Esc con el mapa abierto lo cierra y abre la pausa.
+
+El ratón real aún sale en la pausa, el chat, el astillero y los resultados. Un
+navegador automatizado puede no conceder la captura: para probarlo hay que simular
+`document.pointerLockElement`. La IA solo responde desde los orígenes de `ORIGENES`
+(`creator-server.ts`): el 5173, el 4173 o el propio 8787; en otro puerto da 403.
+
+---
+
 ## La intro ya suena (04/11/2026)
 
 La primera animación (`web/src/intro.ts`) tiene banda propia (`componerIntro` en

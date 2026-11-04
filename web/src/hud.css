@@ -537,3 +537,9 @@
   .h2-obj-cuenta { font-size: 15px; }
   .h2-obj-fila { font-size: 11px; }
 }
+
+/* Cursor del juego: tarjetas y mapa, con el ratón real aún capturado. */
+.cursor-juego { position: fixed; left: 0; top: 0; z-index: 200; width: 28px; height: 28px; margin: -2px 0 0 -4px;
+  pointer-events: none; filter: drop-shadow(0 2px 3px rgba(5, 6, 20, .7)); }
+.cursor-juego svg { display: block; width: 100%; height: 100%; fill: #fff; stroke: #0b0a1d; stroke-width: 2; stroke-linejoin: round; }
+button.cursor-encima { filter: brightness(1.12); }

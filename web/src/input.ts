@@ -61,6 +61,92 @@ export function ratonPressed(boton: number) {
   return ratonNuevo.has(boton);
 }
 
+// ------------------------------------------------------- Cursor del juego
+//
+// Cada captura del ratón hace que Safari saque su tira de «pulsa Esc», y mientras
+// se ve la primera Esc solo sirve para cerrarla. Por eso el ratón real solo sale en
+// el menú de pausa: en las tarjetas y el mapa sigue capturado y mueve este cursor,
+// que entrega a lo que tenga debajo lo mismo que entregaría el de verdad.
+
+let cursor: HTMLElement | null = null;
+let cursorX = 0, cursorY = 0;
+/** El botón que se resalta y dónde empezó la pulsación en curso. */
+let encima: Element | null = null;
+let pulsado: Element | null = null;
+
+const FLECHA = '<svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 2v21l5.6-5.1 3.6 8.3 4.3-1.9-3.6-8.1H21z"/></svg>';
+
+const bajoCursor = () => document.elementFromPoint(cursorX, cursorY);
+
+function enviarPuntero(destino: Element | null, tipo: string, botones: number) {
+  destino?.dispatchEvent(new PointerEvent(tipo, {
+    bubbles: true, cancelable: true, composed: true, pointerId: 1, pointerType: 'mouse', isPrimary: true,
+    clientX: cursorX, clientY: cursorY, button: 0, buttons: botones,
+  }));
+}
+
+function moverCursor(dx: number, dy: number) {
+  if (!cursor) return;
+  cursorX = Math.max(0, Math.min(window.innerWidth - 1, cursorX + dx));
+  cursorY = Math.max(0, Math.min(window.innerHeight - 1, cursorY + dy));
+  cursor.style.transform = `translate(${cursorX}px, ${cursorY}px)`;
+  // Con el ratón capturado no hay :hover: el resaltado lo pone esta clase.
+  const boton = bajoCursor()?.closest('button') ?? null;
+  if (boton !== encima) {
+    encima?.classList.remove('cursor-encima');
+    boton?.classList.add('cursor-encima');
+    encima = boton;
+  }
+  enviarPuntero(pulsado ?? bajoCursor(), 'pointermove', pulsado ? 1 : 0);
+}
+
+/** Saca el cursor del juego. Sin ratón capturado no hace falta: ya está el de verdad. */
+export function abrirCursor() {
+  if (cursor || !isLocked()) return;
+  cursor = document.createElement('div');
+  cursor.className = 'cursor-juego';
+  cursor.innerHTML = FLECHA;
+  cursorX = window.innerWidth / 2;
+  cursorY = window.innerHeight / 2;
+  cursor.style.transform = `translate(${cursorX}px, ${cursorY}px)`;
+  document.body.appendChild(cursor);
+}
+
+function cerrarCursor() {
+  cursor?.remove();
+  cursor = null;
+  encima?.classList.remove('cursor-encima');
+  encima = pulsado = null;
+}
+
+// Una pulsación que se suelta sobre otro hijo del mismo botón sigue siendo un clic
+// en el botón, y una pulsación que empieza en el mapa lo sigue hasta soltar.
+window.addEventListener('mousedown', (e) => {
+  if (!cursor || e.button !== 0) return;
+  pulsado = bajoCursor();
+  enviarPuntero(pulsado, 'pointerdown', 1);
+});
+window.addEventListener('mouseup', (e) => {
+  if (!cursor || e.button !== 0) return;
+  const origen = pulsado, destino = bajoCursor();
+  pulsado = null;
+  enviarPuntero(origen ?? destino, 'pointerup', 0);
+  if (!cursor || !destino) return;
+  let comun = origen;
+  while (comun && !comun.contains(destino)) comun = comun.parentElement;
+  comun?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, clientX: cursorX, clientY: cursorY }));
+});
+window.addEventListener('wheel', (e) => {
+  if (!cursor || !e.isTrusted) return;
+  bajoCursor()?.dispatchEvent(new WheelEvent('wheel', {
+    bubbles: true, cancelable: true, composed: true, clientX: cursorX, clientY: cursorY, deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode,
+  }));
+});
+// Si el ratón se suelta (Esc en Chrome), manda otra vez el de verdad.
+document.addEventListener('pointerlockchange', () => {
+  if (!isLocked()) cerrarCursor();
+});
+
 // ------------------------------------------------------------ Mirar
 
 // Giro acumulado desde la última consulta, en píxeles de ratón.
@@ -69,6 +155,7 @@ let dragging = false;
 
 /** Captura el puntero (como PokéBonk): necesita un gesto del usuario. */
 export function lockPointer(canvas: HTMLCanvasElement) {
+  cerrarCursor();
   if (document.pointerLockElement === canvas) return;
   try {
     const result = canvas.requestPointerLock() as unknown;
@@ -88,7 +175,8 @@ export function isLocked() {
 }
 
 window.addEventListener('mousemove', (e) => {
-  if (isLocked() || dragging) {
+  if (cursor) moverCursor(e.movementX, e.movementY);
+  else if (isLocked() || dragging) {
     look.x += e.movementX;
     look.y += e.movementY;
   }

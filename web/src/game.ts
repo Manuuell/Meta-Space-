@@ -5,7 +5,7 @@ import { Enemies } from './enemies';
 import { Weapons, Modifiers } from './weapons';
 import { Pickups, RelicDrop } from './pickups';
 import { astronautFrames, blobShadowTexture } from './sprites';
-import { consumeLook, endFrame, isHeld, isLocked, lockPointer, moveVector, piloto, ratonHeld, unlockPointer, wasPressed } from './input';
+import { abrirCursor, consumeLook, endFrame, isHeld, isLocked, lockPointer, moveVector, piloto, ratonHeld, unlockPointer, wasPressed } from './input';
 import { sfx, unlockAudio } from './audio';
 import { loadSave, writeSave } from './save';
 import * as ui from './ui';
@@ -136,6 +136,8 @@ export class Game {
   private pitch = 0.36;
   // Soltar el puntero a propósito (subida de nivel, final) no debe pausar.
   private expectUnlock = false;
+  /** Cierra el mapa sin volver a capturar el ratón; solo existe con el mapa abierto. */
+  private cerrarMapa: (() => void) | null = null;
 
   private state: State = 'title';
   private clock = new THREE.Clock();
@@ -453,10 +455,12 @@ export class Game {
     canvas.addEventListener('click', () => {
       if (this.state === 'playing') lockPointer(canvas);
     });
-    // Esc suelta el puntero sin que la página reciba la tecla: eso es pausa.
+    // Esc suelta el puntero sin que la página reciba la tecla: eso es pausa. El
+    // ratón real solo sale ahí, también si se pulsa con el mapa abierto.
     document.addEventListener('pointerlockchange', () => {
       if (isLocked()) return;
       if (this.expectUnlock) { this.expectUnlock = false; return; }
+      if (this.state === 'mapa') this.cerrarMapa?.();
       if (this.state === 'playing') this.pause();
     });
 
@@ -1830,8 +1834,7 @@ export class Game {
   /** Pausa la partida y enseña tarjetas; `alElegir` recibe el índice. */
   private tarjetas(tarjetas: Parameters<typeof mostrarMejoras>[1], alElegir: (i: number) => void, titulo: string, frase: string) {
     this.state = 'levelup';
-    this.expectUnlock = isLocked();
-    unlockPointer();
+    abrirCursor();
     mostrarMejoras(this.level, tarjetas, (i) => {
       this.state = 'playing';
       this.clock.getDelta();
@@ -2177,8 +2180,7 @@ export class Game {
       return;
     }
     this.state = 'levelup';
-    this.expectUnlock = isLocked();
-    unlockPointer();
+    abrirCursor();
     sfx(pendiente.elegir > 1 ? 'carga' : 'cofre');
     const cofre = pendiente.elegir <= 1;
     mostrarMejoras(this.level, opciones.map((b) => {
@@ -2335,10 +2337,10 @@ export class Game {
   /** M: el mapa del sector. La partida espera mientras está abierto. */
   private abrirMapaSector() {
     this.state = 'mapa';
-    this.expectUnlock = isLocked();
-    unlockPointer();
+    abrirCursor();
     const p = this.player.position;
-    abrirMapa({
+    let recapturar = true;
+    const cerrar = abrirMapa({
       jugador: { x: p.x, z: p.z, yaw: this.yaw },
       carta: this.world.carta(),
       arena: RUN.arena,
@@ -2348,12 +2350,17 @@ export class Game {
       zona: this.contenido.zonaDe(p.x, p.z),
       puntos: this.puntosMapa,
     }, (puntos) => {
+      this.cerrarMapa = null;
       this.puntosMapa = puntos;
       endFrame();
       this.state = 'playing';
       this.clock.getDelta();
-      lockPointer(this.canvas);
+      if (recapturar) lockPointer(this.canvas);
     });
+    this.cerrarMapa = () => {
+      recapturar = false;
+      cerrar();
+    };
   }
 
   private movePlayer(dt: number) {
@@ -2876,8 +2883,7 @@ export class Game {
     this.companero.alSubirNivel();
     if (this.heroSpecial === 'pulso-ada') this.activateAdaPulse();
     this.state = 'levelup';
-    this.expectUnlock = isLocked();
-    unlockPointer();
+    abrirCursor();
     sfx('level');
     ui.showLevelUp(this.level, this.rollChoices(), (choice) => {
       this.registrarEleccion(choice);

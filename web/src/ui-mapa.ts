@@ -247,7 +247,8 @@ export function abrirMapa(datos: DatosMapa, cerrar: (puntos: { x: number; z: num
   let arrastre = 0;
   let pellizco = 0;
   lienzo.addEventListener('pointerdown', (e) => {
-    lienzo.setPointerCapture(e.pointerId);
+    // Con el ratón capturado no se puede: ahí ya lo sigue el cursor del juego.
+    try { lienzo.setPointerCapture(e.pointerId); } catch { /* sin más */ }
     dedos.set(e.pointerId, { x: e.clientX, y: e.clientY });
     arrastre = 0;
     if (dedos.size === 2) {

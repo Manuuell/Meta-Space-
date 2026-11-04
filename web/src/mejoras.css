@@ -70,7 +70,7 @@
 }
 .msm-tarjeta:nth-child(odd) { --giro: -7deg; }
 .msm-tarjeta:nth-child(even) { --giro: 7deg; }
-.msm-tarjeta:hover, .msm-tarjeta:focus-visible {
+.msm-tarjeta:hover, .msm-tarjeta:focus-visible, .msm-tarjeta.cursor-encima {
   transform: translateY(-10px) rotate(-1deg);
   box-shadow: 0 14px 0 rgba(0, 0, 0, 0.4), 0 0 0 3px var(--c), 0 0 34px color-mix(in srgb, var(--c) 60%, transparent);
   outline: none;
@@ -109,7 +109,7 @@
   background: repeating-conic-gradient(from 0deg, rgba(255, 255, 255, 0.22) 0 10deg, transparent 10deg 30deg);
   animation: msm-girar 9s linear infinite;
 }
-.msm-tarjeta:hover .msm-medallon::before { animation-duration: 2.5s; }
+.msm-tarjeta:hover .msm-medallon::before, .msm-tarjeta.cursor-encima .msm-medallon::before { animation-duration: 2.5s; }
 .msm-medallon .icono {
   position: relative; width: 80px; height: 80px; filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.45));
   animation: msm-pop 0.5s cubic-bezier(.2, 1.8, .4, 1) backwards, msm-flota 2.4s ease-in-out infinite;

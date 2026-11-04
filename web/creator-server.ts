@@ -52,6 +52,8 @@ import {
 } from './src/conversacion.ts';
 import type { PeticionTurno, Turno } from './src/conversacion.ts';
 import { esForma, esInterlocutor, fichaDe } from './src/contenido/fichas.ts';
+import { entradaReceta, esquemaReceta, normalizarReceta, recetaLocal, sistemaReceta } from './src/heroe3d/receta.ts';
+import type { Receta } from './src/heroe3d/receta.ts';
 import { MAX_TEXTO_VOZ } from './src/habla.ts';
 import { cargarVoces } from './voces-servidor.ts';
 import type { Voces } from './voces-servidor.ts';
@@ -489,6 +491,25 @@ async function metaTurno(p: PeticionTurno, alTexto: (delta: string) => void, sen
   return turno;
 }
 
+type RespuestaResponses = { output_text?: string; output?: { content?: { text?: string }[] }[] };
+
+/** Muse Spark diseña un héroe: devuelve piezas del catálogo, que es lo único que se monta. */
+async function metaHeroe(texto: string, anterior: Receta | null): Promise<Receta> {
+  const r = await llamarMeta<RespuestaResponses>('/responses', JSON.stringify({
+    model: META_CHAT_MODEL,
+    instructions: sistemaReceta(),
+    input: entradaReceta(texto, anterior),
+    store: false,
+    reasoning: { effort: 'minimal' },
+    max_output_tokens: META_MAX_TOKENS,
+    text: { format: { type: 'json_schema', name: 'receta', strict: true, schema: esquemaReceta() } },
+  }), 'application/json', 45_000);
+  const crudo = r.output_text ?? r.output?.flatMap((o) => o.content ?? []).find((c) => c.text)?.text;
+  const receta = normalizarReceta(JSON.parse(crudo ?? 'null'));
+  if (!receta) throw new Error('Receta no válida.');
+  return receta;
+}
+
 /** Visión de Muse Spark: una frase en español, con la voz de ADA. */
 async function metaVisionOpinion(pngDataUrl: string): Promise<string> {
   const cuerpo = await llamarMeta<RespuestaChat>('/chat/completions', JSON.stringify({
@@ -620,6 +641,7 @@ const CLASES: Record<string, Clase> = {
   '/api/run-brief': 'texto',
   '/api/npc-line': 'texto',
   '/api/npc-turno': 'texto',
+  '/api/heroe-receta': 'texto',
   '/api/stats': 'texto',
   '/api/generate-image': 'imagen',
   '/api/analyze-drawing': 'vision',
@@ -693,6 +715,26 @@ async function atenderApi(req: IncomingMessage, res: ServerResponse, ruta: strin
       }
     }
     json(res, 200, { ok: true, brief: briefLocal(heroName, profileName, seed), source: 'local' });
+    return;
+  }
+
+  // ---- POST /api/heroe-receta { texto, anterior? }
+  if (ruta === '/api/heroe-receta') {
+    const texto = limpiarDato(cuerpo.texto, 400);
+    if (!texto) {
+      json(res, 400, { ok: false, error: 'Cuéntame cómo es tu héroe.' });
+      return;
+    }
+    const anterior = normalizarReceta(cuerpo.anterior);
+    if (conIa()) {
+      try {
+        json(res, 200, { ok: true, receta: await metaHeroe(texto, anterior), source: 'meta-spark' });
+        return;
+      } catch {
+        // Cae a la receta local.
+      }
+    }
+    json(res, 200, { ok: true, receta: recetaLocal(texto, anterior), source: 'local' });
     return;
   }
 

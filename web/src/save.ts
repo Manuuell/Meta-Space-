@@ -23,6 +23,8 @@ export interface Save {
   estiloBruno?: { pajarita: 'cuadros' | 'verde' | null; gorra: boolean; gafas: boolean };
   /** Operador jugable elegido en el título. */
   personaje?: PersonajeId;
+  /** Héroe de la forja: su receta (se valida al cargar), su retrato y si está en uso. */
+  heroe?: { receta: unknown; retrato: string; activo: boolean };
   /** La nave: fragmentos, piezas fabricadas y montadas (ver nave/piezas.ts). */
   hangar?: unknown;
 }

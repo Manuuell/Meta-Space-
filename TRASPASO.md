@@ -4,6 +4,33 @@ Estado a 03/11/2026. Pega este archivo al abrir el chat nuevo.
 
 ---
 
+## Forja de héroes (04/11/2026)
+
+Escribes cómo quieres a tu héroe y entra en la partida como personaje 3D. Se abre con
+Operador (C) en el menú, y también desde «Crear mi héroe» en el selector.
+
+| Archivo | Qué contiene |
+|---|---|
+| `web/src/heroe3d/receta.ts` | Catálogo, esquema para Muse Spark, validación y receta local sin IA. Para añadir una pieza, se empieza aquí. |
+| `web/src/heroe3d/montar.ts` | Construye el modelo 3D de una receta, con el kit y los nodos y clips de los operadores. |
+| `web/src/heroe3d/ficha.ts` | Lo que es el héroe para el juego: el oficio de un operador más el ajuste de su silueta. |
+| `web/src/heroe3d/ejemplos.ts` | Doce recetas reales de Muse Spark: son las muestras de la forja. |
+| `web/src/ui-forja.ts` | El menú, con el estilo del astillero (reutiliza `ui-astillero.css`). |
+| `web/src/modelos/hangar.ts` | Cielo y plataforma que comparten forja y astillero. |
+| `web/test/heroe.test.ts` | Cada pieza en cada silueta y mil combinaciones al azar: nodos, clips, geometría y presupuesto. |
+
+Un héroe usa el `id` del operador de su oficio, así que el juego le da arma, habilidad y
+pasiva sin más; solo cambia el modelo (`recetaHeroe` en `game.ts`). Se guarda en
+`save.heroe` con su retrato, una foto del modelo. La ruta es `/api/heroe-receta`: tras
+tocar `receta.ts` hay que reiniciar el servidor, que lo carga al arrancar.
+
+`/heroes.html` (solo desarrollo) enseña hojas de revisión: `?hoja=1`, `?hoja=1&comparar=1`
+frente a los operadores y `?hoja=1&catalogo=pelo,tocado` para ver cada pieza. Antes de dar
+por buena una pieza nueva hay que mirarla: las pruebas no ven que un afro tape la cara.
+El creador 2D sigue en el perfil (P), que es lo que usa Muse Image y la visión.
+
+---
+
 ## Primera partida de prueba (04/11/2026)
 
 - **Jefes:** antes tenían vida fija. Ahora `escalaJefe(tiempo, nivel)` en

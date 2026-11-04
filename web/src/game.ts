@@ -27,6 +27,10 @@ import { SPECIALS } from './creator/stats';
 import { openProfileMenu } from './profile/profile-menu';
 import { showCinematica } from './cinematica';
 import { abrirAstillero } from './ui-astillero';
+import { abrirForja } from './ui-forja';
+import { fichaHeroe } from './heroe3d/ficha';
+import { crearHeroe } from './heroe3d/montar';
+import { normalizarReceta, type Receta } from './heroe3d/receta';
 import { crearEntorno } from './modelos/nave-modular';
 import { abrirEscaner } from './ui-escaner';
 import { ObjetosEnJuego } from './arsenal';
@@ -148,6 +152,8 @@ export class Game {
   private ultimoMinutoAvisado = false;
   private tmp = { x: 0, z: 0 };
   private personajeActual: PersonajeDef = personaje(this.save.personaje);
+  /** Héroe de la forja en uso: su modelo sale de la receta y su kit, de su oficio. */
+  private recetaHeroe: Receta | null = null;
   private habilidad: Habilidad | null = null;
   private habilidadIntocableHasta = 0;
 
@@ -309,6 +315,13 @@ export class Game {
 
   constructor(private canvas: HTMLCanvasElement, opciones: { demo?: boolean; personaje?: string } = {}) {
     if (opciones.personaje) this.personajeActual = personaje(opciones.personaje);
+    else if (this.save.heroe?.activo) {
+      this.recetaHeroe = normalizarReceta(this.save.heroe.receta);
+      if (this.recetaHeroe) {
+        this.personajeActual = fichaHeroe(this.recetaHeroe, this.save.heroe.retrato);
+        this.heroName = this.recetaHeroe.nombre;
+      }
+    }
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
@@ -387,7 +400,7 @@ export class Game {
     }
     this.animarAstronauta('Reposo');
     this.montarEquipo();
-    if (this.personajeActual.id !== 'especialista') this.montarModeloPersonaje(this.personajeActual);
+    if (this.recetaHeroe || this.personajeActual.id !== 'especialista') this.montarModeloPersonaje(this.personajeActual);
 
     this.shadow = new THREE.Mesh(
       new THREE.PlaneGeometry(1.8, 1.8).rotateX(-Math.PI / 2),
@@ -512,7 +525,7 @@ export class Game {
     this.mezclador.stopAllAction();
     this.mezcladorEquipo.stopAllAction();
     this.scene.remove(vieja);
-    this.astronauta = MODELOS_PERSONAJE[def.id]();
+    this.astronauta = this.recetaHeroe ? crearHeroe(this.recetaHeroe) : MODELOS_PERSONAJE[def.id]();
     this.mezclador = new THREE.AnimationMixer(this.astronauta.raiz);
     this.mezcladorEquipo = new THREE.AnimationMixer(this.astronauta.raiz);
     this.acciones.clear();
@@ -531,12 +544,36 @@ export class Game {
 
   private elegirPersonaje(id: PersonajeId) {
     this.personajeActual = personaje(id);
+    this.recetaHeroe = null;
     this.save.personaje = id;
+    if (this.save.heroe) this.save.heroe.activo = false;
     writeSave(this.save);
     // Elegir un operador predefinido desactiva el sprite del creador, que
     // puede volver a activarse desde Operador cuando el usuario quiera.
     this.customSprite = null;
     this.heroName = '';
+    this.heroSpecial = null;
+    this.heroSpecialLevel = 0;
+    this.montarModeloPersonaje(this.personajeActual);
+    this.toTitle();
+  }
+
+  private abrirForjaHeroes() {
+    abrirForja({
+      receta: normalizarReceta(this.save.heroe?.receta),
+      usar: (receta, retrato) => this.usarHeroe(receta, retrato),
+      volver: () => this.toTitle(),
+    });
+  }
+
+  /** El héroe de la forja pasa a ser el personaje de la partida. */
+  private usarHeroe(receta: Receta, retrato: string) {
+    this.save.heroe = { receta, retrato, activo: true };
+    writeSave(this.save);
+    this.recetaHeroe = receta;
+    this.personajeActual = fichaHeroe(receta, retrato);
+    this.customSprite = null;
+    this.heroName = receta.nombre;
     this.heroSpecial = null;
     this.heroSpecialLevel = 0;
     this.montarModeloPersonaje(this.personajeActual);
@@ -671,9 +708,10 @@ export class Game {
       this.destroyTitle = null;
       this.elegirDestino();
     }, {
-      onCreator: () => void this.openProfile(),
+      onCreator: () => this.abrirForjaHeroes(),
+      onProfile: () => void this.openProfile(),
       onCompanion: () => abrirSelectorCompanero(this.dron.forma, (id) => this.elegirCompanero(id), () => this.toTitle(), (e) => this.estiloDeBruno(e)),
-      onCharacter: () => abrirSelectorPersonaje(this.personajeActual.id, (id) => this.elegirPersonaje(id), () => this.toTitle()),
+      onCharacter: () => abrirSelectorPersonaje(this.recetaHeroe ? null : this.personajeActual.id, (id) => this.elegirPersonaje(id), () => this.toTitle(), () => this.abrirForjaHeroes()),
       onAstillero: () => this.abrirAstilleroEn({ volver: () => this.toTitle() }),
       character: this.personajeActual,
       companionName: perfilDe(this.dron.forma).nombre,
